@@ -377,16 +377,16 @@ type CombinedProbeFaultKind =
   | "overlay-probe-refused"
   | "overlay-probe-abnormal";
 
-/** The engaged pre-child machinery classes (scratch-area collision guard
- * and scratch-mint faults - typed BEFORE any state change). */
-type ScratchMachineryKind = "scratch-area-collision" | "scratch-mint-failure";
+/** The engaged pre-child machinery classes (capture-area collision guard
+ * and capture-mint faults - typed BEFORE any state change). */
+type CaptureMachineryKind = "capture-area-collision" | "capture-mint-failure";
 
 export type MechanismFault =
   | StaticFaultKind
   | ProbeFaultKind
   | PlannerRefusalKind
   | CombinedProbeFaultKind
-  | ScratchMachineryKind
+  | CaptureMachineryKind
   | AssignedFaultClass;
 
 export interface RefusalContext {
@@ -403,8 +403,8 @@ export interface RefusalContext {
   readonly combinedStage?: string; // overlay-probe-refused form (stderr stage diagnostic, collapsed at render time)
   readonly combinedProbeExit?: number | null; // overlay-probe-abnormal form (null = abnormal death)
   readonly combinedProbeOutput?: string; // overlay-probe-abnormal form (collapsed at render time)
-  readonly scratchCollisionDetail?: string; // scratch-area-collision form
-  readonly scratchRoot?: string; // scratch-mint-failure form
+  readonly captureCollisionDetail?: string; // capture-area-collision form
+  readonly captureRoot?: string; // capture-mint-failure form
   readonly exitCode?: number; // band-reserved form
 }
 
@@ -446,7 +446,7 @@ function collapseDetail(raw: string): string {
  * byte sequences - the seven supervisor-family C-exit lines cite the const-
  * block codes exactly like the five apply-mode siblings (ONE template per
  * class, used both pre-child AND at settlement); the planner-refusal,
- * combined-probe, and scratch-machinery families ride their measured detail
+ * combined-probe, and capture-machinery families ride their measured detail
  * slots (degraded-detail placeholders stand for absent fields exactly like
  * the existing slots). */
 export function renderMechanismRefusal(
@@ -496,10 +496,10 @@ export function renderMechanismRefusal(
       return `Command execution refused \u2014 the combined applicability probe reported realm=${contextSlot(ctx?.combinedRealm)} status=${contextSlot(ctx?.combinedStatus)} (stage=${collapseDetail(ctx?.combinedStage ?? "")}); refusing to run unfenced.`;
     case "overlay-probe-abnormal":
       return `Command execution refused \u2014 the combined applicability probe reported no usable verdict (exit=${contextSlot(ctx?.combinedProbeExit)}, output=${collapseDetail(ctx?.combinedProbeOutput ?? "")}); refusing to run unfenced.`;
-    case "scratch-area-collision":
-      return `Command execution refused \u2014 the scratch area intersects a planned mirror mount (${contextSlot(ctx?.scratchCollisionDetail)}); refusing to run unfenced.`;
-    case "scratch-mint-failure":
-      return `Command execution refused \u2014 the scratch triples could not be created under ${contextSlot(ctx?.scratchRoot)}; refusing to run unfenced.`;
+    case "capture-area-collision":
+      return `Command execution refused \u2014 the capture area intersects a planned mirror mount (${contextSlot(ctx?.captureCollisionDetail)}); refusing to run unfenced.`;
+    case "capture-mint-failure":
+      return `Command execution refused \u2014 the capture triples could not be created under ${contextSlot(ctx?.captureRoot)}; refusing to run unfenced.`;
     case "band-reserved":
       return `Command execution refused \u2014 the fenced command exited with code ${contextSlot(ctx?.exitCode)} inside the reserved fault band ${LANDLOCK_FAULT_BAND[0]}-${LANDLOCK_FAULT_BAND[1]} (interpreted conservatively as a fence machinery fault; enforcement was active throughout).`;
   }

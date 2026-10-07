@@ -796,7 +796,7 @@ describe("D. fault-code vocabulary + twenty-four-line refusal family", () => {
     );
   });
 
-  it("pre-child machinery refusal lines (rows 18-24 minus band-reserved): planner-refusal, combined-probe, and scratch-machinery forms ride their measured detail slots - full-detail AND degraded-detail byte goldens", () => {
+  it("pre-child machinery refusal lines (rows 18-24 minus band-reserved): planner-refusal, combined-probe, and capture-machinery forms ride their measured detail slots - full-detail AND degraded-detail byte goldens", () => {
     expect(
       renderMechanismRefusal("nested-mirror", {
         mirrorInner: "/slot/a",
@@ -835,22 +835,22 @@ describe("D. fault-code vocabulary + twenty-four-line refusal family", () => {
       `Command execution refused ${EM} the combined applicability probe reported no usable verdict (exit=n/a, output=(no message)); refusing to run unfenced.`,
     );
     expect(
-      renderMechanismRefusal("scratch-area-collision", {
-        scratchCollisionDetail:
-          "/slot/.fence-scratch/n-0 intersects /slot/leaf",
+      renderMechanismRefusal("capture-area-collision", {
+        captureCollisionDetail:
+          "/slot/.fence-capture/n-0 intersects /slot/leaf",
       }),
     ).toBe(
-      `Command execution refused ${EM} the scratch area intersects a planned mirror mount (/slot/.fence-scratch/n-0 intersects /slot/leaf); refusing to run unfenced.`,
+      `Command execution refused ${EM} the capture area intersects a planned mirror mount (/slot/.fence-capture/n-0 intersects /slot/leaf); refusing to run unfenced.`,
     );
     expect(
-      renderMechanismRefusal("scratch-mint-failure", {
-        scratchRoot: "/slot/.fence-scratch/n-1",
+      renderMechanismRefusal("capture-mint-failure", {
+        captureRoot: "/slot/.fence-capture/n-1",
       }),
     ).toBe(
-      `Command execution refused ${EM} the scratch triples could not be created under /slot/.fence-scratch/n-1; refusing to run unfenced.`,
+      `Command execution refused ${EM} the capture triples could not be created under /slot/.fence-capture/n-1; refusing to run unfenced.`,
     );
-    expect(renderMechanismRefusal("scratch-mint-failure")).toBe(
-      `Command execution refused ${EM} the scratch triples could not be created under n/a; refusing to run unfenced.`,
+    expect(renderMechanismRefusal("capture-mint-failure")).toBe(
+      `Command execution refused ${EM} the capture triples could not be created under n/a; refusing to run unfenced.`,
     );
   });
 

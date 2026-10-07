@@ -98,7 +98,7 @@
 // nothing vehicle-shaped is re-implemented or mirrored here.
 // FAIL-CLOSED DOCTRINE EXTENSION (engaged branch): every engaged-branch
 // machinery fault refuses TYPED. PRE-CHILD faults (planner-refusal arms,
-// scratch-area collision, scratch-mint faults, serializer corners, and the
+// capture-area collision, capture-mint faults, serializer corners, and the
 // vehicle-establishment surfacing via the combined-probe verdict cells)
 // reject BEFORE ANY SPAWN - the command NEVER runs. A POST-ESTABLISHMENT
 // supervision fault (a resolved in-band exit, or a settlement/commit fault
@@ -108,10 +108,10 @@
 // guarantee INTACT in every resolution: nothing OFF-VERDICT ever lands. The
 // side-effect axis stands transparent: when the run was established, the
 // command DID run; its file outcomes were simply not settled.
-// WORST-CASE TAMPER ARGUMENT (scratch placement): the scratch triples sit
+// WORST-CASE TAMPER ARGUMENT (capture placement): the capture triples sit
 // beside the mirror mounts under the project-slot root, OUTSIDE every
 // grant by default denial. A frame whose own declared tokens reach into the
-// scratch area is refused TYPED pre-child by the collision guard; the
+// capture area is refused TYPED pre-child by the collision guard; the
 // settlement walk judges EVERY captured entry against the frozen frame
 // regardless, so mid-run tampering with the trap can only surface ON-FRAME
 // writes (which the frame admits anyway) - it cannot smuggle an off-frame
@@ -253,11 +253,11 @@ const DEV_ALLOWANCE = "/dev";
 /** The scratch-class allowance (present iff the effective scratch
  * proposition) - named model-facing like the house shape. */
 const TMP_ALLOWANCE = "/tmp";
-/** THE fixed scratch-area artifact name under the project-slot root (the
+/** THE fixed capture-area artifact name under the project-slot root (the
  * sole exempt fixed name under the word-use scan; the persistent hidden
  * PARENT survives between spawns, each spawn mints its unique <nonce>
  * child). */
-const SCRATCH_AREA_NAME = ".fence-scratch";
+const CAPTURE_AREA_NAME = ".fence-capture";
 /** The combined applicability arm's argv verb (one token; the value is the
  * per-invocation probe root appended at the fork site). */
 const OVERLAY_PROBE_FLAG = "--overlay-probe";
@@ -278,7 +278,7 @@ const DISCARD_NOTE_TEMPLATE =
  * rejection resolves to this typed refusal (post-establishment supervision
  * fault): the already-committed admitted entries STAND (best-forward, the
  * side-effect axis stated transparently), everything unsettled does not
- * land, and the scratch area + surviving staged files are torn down
+ * land, and the capture area + surviving staged files are torn down
  * best-effort. ONE physical line, pure ASCII, trailing period at the
  * render site. */
 const SETTLEMENT_FAULT_HEAD = "restricted-run settlement fault: ";
@@ -514,7 +514,7 @@ function buildWrappedScript(
 }
 
 // ===========================================================================
-// ENGAGED-PATH MACHINERY (the composed-chain spawn leg - scratch geometry,
+// ENGAGED-PATH MACHINERY (the composed-chain spawn leg - capture geometry,
 // supervisor-preamble serialization, settlement walk/verdict/commit, and
 // the tolerant teardown purger. The pure path never evaluates any of this.
 // ===========================================================================
@@ -565,7 +565,7 @@ type ComposedSerializerVerdict =
  * script: `exec <carrier> [--mount L U W ...] -- <carrier> --write E... --
  * <shell> -c "$(base64-decode)"`. The supervisor preamble carries the
  * mirror triples IN MIRROR-MOUNTS ORDER (values absolute: mount = lowerdir;
- * upper/work = the session-minted scratch triple paths - the MINT STAYS
+ * upper/work = the session-minted capture triple paths - the MINT STAYS
  * SESSION-SIDE, the carrier only mounts) OVER the EXISTING apply-form tail
  * (same carrier, the ENGAGED kernel vector - envelope dirs in place of the
  * leaves, leaves absent), so the composed chain is realm -> private mount
@@ -580,19 +580,19 @@ function buildComposedScript(
   carrierPath: string,
   kernelVector: readonly string[],
   mirrorMounts: readonly string[],
-  scratchTriples: ReadonlyArray<readonly [string, string, string]>,
+  mountTriples: ReadonlyArray<readonly [string, string, string]>,
   shellConfig: ShellConfig,
   command: string,
 ): ComposedSerializerVerdict {
   // ---- Supervisor-preamble corners (committed 105 class) ----
   if (
     mirrorMounts.length === 0 ||
-    mirrorMounts.length !== scratchTriples.length
+    mirrorMounts.length !== mountTriples.length
   ) {
     return { kind: "invalid", arm: "supervisor-table" };
   }
   for (let index = 0; index < mirrorMounts.length; index += 1) {
-    const triple = scratchTriples[index];
+    const triple = mountTriples[index];
     const values: readonly string[] = [
       mirrorMounts[index],
       triple[0],
@@ -627,7 +627,7 @@ function buildComposedScript(
   const payload = Buffer.from(command, "utf8").toString("base64");
   const mountArgs = mirrorMounts
     .map((_mirror, index) => {
-      const triple = scratchTriples[index];
+      const triple = mountTriples[index];
       return `${quotePosix("--mount")} ${quotePosix(triple[0])} ${quotePosix(
         triple[1],
       )} ${quotePosix(triple[2])}`;
@@ -657,16 +657,6 @@ interface WalkEntry {
   readonly kind: "file" | "dir" | "whiteout" | "undecidable";
 }
 
-/** Recursive DFS over ONE upper tree, children TOP-DOWN in lexicographically
- * sorted entry-name order (deterministic, golden-stable). Entry kinds read
- * via async lstat CONSERVATIVELY: any stat fault on an entry treats it as
- * undecidable DISCARD + noted (never crash, never commit); WHITEOUT =
- * character-device entry with rdev major=0 AND minor=0 (encoded form:
- * rdev === 0); every other kind
- * (symlink, fifo, socket, non-whiteout device) is undecidable-by-default
- * discard material. A READ FAULT enumerating the upper ROOT itself escapes
- * the caller (the manifest is impossible - a post-establishment supervision
- * fault, not a per-entry reading). Never commits anything itself. */
 /** Recursively enumerate ONE upper tree into the manifest sink (deterministic
  * top-down sorted DFS): children are listed BEFORE descent and recorded AFTER
  * their parent (top-down order preserved); the RELATIVE PATH accumulates per
@@ -937,22 +927,22 @@ async function purgeDirEntriesTolerant(dir: string): Promise<void> {
   }
 }
 
-/** Remove the ENTIRE per-spawn scratch root AND best-effort-unlink any
+/** Remove the ENTIRE per-spawn capture root AND best-effort-unlink any
  * tracked surviving staged files (staged files live BESIDE targets in the
- * REAL environment, NOT under the scratch root - the teardown must cover
+ * REAL environment, NOT under the capture root - the teardown must cover
  * them explicitly). Swallow-all; the persistent hidden PARENT survives
  * (idempotent re-creation per spawn). */
-async function purgeScratchArea(
-  scratchRoot: string,
+async function purgeCaptureArea(
+  captureRoot: string,
   staged: string[],
 ): Promise<void> {
-  await purgeDirEntriesTolerant(scratchRoot);
+  await purgeDirEntriesTolerant(captureRoot);
   try {
-    await rmdir(scratchRoot);
+    await rmdir(captureRoot);
   } catch {
     try {
-      await chmod(scratchRoot, 0o700);
-      await rmdir(scratchRoot);
+      await chmod(captureRoot, 0o700);
+      await rmdir(captureRoot);
     } catch {
       // swallow-all (mode-000 metadata corner, see above)
     }
@@ -1120,7 +1110,7 @@ export function createLandlockBashOperations(
       }
       const carrierPath = check.path;
       // 3. SPAWN PLAN (pure, total) - THE branch selection. Planner REFUSAL
-      // arms refuse TYPED pre-child BEFORE any scratch mint or spawn
+      // arms refuse TYPED pre-child BEFORE any capture mint or spawn
       // (cheapest-first, zero state change - defense in depth beside the
       // carrier's own root-component rejection + the kernel overlap
       // refusals).
@@ -1197,36 +1187,36 @@ export function createLandlockBashOperations(
       }
 
       // ================= ENGAGED PATH (mirror mechanic live) ============
-      // (a) SCRATCH MINT - the session process (UNRESTRICTED by the ratchet
-      // doctrine) mints under <projectSlotRoot>/.fence-scratch/<nonce>/:
+      // CAPTURE MINT - the session process (UNRESTRICTED by the ratchet
+      // doctrine) mints under <projectSlotRoot>/.fence-capture/<nonce>/:
       // the persistent hidden PARENT idempotently (parallel mints race
       // safely), then ONE subdirectory PER MIRROR MOUNT named by its decimal
       // INDEX holding EMPTY upper/ + work/ (created before the probes - the
       // probe root needs an existing directory). OUTSIDE every grant by
       // default denial (worst-case tamper argument: header).
       const slotRoot = snapshot.paths.projectSlotRoot;
-      const scratchArea = `${slotRoot}/${SCRATCH_AREA_NAME}`;
+      const captureArea = `${slotRoot}/${CAPTURE_AREA_NAME}`;
       const nonce = mintNonce();
-      const scratchRoot = `${scratchArea}/${nonce}`;
+      const captureRoot = `${captureArea}/${nonce}`;
       // COLLISION GUARD (PURE, cheapest-first - NO state change precedes
-      // it): the scratch area must not intersect ANY planned mirror mount
+      // it): the capture area must not intersect ANY planned mirror mount
       // in EITHER direction (defense-in-depth twin of the kernel overlap
       // refusal - prefix tests over normalized absolute paths).
       for (const mount of plan.mirrorMounts) {
-        if (isWithin(scratchRoot, mount) || isWithin(mount, scratchRoot)) {
+        if (isWithin(captureRoot, mount) || isWithin(mount, captureRoot)) {
           throw new Error(
-            renderMechanismRefusal("scratch-area-collision", {
-              scratchCollisionDetail: `${scratchRoot} intersects ${mount}`,
+            renderMechanismRefusal("capture-area-collision", {
+              captureCollisionDetail: `${captureRoot} intersects ${mount}`,
             }),
           );
         }
       }
       // The session-minted ABSOLUTE triples (mount = lowerdir; upper/work =
-      // the scratch geometry) - THE MINT STAYS SESSION-SIDE, the carrier
+      // the capture geometry) - THE MINT STAYS SESSION-SIDE, the carrier
       // only mounts them.
       const triples: Array<[string, string, string]> = [];
       for (let index = 0; index < plan.mirrorMounts.length; index += 1) {
-        const base = `${scratchRoot}/${index}`;
+        const base = `${captureRoot}/${index}`;
         triples.push([
           plan.mirrorMounts[index],
           `${base}/upper`,
@@ -1234,14 +1224,14 @@ export function createLandlockBashOperations(
         ]);
       }
       try {
-        await mkdir(scratchArea, { recursive: true });
+        await mkdir(captureArea, { recursive: true });
       } catch {
         // Idempotent PARENT creation - a genuine fault surfaces loudly at
         // the nonce mint below (never a silent skip).
       }
       let mintOk = false;
       try {
-        await mkdir(scratchRoot, { recursive: false });
+        await mkdir(captureRoot, { recursive: false });
         for (const triple of triples) {
           await mkdir(triple[1], { recursive: true });
           await mkdir(triple[2], { recursive: true });
@@ -1252,10 +1242,10 @@ export function createLandlockBashOperations(
       }
       if (!mintOk) {
         throw new Error(
-          renderMechanismRefusal("scratch-mint-failure", { scratchRoot }),
+          renderMechanismRefusal("capture-mint-failure", { captureRoot }),
         );
       }
-      // (b)-(f) POST-MINT WORK: the engagement wraps everything in
+      // POST-MINT WORK: the engagement wraps everything in
       // try/finally - assertions/settlement PRECEDE teardown so residue
       // can never mask a row outcome; the tolerant purger runs LAST on
       // EVERY outcome (kill/abort/timeout rejects propagate VERBATIM while
@@ -1279,7 +1269,7 @@ export function createLandlockBashOperations(
             carrierPath,
             cwd,
             options.env,
-            [OVERLAY_PROBE_FLAG, scratchRoot],
+            [OVERLAY_PROBE_FLAG, captureRoot],
             true,
           );
           const reportLine = stripOneTrailingLf(combined.stdout);
@@ -1397,15 +1387,17 @@ export function createLandlockBashOperations(
           snapshot.paths,
         );
         const workspaceCwd = snapshot.paths.workspaceCwd;
-        // THE VERDICT predicate (FILES-ONLY ADMISSION): identity or
-        // subtree-prefix over the surviving declarations - every surviving
-        // declaration is a file token (the subtree form beneath a leaf is
-        // vacuously safe: the kernel refuses paths beneath a regular file
-        // at attempt time) - plus the gate's standing class prefix forms
-        // VERBATIM over the one fresh effective-set consult above.
+        // THE VERDICT predicate (FILES-ONLY ADMISSION): identity over the
+        // surviving declarations plus the gate's two standing class prefix
+        // propositions VERBATIM over the one fresh effective-set consult
+        // above. No subtree form: every surviving declaration is a file
+        // token, so a captured entry admits ONLY by exact identity with a
+        // survivor - a directory-shaped token (an invariant-forbidden
+        // shape) would admit its own path only, and writes beneath it
+        // discard + note (the fail-closed direction, transcript-noted).
         const isAdmitted = (target: string): boolean => {
           for (const survivor of effective.survivors) {
-            if (target === survivor || target.startsWith(`${survivor}/`)) {
+            if (target === survivor) {
               return true;
             }
           }
@@ -1465,7 +1457,7 @@ export function createLandlockBashOperations(
         }
         return delegated;
       } finally {
-        await purgeScratchArea(scratchRoot, staged);
+        await purgeCaptureArea(captureRoot, staged);
       }
     },
   };

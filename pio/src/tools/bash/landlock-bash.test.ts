@@ -1891,10 +1891,10 @@ describe("H. probe-once caching over a reused ops instance", () => {
 
 // ===========================================================================
 // ENGAGED-FIXTURE AREA (shared by the appended groups): REAL mkdtemp anchor
-// roots (the session-minted scratch geometry needs real parent directories -
+// roots (the session-minted capture geometry needs real parent directories -
 // virtual fixture roots would fault the mint); engagement is purely
 // declarative (the files-only planner consults no filesystem), with
-// deterministic nonce seams where a row pins scratch geometry; every row
+// deterministic nonce seams where a row pins capture geometry; every row
 // cleans up its root in a finally-walk so no residue ever crosses rows.
 // ===========================================================================
 
@@ -2060,7 +2060,7 @@ function seedUpperTree(upper: string, spec: SeedSpec): void {
 // ===========================================================================
 
 describe("I. engaged-form serialization (supervisor preamble over the apply-form tail)", () => {
-  it("structure pin (single leaf engagement): the delegated script IS the spec form byte-for-byte - one --mount triple per mirror mount (values absolute, the minted triple layout under <slot>/.fence-scratch/<nonce>/0/), the -- separator, the apply-form tail over the SAME carrier with the ENGAGED kernel vector (envelope in place of the leaf, leaf ABSENT, /dev + workspace cwd trailing), inner shell base64 payload unchanged; TWO probe receipts + ONE delegate call", async () => {
+  it("structure pin (single leaf engagement): the delegated script IS the spec form byte-for-byte - one --mount triple per mirror mount (values absolute, the minted triple layout under <slot>/.fence-capture/<nonce>/0/), the -- separator, the apply-form tail over the SAME carrier with the ENGAGED kernel vector (envelope in place of the leaf, leaf ABSENT, /dev + workspace cwd trailing), inner shell base64 payload unchanged; TWO probe receipts + ONE delegate call", async () => {
     const fx = openEngagedRoot();
     try {
       fx.state.enterCapability(RESEARCH);
@@ -2080,15 +2080,15 @@ describe("I. engaged-form serialization (supervisor preamble over the apply-form
       expect(h.receipts).toHaveLength(2);
       expect(fake.calls).toHaveLength(1);
       const envelope = `${fx.slot}/research`;
-      const scratchParent = `${fx.slot}/.fence-scratch`;
+      const captureParent = `${fx.slot}/.fence-capture`;
       const expected = expectedComposedScript({
         carrier: CARRIER,
         mounts: [envelope],
         triples: [
           [
             envelope,
-            `${scratchParent}/i-nonce/0/upper`,
-            `${scratchParent}/i-nonce/0/work`,
+            `${captureParent}/i-nonce/0/upper`,
+            `${captureParent}/i-nonce/0/work`,
           ],
         ],
         vector: [envelope, "/dev", fx.ws],
@@ -2100,8 +2100,8 @@ describe("I. engaged-form serialization (supervisor preamble over the apply-form
       expect(observed).toEqual([
         {
           lower: envelope,
-          upper: `${scratchParent}/i-nonce/0/upper`,
-          work: `${scratchParent}/i-nonce/0/work`,
+          upper: `${captureParent}/i-nonce/0/upper`,
+          work: `${captureParent}/i-nonce/0/work`,
         },
       ]);
     } finally {
@@ -2175,7 +2175,7 @@ describe("I. engaged-form serialization (supervisor preamble over the apply-form
     }
   });
 
-  it("multi-mount ordering + dedupe fidelity (three leaves, two envelopes): preamble carries ONE triple per DISTINCT envelope IN DECLARATION ORDER with first-occurrence dedupe, index-named scratch dirs 0/1; the kernel vector emits each envelope IN PLACE at its survivor position with the single global dedupe pass", async () => {
+  it("multi-mount ordering + dedupe fidelity (three leaves, two envelopes): preamble carries ONE triple per DISTINCT envelope IN DECLARATION ORDER with first-occurrence dedupe, index-named capture dirs 0/1; the kernel vector emits each envelope IN PLACE at its survivor position with the single global dedupe pass", async () => {
     const fx = openEngagedRoot();
     try {
       fx.state.enterCapability({
@@ -2206,13 +2206,13 @@ describe("I. engaged-form serialization (supervisor preamble over the apply-form
         triples: [
           [
             m0,
-            `${fx.slot}/.fence-scratch/i-nonce/0/upper`,
-            `${fx.slot}/.fence-scratch/i-nonce/0/work`,
+            `${fx.slot}/.fence-capture/i-nonce/0/upper`,
+            `${fx.slot}/.fence-capture/i-nonce/0/work`,
           ],
           [
             m1,
-            `${fx.slot}/.fence-scratch/i-nonce/1/upper`,
-            `${fx.slot}/.fence-scratch/i-nonce/1/work`,
+            `${fx.slot}/.fence-capture/i-nonce/1/upper`,
+            `${fx.slot}/.fence-capture/i-nonce/1/work`,
           ],
         ],
         vector: [m0, m1, "/dev"],
@@ -2266,8 +2266,8 @@ describe("I. engaged-form serialization (supervisor preamble over the apply-form
 // GROUP J - PLANNER-REFUSAL & PRE-CHILD ENGAGED FAULTS
 // ===========================================================================
 
-describe("J. planner-refusal & pre-child engaged faults (all typed, zero spawns, zero delegate consults, no scratch state change)", () => {
-  it("nested-mirror arm: the planner's degenerate nesting corner refuses TYPED naming the inner/outer pair - NO probe forks consumed, NO delegate consult, NO scratch parent created", async () => {
+describe("J. planner-refusal & pre-child engaged faults (all typed, zero spawns, zero delegate consults, no capture state change)", () => {
+  it("nested-mirror arm: the planner's degenerate nesting corner refuses TYPED naming the inner/outer pair - NO probe forks consumed, NO delegate consult, NO capture parent created", async () => {
     const fx = openEngagedRoot();
     try {
       fx.state.enterCapability({
@@ -2300,7 +2300,7 @@ describe("J. planner-refusal & pre-child engaged faults (all typed, zero spawns,
       );
       expect(h.receipts).toHaveLength(0);
       expect(rec.calls).toHaveLength(0);
-      expect(existsSync(`${fx.slot}/.fence-scratch`)).toBe(false);
+      expect(existsSync(`${fx.slot}/.fence-capture`)).toBe(false);
     } finally {
       fx.cleanup();
     }
@@ -2315,7 +2315,7 @@ describe("J. planner-refusal & pre-child engaged faults (all typed, zero spawns,
     );
   });
 
-  it("scratch-area collision guard (BOTH directions): the scratch area must not intersect ANY planned mirror mount - a mount PREFIXING the nonce dir refuses, and a mount nested UNDER the nonce dir refuses; both pre-child with the detail slot naming the measured intersection", async () => {
+  it("capture-area collision guard (BOTH directions): the capture area must not intersect ANY planned mirror mount - a mount PREFIXING the nonce dir refuses, and a mount nested UNDER the nonce dir refuses; both pre-child with the detail slot naming the measured intersection", async () => {
     for (const direction of [0, 1]) {
       const fx = openEngagedRoot();
       try {
@@ -2323,14 +2323,14 @@ describe("J. planner-refusal & pre-child engaged faults (all typed, zero spawns,
           name: "collision",
           writes:
             direction === 0
-              ? [".fence-scratch/*.md"]
-              : [".fence-scratch/j-nonce/sub/*.md"],
+              ? [".fence-capture/*.md"]
+              : [".fence-capture/j-nonce/sub/*.md"],
           allowProjectWrites: false,
         });
         const declared =
           direction === 0
-            ? [`${fx.slot}/.fence-scratch/seed.md`]
-            : [`${fx.slot}/.fence-scratch/j-nonce/sub/d.md`];
+            ? [`${fx.slot}/.fence-capture/seed.md`]
+            : [`${fx.slot}/.fence-capture/j-nonce/sub/d.md`];
         fx.state.attachPhase("impl", declared, false, false);
         const rec = recorderOps();
         const h = makeHarness(fx.state, twoProbePreamble(), {
@@ -2340,27 +2340,27 @@ describe("J. planner-refusal & pre-child engaged faults (all typed, zero spawns,
         const outcome = await settle(
           h.ops.exec("true", EXEC_CWD, { onData: () => undefined }),
         );
-        const scratchRoot = `${fx.slot}/.fence-scratch/j-nonce`;
+        const captureRoot = `${fx.slot}/.fence-capture/j-nonce`;
         const mount =
           direction === 0
-            ? `${fx.slot}/.fence-scratch`
-            : `${fx.slot}/.fence-scratch/j-nonce/sub`;
+            ? `${fx.slot}/.fence-capture`
+            : `${fx.slot}/.fence-capture/j-nonce/sub`;
         expectRefusal(
           outcome,
-          renderMechanismRefusal("scratch-area-collision", {
-            scratchCollisionDetail: `${scratchRoot} intersects ${mount}`,
+          renderMechanismRefusal("capture-area-collision", {
+            captureCollisionDetail: `${captureRoot} intersects ${mount}`,
           }),
         );
         expect(h.receipts).toHaveLength(0);
         expect(rec.calls).toHaveLength(0);
-        expect(existsSync(scratchRoot)).toBe(false);
+        expect(existsSync(captureRoot)).toBe(false);
       } finally {
         fx.cleanup();
       }
     }
   });
 
-  it("mint fault (read-only slot parent): the nonce-dir mkdir faults EACCES regardless of uid - typed scratch-mint-failure line, ZERO probe forks (the fault precedes applicability), ZERO delegate consults, no partial residue beyond the tolerated swallows", async () => {
+  it("mint fault (read-only slot parent): the nonce-dir mkdir faults EACCES regardless of uid - typed capture-mint-failure line, ZERO probe forks (the fault precedes applicability), ZERO delegate consults, no partial residue beyond the tolerated swallows", async () => {
     const fx = openEngagedRoot();
     try {
       chmodSync(fx.slot, 0o500);
@@ -2380,13 +2380,13 @@ describe("J. planner-refusal & pre-child engaged faults (all typed, zero spawns,
       );
       expectRefusal(
         outcome,
-        renderMechanismRefusal("scratch-mint-failure", {
-          scratchRoot: `${fx.slot}/.fence-scratch/j-nonce`,
+        renderMechanismRefusal("capture-mint-failure", {
+          captureRoot: `${fx.slot}/.fence-capture/j-nonce`,
         }),
       );
       expect(h.receipts).toHaveLength(0);
       expect(rec.calls).toHaveLength(0);
-      expect(existsSync(`${fx.slot}/.fence-scratch/j-nonce`)).toBe(false);
+      expect(existsSync(`${fx.slot}/.fence-capture/j-nonce`)).toBe(false);
     } finally {
       try {
         chmodSync(fx.slot, 0o700);
@@ -2493,7 +2493,7 @@ describe("K. combined-applicability probe over the second per-instance latch", (
       expect(h.receipts[0]?.args).toEqual(["--probe"]);
       expect(h.receipts[1]?.args).toEqual([
         "--overlay-probe",
-        `${fx.slot}/.fence-scratch/k-nonce`,
+        `${fx.slot}/.fence-capture/k-nonce`,
       ]);
       const o2 = await settle(
         h.ops.exec("second", EXEC_CWD, { onData: () => undefined }),
@@ -2705,7 +2705,7 @@ describe("K. combined-applicability probe over the second per-instance latch", (
 // ===========================================================================
 
 describe("L. manifest walk -> verdict -> selective commit (scripted local-ops stand in for the child physics; seeded uppers over real mkdtemp roots)", () => {
-  it("happy chain - pre-existing append (seeded leaf modified through the CoW view): exact final bytes in the real environment; CLEAN transcript (no standing note, no discard line, raw chunks only); scratch torn down; no staging residue", async () => {
+  it("happy chain - pre-existing append (seeded leaf modified through the CoW view): exact final bytes in the real environment; CLEAN transcript (no standing note, no discard line, raw chunks only); capture torn down; no staging residue", async () => {
     const fx = openEngagedRoot();
     try {
       fx.state.enterCapability(RESEARCH);
@@ -2735,7 +2735,7 @@ describe("L. manifest walk -> verdict -> selective commit (scripted local-ops st
       expect(rec.chunks.map((c) => c.toString("utf8"))).toEqual([
         "raw-chunk\n",
       ]);
-      expect(existsSync(`${fx.slot}/.fence-scratch/l-nonce`)).toBe(false);
+      expect(existsSync(`${fx.slot}/.fence-capture/l-nonce`)).toBe(false);
       expect(readdirSync(`${fx.slot}/research`).sort()).toEqual(["a.md"]);
     } finally {
       fx.cleanup();
@@ -2772,7 +2772,7 @@ describe("L. manifest walk -> verdict -> selective commit (scripted local-ops st
         expect(readFileSync(leaf, "utf8")).toBe("created-bytes");
       }
       expect(rec.chunks).toHaveLength(0);
-      expect(existsSync(`${fx.slot}/.fence-scratch/l-nonce`)).toBe(false);
+      expect(existsSync(`${fx.slot}/.fence-capture/l-nonce`)).toBe(false);
     } finally {
       fx.cleanup();
     }
@@ -2810,13 +2810,13 @@ describe("L. manifest walk -> verdict -> selective commit (scripted local-ops st
       expect(rec.chunks.map((c) => c.toString("utf8"))).toEqual([
         `\n${DISCARD_HEAD}${sibTarget}. Allowed targets: ${listing}.\n`,
       ]);
-      expect(existsSync(`${fx.slot}/.fence-scratch/l-nonce`)).toBe(false);
+      expect(existsSync(`${fx.slot}/.fence-capture/l-nonce`)).toBe(false);
     } finally {
       fx.cleanup();
     }
   });
 
-  it("multi-entry deterministic order (sorted top-down DFS over mixed kinds: directory ensure BEFORE its children by construction; subtree admission via the declared token's prefix form; off-list junk discarded + noted once)", async () => {
+  it("multi-entry deterministic order (sorted top-down DFS over mixed kinds: directory ensure BEFORE its children by construction; a sub-write beneath a declared token's path is discarded + noted (identity-only admission); off-list junk discarded + noted once)", async () => {
     const fx = openEngagedRoot();
     try {
       fx.state.enterCapability({
@@ -2829,8 +2829,8 @@ describe("L. manifest walk -> verdict -> selective commit (scripted local-ops st
       mkdirSync(`${fx.slot}/research`);
       // Both declared tokens are file leaves sharing ONE envelope (files-
       // only invariant, declaration-order dedupe - a single mount); the
-      // sub token's SUBTREE rides the verdict's declared-token prefix form
-      // below.
+      // sub token admits by IDENTITY ONLY - a write underneath its path
+      // discards + notes below.
       fx.state.attachPhase("impl", [leaf, subDir], true, false);
       const rec = dataRecorder();
       const fake = scriptedOps((box) => {
@@ -2851,16 +2851,17 @@ describe("L. manifest walk -> verdict -> selective commit (scripted local-ops st
       );
       expect(outcome.ok).toBe(true);
       expect(readFileSync(leaf, "utf8")).toBe("one");
-      expect(readFileSync(`${subDir}/in.md`, "utf8")).toBe("inside");
+      expect(existsSync(subDir)).toBe(true);
+      expect(existsSync(`${subDir}/in.md`)).toBe(false);
       expect(existsSync(`${fx.slot}/research/junk.bin`)).toBe(false);
       const listing = engagedListing(
         [`${fx.slot}/research`, "/dev", fx.ws],
         fx.ws,
       );
       expect(rec.chunks.map((c) => c.toString("utf8"))).toEqual([
-        `\n${DISCARD_HEAD}${fx.slot}/research/junk.bin. Allowed targets: ${listing}.\n`,
+        `\n${DISCARD_HEAD}${fx.slot}/research/junk.bin, ${subDir}/in.md. Allowed targets: ${listing}.\n`,
       ]);
-      expect(existsSync(`${fx.slot}/.fence-scratch/l-nonce`)).toBe(false);
+      expect(existsSync(`${fx.slot}/.fence-capture/l-nonce`)).toBe(false);
     } finally {
       fx.cleanup();
     }
@@ -2913,7 +2914,7 @@ describe("L. manifest walk -> verdict -> selective commit (scripted local-ops st
     }
   });
 
-  it("mid-commit fault (best-forward typed refusal): a second entry whose real target is a PRE-EXISTING DIRECTORY makes the atomic rename fault mid-commit - the op refuses with the module-owned settlement-fault head + guarantee sentence, earlier-committed admitted entries STAND (best-forward), the faulty target stays its original directory (no half-written replacement), scratch torn down, no surviving staging", async () => {
+  it("mid-commit fault (best-forward typed refusal): a second entry whose real target is a PRE-EXISTING DIRECTORY makes the atomic rename fault mid-commit - the op refuses with the module-owned settlement-fault head + guarantee sentence, earlier-committed admitted entries STAND (best-forward), the faulty target stays its original directory (no half-written replacement), capture torn down, no surviving staging", async () => {
     const fx = openEngagedRoot();
     try {
       fx.state.enterCapability(RESEARCH);
@@ -2953,8 +2954,8 @@ describe("L. manifest walk -> verdict -> selective commit (scripted local-ops st
         const info = lstatSync(blockedDir);
         expect(info.isDirectory()).toBe(true);
       }
-      // Scratch fully torn down; no staged residue anywhere in the real dir.
-      expect(existsSync(`${fx.slot}/.fence-scratch/l-nonce`)).toBe(false);
+      // Capture fully torn down; no staged residue anywhere in the real dir.
+      expect(existsSync(`${fx.slot}/.fence-capture/l-nonce`)).toBe(false);
       expect(readdirSync(`${fx.slot}/research`).sort()).toEqual([
         "a.md",
         "zblocked.md",
@@ -3015,9 +3016,9 @@ describe("L. manifest walk -> verdict -> selective commit (scripted local-ops st
       // children are tolerated) but NO nonce dirs and NO staging survive.
       const researchNames = readdirSync(`${fx.slot}/research`).sort();
       expect(researchNames).toEqual(["a.md"]);
-      const scratchParent = `${fx.slot}/.fence-scratch`;
-      if (existsSync(scratchParent)) {
-        expect(readdirSync(scratchParent)).toEqual([]);
+      const captureParent = `${fx.slot}/.fence-capture`;
+      if (existsSync(captureParent)) {
+        expect(readdirSync(captureParent)).toEqual([]);
       }
     } finally {
       fx.cleanup();
@@ -3031,7 +3032,7 @@ describe("L. manifest walk -> verdict -> selective commit (scripted local-ops st
 // ===========================================================================
 
 describe("M. kill/timeout/abort discard-all + extended band settlement over the composed chain", () => {
-  it("delegate rejects propagate VERBATIM (aborted / timeout contract bytes) AND drive discard-all teardown: NOTHING committed, NO verdict line, NO standing note, zero stream leakage, scratch root REMOVED", async () => {
+  it("delegate rejects propagate VERBATIM (aborted / timeout contract bytes) AND drive discard-all teardown: NOTHING committed, NO verdict line, NO standing note, zero stream leakage, capture root REMOVED", async () => {
     for (const contractBytes of ["aborted", "timeout"]) {
       const fx = openEngagedRoot();
       try {
@@ -3067,7 +3068,7 @@ describe("M. kill/timeout/abort discard-all + extended band settlement over the 
         // NOT land; the trapped entry never existed there).
         expect(readFileSync(leaf, "utf8")).toBe("pristine-lower");
         expect(existsSync(`${fx.slot}/research/off.bin`)).toBe(false);
-        expect(existsSync(`${fx.slot}/.fence-scratch/m-nonce`)).toBe(false);
+        expect(existsSync(`${fx.slot}/.fence-capture/m-nonce`)).toBe(false);
       } finally {
         fx.cleanup();
       }
@@ -3099,7 +3100,7 @@ describe("M. kill/timeout/abort discard-all + extended band settlement over the 
       if (outcome.ok) expect(outcome.value).toEqual({ exitCode: null });
       expect(readFileSync(leaf, "utf8")).toBe("pristine-lower");
       expect(rec.chunks).toHaveLength(0);
-      expect(existsSync(`${fx.slot}/.fence-scratch/m-nonce`)).toBe(false);
+      expect(existsSync(`${fx.slot}/.fence-capture/m-nonce`)).toBe(false);
     } finally {
       fx.cleanup();
     }
@@ -3160,7 +3161,7 @@ describe("M. kill/timeout/abort discard-all + extended band settlement over the 
         }
         expect(readFileSync(leaf, "utf8")).toBe("pristine-lower");
         expect(rec.chunks).toHaveLength(0);
-        expect(existsSync(`${fx.slot}/.fence-scratch/m-nonce`)).toBe(false);
+        expect(existsSync(`${fx.slot}/.fence-capture/m-nonce`)).toBe(false);
       } finally {
         fx.cleanup();
       }
@@ -3203,7 +3204,7 @@ describe("M. kill/timeout/abort discard-all + extended band settlement over the 
         `\n${DISCARD_HEAD}${fx.slot}/research/off.txt. Allowed targets: ${listing}.\n`,
         `\n${NOTE_TEMPLATE_LOCAL}${listing}.\n`,
       ]);
-      expect(existsSync(`${fx.slot}/.fence-scratch/m-nonce`)).toBe(false);
+      expect(existsSync(`${fx.slot}/.fence-capture/m-nonce`)).toBe(false);
     } finally {
       fx.cleanup();
     }
@@ -3238,7 +3239,7 @@ describe("N. vehicle-establishment faults and post-delegate vehicle deaths over 
     return { state: fx.state, leaf };
   };
 
-  it("pre-child probe-one ABNORMAL (garbage reading, foreign exit): typed refusal byte-equal the shared family renderer over the exact ctx the module composes (probeExit + raw output slot); exactly ONE fork total (the combined probe never runs); ZERO delegate consults; the minted scratch torn down without residue", async () => {
+  it("pre-child probe-one ABNORMAL (garbage reading, foreign exit): typed refusal byte-equal the shared family renderer over the exact ctx the module composes (probeExit + raw output slot); exactly ONE fork total (the combined probe never runs); ZERO delegate consults; the minted capture torn down without residue", async () => {
     const fx = openEngagedRoot();
     try {
       const { state } = engagedState(fx);
@@ -3278,7 +3279,7 @@ describe("N. vehicle-establishment faults and post-delegate vehicle deaths over 
       expect(counted.seen).toHaveLength(0);
       expect(h.receipts).toHaveLength(1);
       expect(h.receipts[0]!.args[0]).toBe("--probe");
-      expect(existsSync(`${fx.slot}/.fence-scratch/n-abn`)).toBe(false);
+      expect(existsSync(`${fx.slot}/.fence-capture/n-abn`)).toBe(false);
     } finally {
       fx.cleanup();
     }
@@ -3386,7 +3387,7 @@ describe("N. vehicle-establishment faults and post-delegate vehicle deaths over 
     }
   });
 
-  it("pre-child COMBINED-probe ABNORMAL form (unparseable output): the two-fork shape holds; the raw exit-code slot rides the ctx; nothing delegated, scratch clean", async () => {
+  it("pre-child COMBINED-probe ABNORMAL form (unparseable output): the two-fork shape holds; the raw exit-code slot rides the ctx; nothing delegated, capture clean", async () => {
     const fx = openEngagedRoot();
     try {
       const { state } = engagedState(fx);
@@ -3416,7 +3417,7 @@ describe("N. vehicle-establishment faults and post-delegate vehicle deaths over 
       }
       expect(counted.seen).toHaveLength(0);
       expect(h.receipts).toHaveLength(2);
-      expect(existsSync(`${fx.slot}/.fence-scratch/n-comb-abn`)).toBe(false);
+      expect(existsSync(`${fx.slot}/.fence-capture/n-comb-abn`)).toBe(false);
     } finally {
       fx.cleanup();
     }
@@ -3460,7 +3461,7 @@ describe("N. vehicle-establishment faults and post-delegate vehicle deaths over 
         }
         expect(readFileSync(leaf, "utf8")).toBe("pristine-lower");
         expect(rec.chunks).toHaveLength(0);
-        expect(existsSync(`${fx.slot}/.fence-scratch/n-veh-${code}`)).toBe(
+        expect(existsSync(`${fx.slot}/.fence-capture/n-veh-${code}`)).toBe(
           false,
         );
       } finally {
@@ -3497,7 +3498,7 @@ describe("O. voice artifact goldens (template ownership, placement order, case-t
     expect(standingLiteral.includes("Writing is refused")).toBe(false);
   });
 
-  it("engagement proof + standing-note-ONLY channel (non-zero exit, EVERY entry admitted, no raw output): the data stream carries EXACTLY ONE chunk - the standing note whose listing is rendered from the PLAN-DERIVED kernel vector (computed via the independent planner entry point, never from the channel itself - non-circular bind): envelope elements raw, /dev dropped, workspace cwd mapped to its project-files clause; the committed leaf lands; scratch clean", async () => {
+  it("engagement proof + standing-note-ONLY channel (non-zero exit, EVERY entry admitted, no raw output): the data stream carries EXACTLY ONE chunk - the standing note whose listing is rendered from the PLAN-DERIVED kernel vector (computed via the independent planner entry point, never from the channel itself - non-circular bind): envelope elements raw, /dev dropped, workspace cwd mapped to its project-files clause; the committed leaf lands; capture clean", async () => {
     const fx = openEngagedRoot();
     try {
       fx.state.enterCapability(RESEARCH);
@@ -3533,7 +3534,7 @@ describe("O. voice artifact goldens (template ownership, placement order, case-t
       ]);
       expect(listing).not.toContain("/dev");
       expect(listing).toContain(`project files under ${fx.ws}`);
-      expect(existsSync(`${fx.slot}/.fence-scratch/o-nonce`)).toBe(false);
+      expect(existsSync(`${fx.slot}/.fence-capture/o-nonce`)).toBe(false);
     } finally {
       fx.cleanup();
     }
@@ -3620,7 +3621,7 @@ const OVERLAY_LATCH: OverlayLatch = (() => {
 describe.skipIf(!OVERLAY_LATCH.usable)(
   `P. real-syscall legs (host gate: ${OVERLAY_LATCH.reason})`,
   () => {
-    it("real restricted WRITE PHYSICS - create-new over an ABSENT lower leaf: the composed chain actually executes (delegated script IS the composed form); the granted write LANDS (upper -> selective commit); a same-run off-list write is DENIED by the in-bubble policy (the fence is SELECTIVE, not merely slow); exit 0 with a CLEAN transcript (zero chunks - the success-gate appends nothing); the scratch child torn down", async () => {
+    it("real restricted WRITE PHYSICS - create-new over an ABSENT lower leaf: the composed chain actually executes (delegated script IS the composed form); the granted write LANDS (upper -> selective commit); a same-run off-list write is DENIED by the in-bubble policy (the fence is SELECTIVE, not merely slow); exit 0 with a CLEAN transcript (zero chunks - the success-gate appends nothing); the capture child torn down", async () => {
       const root = mkdtempSync(join(os.tmpdir(), "pio-p-real-"));
       const slot = `${root}/slot`,
         ws = `${root}/ws`;
@@ -3661,10 +3662,10 @@ describe.skipIf(!OVERLAY_LATCH.usable)(
       const joined = chunks.map((c) => c.toString("utf8")).join("");
       expect(joined).toContain("Permission denied");
       expect(joined).not.toContain("Note:");
-      // Scratch hygiene: any surviving nonce child dir would be residue.
-      const scratchParent = `${slot}/.fence-scratch`;
-      if (existsSync(scratchParent)) {
-        expect(readdirSync(scratchParent)).toEqual([]);
+      // Capture hygiene: any surviving nonce child dir would be residue.
+      const captureParent = `${slot}/.fence-capture`;
+      if (existsSync(captureParent)) {
+        expect(readdirSync(captureParent)).toEqual([]);
       }
       rmSync(root, { recursive: true, force: true });
     }, 60_000);
@@ -3696,9 +3697,9 @@ describe.skipIf(!OVERLAY_LATCH.usable)(
       if (outcome.ok) expect(outcome.value).toEqual({ exitCode: 0 });
       expect(readFileSync(leaf, "utf8")).toBe("ORIGINAL\nAPPENDED\n");
       expect(chunks).toHaveLength(0);
-      const scratchParent = `${slot}/.fence-scratch`;
-      if (existsSync(scratchParent)) {
-        expect(readdirSync(scratchParent)).toEqual([]);
+      const captureParent = `${slot}/.fence-capture`;
+      if (existsSync(captureParent)) {
+        expect(readdirSync(captureParent)).toEqual([]);
       }
       rmSync(root, { recursive: true, force: true });
     }, 60_000);
@@ -3771,7 +3772,7 @@ describe.skipIf(!OVERLAY_LATCH.usable)(
       const ops3 = createLandlockBashOperations(ws, state3, {
         nonceSource: () => "p-whiteout-3",
       });
-      const upperDir = `${slot}/.fence-scratch/p-whiteout-3/0/upper`; // mirror-root: the whiteout names itself by its RELATIVE position under the mounted envelope
+      const upperDir = `${slot}/.fence-capture/p-whiteout-3/0/upper`; // mirror-root: the whiteout names itself by its RELATIVE position under the mounted envelope
       const pending = ops3.exec(`rm '${leaf}'; sleep 0.8`, ws, {
         onData: () => undefined,
         timeout: 30,
@@ -3846,7 +3847,7 @@ describe.skipIf(!OVERLAY_LATCH.usable)(
       );
     });
 
-    it("ABORTED lineage (AbortSignal.timeout over a long-running restricted command): the delegate rejects with the contract bytes VERBATIM (aborted); NOTHING lands; the scratch child is torn down by the settlement path despite the rejection; bounded wall-clock completion (no hang past the signal deadline plus teardown slack)", async () => {
+    it("ABORTED lineage (AbortSignal.timeout over a long-running restricted command): the delegate rejects with the contract bytes VERBATIM (aborted); NOTHING lands; the capture child is torn down by the settlement path despite the rejection; bounded wall-clock completion (no hang past the signal deadline plus teardown slack)", async () => {
       const root = mkdtempSync(join(os.tmpdir(), "pio-p-real-"));
       const slot = `${root}/slot`,
         ws = `${root}/ws`;
@@ -3878,14 +3879,14 @@ describe.skipIf(!OVERLAY_LATCH.usable)(
       }
       expect(wall).toBeLessThan(10_000);
       expect(readFileSync(leaf, "utf8")).toBe("survivor\n");
-      const scratchParent = `${slot}/.fence-scratch`;
-      if (existsSync(scratchParent)) {
-        expect(readdirSync(scratchParent)).toEqual([]);
+      const captureParent = `${slot}/.fence-capture`;
+      if (existsSync(captureParent)) {
+        expect(readdirSync(captureParent)).toEqual([]);
       }
       rmSync(root, { recursive: true, force: true });
     }, 30_000);
 
-    it("SIGKILL lineage forensics (external SIGKILL of the composed-chain top process, fingerprinted through ps by the scratch NONCE token): settlement still completes within a bounded deadline; afterwards NO live process references the nonce (lineage fully dead - the throwaway doctrine holds under external murder); the lower stays pristine; the scratch child is gone. Degrade-honest: when the host lacks ps the kill step is skipped with a logged note and only the bounded-settlement claim is asserted", async () => {
+    it("SIGKILL lineage forensics (external SIGKILL of the composed-chain top process, fingerprinted through ps by the capture NONCE token): settlement still completes within a bounded deadline; afterwards NO live process references the nonce (lineage fully dead - the throwaway doctrine holds under external murder); the lower stays pristine; the capture child is gone. Degrade-honest: when the host lacks ps the kill step is skipped with a logged note and only the bounded-settlement claim is asserted", async () => {
       const psPath = existsSync("/usr/bin/ps")
         ? "/usr/bin/ps"
         : existsSync("/bin/ps")
@@ -3968,12 +3969,12 @@ describe.skipIf(!OVERLAY_LATCH.usable)(
         expect(findTopPid()).toBeNull();
       }
       expect(readFileSync(leaf, "utf8")).toBe("killed-survivor\n");
-      const scratchChild = `${slot}/.fence-scratch/${nonce}`;
-      expect(existsSync(scratchChild)).toBe(false);
+      const captureChild = `${slot}/.fence-capture/${nonce}`;
+      expect(existsSync(captureChild)).toBe(false);
       rmSync(root, { recursive: true, force: true });
     }, 60_000);
 
-    it("parallel engaged control (two concurrent instances, distinct nonces, ONE persistent parent): both scratch children coexist DURING the overlap window (distinct default-free mint names prove per-spawn isolation); after both settle the parent holds NO children (teardown never removes siblings' entries - each instance purges ONLY its own nonce dir); neither blocks the other", async () => {
+    it("parallel engaged control (two concurrent instances, distinct nonces, ONE persistent parent): both capture children coexist DURING the overlap window (distinct default-free mint names prove per-spawn isolation); after both settle the parent holds NO children (teardown never removes siblings' entries - each instance purges ONLY its own nonce dir); neither blocks the other", async () => {
       const root = mkdtempSync(join(os.tmpdir(), "pio-p-real-"));
       const slot = `${root}/slot`,
         ws = `${root}/ws`;
@@ -4010,13 +4011,13 @@ describe.skipIf(!OVERLAY_LATCH.usable)(
         })(),
         { nonceSource: () => "par-b" },
       );
-      const scratchParent = `${slot}/.fence-scratch`;
+      const captureParent = `${slot}/.fence-capture`;
       const seenSnapshots: string[][] = [];
       const poller = (async () => {
         const deadline = Date.now() + 4_000;
         while (Date.now() < deadline) {
-          if (existsSync(scratchParent)) {
-            seenSnapshots.push(readdirSync(scratchParent).sort());
+          if (existsSync(captureParent)) {
+            seenSnapshots.push(readdirSync(captureParent).sort());
           }
           await new Promise((r) => setTimeout(r, 50));
         }
@@ -4041,8 +4042,8 @@ describe.skipIf(!OVERLAY_LATCH.usable)(
       expect(overlapped).toBe(true);
       // Post-settlement: no children survive (either the parent is empty or
       // absent entirely - either form is the doctrine-compliant shape).
-      if (existsSync(scratchParent)) {
-        expect(readdirSync(scratchParent)).toEqual([]);
+      if (existsSync(captureParent)) {
+        expect(readdirSync(captureParent)).toEqual([]);
       }
       rmSync(root, { recursive: true, force: true });
     }, 60_000);
@@ -4086,13 +4087,13 @@ describe("Q. hygiene pins", () => {
     moduleSrc.indexOf("VEHICLE FACT"),
   );
 
-  it("diff-confinement proxy (appended-machinery tokens never enter the pre-group-I region): none of the new artifacts - fixture helpers, scratch-name literals, plan-entry-point references - appear anywhere in the pre-group-I slice; the original groups retain their zero-engagement determinism (every original window carries no strictly-concrete survivor, so each stays non-engaged BY CONSTRUCTION under the pure files-only planner)", () => {
+  it("diff-confinement proxy (appended-machinery tokens never enter the pre-group-I region): none of the new artifacts - fixture helpers, capture-name literals, plan-entry-point references - appear anywhere in the pre-group-I slice; the original groups retain their zero-engagement determinism (every original window carries no strictly-concrete survivor, so each stays non-engaged BY CONSTRUCTION under the pure files-only planner)", () => {
     const needles = [
       "openEngagedRoot",
       "seedUpperTree",
       "expectedComposedScript",
       "BROAD_CAPABILITY",
-      ".fence-scratch",
+      ".fence-capture",
       "engagedListing",
       "twoProbePreamble",
       "triplesOf",
@@ -4146,10 +4147,10 @@ describe("Q. hygiene pins", () => {
     }
   });
 
-  it("word-use scan (authored-prose hygiene): zero occurrences of the banned word family in the authored slices - module header-to-EOF and suite group-I-banner-to-EOF - after stripping the two sanctioned exemptions (the fixed scratch-area artifact name and the house-form refusal tail quoted verbatim from the renderer)", () => {
+  it("word-use scan (authored-prose hygiene): zero occurrences of the banned word family in the authored slices - module header-to-EOF and suite group-I-banner-to-EOF - after stripping the two sanctioned exemptions (the fixed capture-area artifact name and the house-form refusal tail quoted verbatim from the renderer)", () => {
     const scrub = (slice: string): string =>
       slice
-        .replaceAll(".fence-scratch", "")
+        .replaceAll(".fence-capture", "")
         .replaceAll("refusing to run unfenced.", "");
     const re = /\bfenc(ed|es|ing)?\b/gi;
     for (const [name, slice] of [
@@ -4186,7 +4187,7 @@ describe("Q. hygiene pins", () => {
     }
   });
 
-  it("nonce-mechanics source pins (the scratch identity is cryptographically salted + monotonically counted; the atomic staging basename embeds BOTH the base name and the nonce so parallel walks over identical targets can never collide): the module carries the 16-hex-char random salt expression, the counter increment, and the dot-base-dot-nonce staging composition - each exactly once", () => {
+  it("nonce-mechanics source pins (the capture-root identity is cryptographically salted + monotonically counted; the atomic staging basename embeds BOTH the base name and the nonce so parallel walks over identical targets can never collide): the module carries the 16-hex-char random salt expression, the counter increment, and the dot-base-dot-nonce staging composition - each exactly once", () => {
     expect(moduleSrc.split("randomBytes(8)").length - 1).toBe(1);
     expect(moduleSrc.includes("nonceCounter")).toBe(true);
     const stagingNeedle = "$" + "{dir}/." + "$" + "{base}." + "$" + "{nonce}";

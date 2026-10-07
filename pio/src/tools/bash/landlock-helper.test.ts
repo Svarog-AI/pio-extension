@@ -1957,3 +1957,467 @@ describe("landlock-helper supervisor real-syscall goldens (H)", () => {
   // (the 103 treatment, verbatim precedent). 107/108 gain executable
   // coverage where the H12 physics lands them.
 });
+
+/* ========================================================================
+ * I - production-context (in-bubble) receipts & regression guards
+ *
+ * Appended after group H (lettering convention continues). The quality-gate
+ * rework (revision round 6) landed this family: NO committed test ever ran
+ * the SHIPPED carrier inside the production bubble (hermetic positive rows
+ * run BARE from vitest; the S13 in-bubble GREEN used throwaway vehicle
+ * sources), and the map-target termination defect that shipped green bare
+ * was deterministic there. The standing in-bubble rows below ARE the
+ * production-context receipts; the source-guard row pins the repair at the
+ * site (behavioral black-box pinning of the layout-dependent bug class is
+ * unpinnable BY NATURE - the division of labor is the receipt, not a gap).
+ * House discipline carried verbatim: real-binary rows, skip-with-surfaced-
+ * reason degrade-honest doctrine, mkdtemp isolation, exact-byte assertions,
+ * wall-clock guards that make hangs FAIL loudly, stdlib-only includes (this
+ * file imports NOTHING from sandbox/ - dependency partition: node:* +
+ * relative suite-local derivations only), zero casts,
+ * erasableSyntaxOnly-clean. The base-flag vector below is tied to the
+ * module-private buildBaseFlags in render.ts BY THE PARITY ROW, which
+ * re-derives it FROM THE SOURCE TEXT at execution time (a stale hand-cached
+ * quotation trips LOUDLY rather than silently re-testing wrong flags).
+ * ======================================================================== */
+
+/** Binary presence/usability probe with an INJECTABLE name/path (default
+ * callers pass "bwrap"; the stub row proves the degrade-honest mechanism
+ * WITHOUT needing actual absence on the host - launcher-suite fixture-
+ * script precedent): one --version consult under a short wall guard (the
+ * cc/python detection idiom mirrored). Usable <=> clean exit 0 without a
+ * spawn error. Surfaced reason form ("none" when usable):
+ *   <name> version-spawn failed (exit=<status>) [spawn error]
+ * (the bracketed marker present iff the spawn itself faulted - absent or
+ * non-executable binary). */
+interface ToolBinaryProbe {
+  readonly usable: boolean;
+  /** Surfaced skip reason ("none" when usable). */
+  readonly reason: string;
+}
+
+function probeToolBinary(name: string): ToolBinaryProbe {
+  const v = recordSpawn(name, ["--version"], 5_000);
+  if (!v.abnormal && v.status === 0) {
+    return { usable: true, reason: "none" };
+  }
+  return {
+    usable: false,
+    reason: `${name} version-spawn failed (exit=${String(v.status)})${
+      v.abnormal ? " [spawn error]" : ""
+    }`,
+  };
+}
+
+const BWRAP = probeToolBinary("bwrap");
+if (BWRAP.usable) {
+  console.log("[landlock-helper suite] bwrap usable: version-spawn green");
+} else {
+  console.warn(
+    `[landlock-helper suite] in-bubble rows will skip - ${BWRAP.reason}`,
+  );
+}
+
+/** In-bubble geometry pins (unit C.3): the COMMITTED prebuild ro-bound at
+ * a fixed in-bubble path (the receipt must exercise the committed bytes
+ * directly, not a copy); ONE fresh host-side mkdtemp scratch bound rw at
+ * /scratch - ALL suite artifacts ride it (NEVER the bubble's private /tmp
+ * tmpfs: fresh per bubble, invisible from the host side, so host-visible
+ * teardown/post-run assertions would invert the receipt). Do NOT use the
+ * host /proc lineage-forensic helpers in the in-bubble rows - bubble
+ * pid/user-namespace separation makes host-side ppid mapping unreliable
+ * there; the in-bubble rows assert BYTE CHANNELS + host-visible scratch
+ * state ONLY. */
+const BUBBLE_HELPER_PATH = "/llh-helper";
+const BUBBLE_SCRATCH_MOUNT = "/scratch";
+
+/** Minimum ro-bind set (verbatim - the kickoff recipe's bindings). */
+const BUBBLE_RO_BIND_TARGETS: ReadonlyArray<string> = [
+  "/usr",
+  "/bin",
+  "/lib",
+  "/lib64",
+  "/etc",
+];
+
+/** Local replica of the CURRENT 14-token base-flag vector with process-
+ * derived placeholders for the identity pair. buildBaseFlags is module-
+ * PRIVATE in render.ts (OUTSIDE this step's footprint - byte-diff empty);
+ * the parity row keeps this replica live-tied to the source text. */
+const BASE_FLAGS_REPLICA_TEMPLATE: readonly string[] = [
+  "--unshare-all",
+  "--uid",
+  "<UID>",
+  "--gid",
+  "<GID>",
+  "--share-net",
+  "--die-with-parent",
+  "--dev",
+  "/dev",
+  "--proc",
+  "/proc",
+  "--tmpfs",
+  "/tmp",
+];
+
+/** Derive the CONCRETE base-flag vector FROM THE SOURCE TEXT of render.ts
+ * AT EXECUTION TIME (the live tie): extract the buildBaseFlags body,
+ * pull the string literals in declaration order plus the two identity-
+ * marker positions, substitute process.getuid() / process.getgid().
+ * Throws loud on any drift (missing function, unresolvable body window)
+ * - extraction failure is a FAILED parity row, never a silent wrong-flag
+ * re-test. Bubble invocations consume THIS derivation, never a quotation. */
+function deriveBaseFlagsFromSource(): string[] {
+  const src = readFileSync(
+    path.join(PKG_ROOT, "src", "sandbox", "render.ts"),
+    "utf8",
+  );
+  const declAt = src.indexOf("function buildBaseFlags(");
+  if (declAt < 0) {
+    throw new Error(
+      "parity derivation: buildBaseFlags declaration not found in render.ts",
+    );
+  }
+  const bodyStart = src.indexOf("{", declAt);
+  const bodyEnd = src.indexOf("\n}", bodyStart);
+  if (bodyStart < 0 || bodyEnd < 0) {
+    throw new Error(
+      "parity derivation: buildBaseFlags body window unresolvable in render.ts",
+    );
+  }
+  const body = src.slice(bodyStart, bodyEnd);
+  const id = suiteIdentity();
+  const TOKEN_RE = /"([^"\n]*)"|String\(identity\.(uid|gid)\)/g;
+  const tokens: string[] = [];
+  for (;;) {
+    const m = TOKEN_RE.exec(body);
+    if (m === null) break;
+    if (m[1] !== undefined) {
+      tokens.push(m[1]); // plain literal (no escapes in the current source)
+    } else if (m[2] === "uid") {
+      tokens.push(String(id.uid));
+    } else {
+      tokens.push(String(id.gid));
+    }
+  }
+  return tokens;
+}
+
+/** Reaped-child detail line (COMBINED-ARM ONLY; the map-stage fault path
+ * folds the MEASURED outcome at its own pinned diagnostic position -
+ * AFTER the stage diagnostic line, BEFORE the stdout report line). Single
+ * alternation over exit|signal; LF-terminated. */
+const REAPED_DETAIL_LINE_RE =
+  /^landlock-helper overlay: reaped child: (?:exit|signal)=\d+\n$/;
+
+/** Suite process identity (a verbatim replica of render.ts's OWN guarded
+ * access - the platform-optional API surface checked explicitly; the suite
+ * runs on POSIX hosts by construction, so a failure here is a LOUD test
+ * error, never a silent skip). */
+function suiteIdentity(): { readonly uid: number; readonly gid: number } {
+  const uidOf = process.getuid;
+  const gidOf = process.getgid;
+  if (typeof uidOf !== "function" || typeof gidOf !== "function") {
+    throw new Error(
+      "process identity APIs unavailable (getuid/getgid) — POSIX host required",
+    );
+  }
+  const uid = uidOf();
+  const gid = gidOf();
+  if (uid === undefined || gid === undefined) {
+    throw new Error(
+      "process identity unresolved (getuid/getgid returned undefined) — POSIX host required",
+    );
+  }
+  return { uid, gid };
+}
+
+describe("landlock-helper production-context (in-bubble) receipts & regression guards (I)", () => {
+  /* Composed skip gate for the bubble rows (doctrine-identical to the
+   * Landlock rows): the bare combined arm must be green first (OV), then
+   * the bwrap probe must report usable; the operative reason surfaces. */
+  const iReason = !OV.usable
+    ? OV.reason
+    : !BWRAP.usable
+      ? BWRAP.reason
+      : "none";
+  const iSkip = iReason !== "none";
+  const iNote = skipNote(iReason);
+
+  /** One bwrap invocation argv: the DERIVED base flags (never a hand-
+   * cached quotation), the minimum ro-bind set verbatim, the COMMITTED
+   * prebuild at its fixed in-bubble path, ONE host-side scratch rw at
+   * /scratch, then the payload tail after `--`. */
+  function bubbleArgs(
+    scratchHostRoot: string,
+    payloadTail: readonly string[],
+  ): string[] {
+    return [
+      ...deriveBaseFlagsFromSource(),
+      ...BUBBLE_RO_BIND_TARGETS.flatMap((t) => ["--ro-bind", t, t]),
+      "--ro-bind",
+      HELPER,
+      BUBBLE_HELPER_PATH,
+      "--bind",
+      scratchHostRoot,
+      BUBBLE_SCRATCH_MOUNT,
+      "--",
+      ...payloadTail,
+    ];
+  }
+
+  it("the in-bubble base-flag replica ties to the render.ts source at execution time (parity row - unconditional)", () => {
+    const derived = deriveBaseFlagsFromSource();
+    const id = suiteIdentity();
+    const concretized = BASE_FLAGS_REPLICA_TEMPLATE.map((token) => {
+      if (token === "<UID>") return String(id.uid);
+      if (token === "<GID>") return String(id.gid);
+      return token;
+    });
+    expect(
+      derived,
+      "drift between the suite replica and the buildBaseFlags source: re-pin BOTH sides in the same commit (a stale hand-cached quotation is a false receipt by construction)",
+    ).toStrictEqual(concretized);
+  });
+
+  it("the bwrap presence probe degrades honestly with the pinned surfaced-reason form (stubbed absence - unconditional)", () => {
+    const STUB_NAME = "/usr/bin/llh-definitely-absent-stub";
+    const probe = probeToolBinary(STUB_NAME);
+    expect(probe.usable).toBe(false);
+    expect(probe.reason).toBe(
+      `${STUB_NAME} version-spawn failed (exit=null) [spawn error]`,
+    );
+  });
+
+  it("the reaped-child detail line form-golden accepts both pinned forms and rejects off-form bytes (unconditional)", () => {
+    // Accepted: both measured variants, single- and multi-digit.
+    expect(
+      REAPED_DETAIL_LINE_RE.test(
+        "landlock-helper overlay: reaped child: exit=0\n",
+      ),
+    ).toBe(true);
+    expect(
+      REAPED_DETAIL_LINE_RE.test(
+        "landlock-helper overlay: reaped child: exit=255\n",
+      ),
+    ).toBe(true);
+    expect(
+      REAPED_DETAIL_LINE_RE.test(
+        "landlock-helper overlay: reaped child: signal=9\n",
+      ),
+    ).toBe(true);
+    expect(
+      REAPED_DETAIL_LINE_RE.test(
+        "landlock-helper overlay: reaped child: signal=137\n",
+      ),
+    ).toBe(true);
+    // Rejected: trailing junk, extra line, missing colon / decimal,
+    // prefix or word drift, internal whitespace, wrong prefix entirely.
+    expect(
+      REAPED_DETAIL_LINE_RE.test(
+        "landlock-helper overlay: reaped child: exit=1 junk\n",
+      ),
+    ).toBe(false);
+    expect(
+      REAPED_DETAIL_LINE_RE.test(
+        "landlock-helper overlay: reaped child: exit=1\nsecond\n",
+      ),
+    ).toBe(false);
+    expect(
+      REAPED_DETAIL_LINE_RE.test(
+        "landlock-helper overlay reaped child: exit=1\n",
+      ),
+    ).toBe(false);
+    expect(
+      REAPED_DETAIL_LINE_RE.test(
+        "landlock-helper overlay: reaped child: exit=1 \n",
+      ),
+    ).toBe(false);
+    expect(
+      REAPED_DETAIL_LINE_RE.test(
+        "landlock-helper overlay: reaped child: exit=\n",
+      ),
+    ).toBe(false);
+    expect(
+      REAPED_DETAIL_LINE_RE.test(
+        "landlock-helper overlay: reaped child: exited=1\n",
+      ),
+    ).toBe(false);
+    expect(
+      REAPED_DETAIL_LINE_RE.test(
+        "Landlock-helper overlay: reaped child: exit=1\n",
+      ),
+    ).toBe(false);
+    expect(
+      REAPED_DETAIL_LINE_RE.test(
+        "landlock-helper overlay: failed at realm-map (errno=32)\n",
+      ),
+    ).toBe(false);
+  });
+
+  it("the carrier source-guard pins the proc_target termination at the site with the invariant marker and a mechanically bounded audit scope (unconditional)", () => {
+    const src = readFileSync(
+      path.join(PKG_ROOT, "vendor", "landlock-helper", "landlock-helper.c"),
+      "utf8",
+    );
+    // (iv) exactly ONE append_decimal(pidbuf fill site exists - the
+    // audit scope stays mechanically bounded.
+    let fillSites = 0;
+    let at = 0;
+    for (;;) {
+      const found = src.indexOf("append_decimal(pidbuf", at);
+      if (found < 0) break;
+      fillSites += 1;
+      at = found + 1;
+    }
+    expect(fillSites).toBe(1);
+    // (iii) the append_decimal DOC BLOCK (the comment directly above its
+    // definition) carries the TERMINATION INVARIANT marker.
+    const fnAt = src.indexOf("static size_t append_decimal(");
+    expect(fnAt, "append_decimal definition not found").toBeGreaterThanOrEqual(
+      0,
+    );
+    const docOpen = src.lastIndexOf("/*", fnAt);
+    expect(docOpen, "doc comment open not found").toBeGreaterThanOrEqual(0);
+    const docBlock = src.slice(docOpen, fnAt);
+    expect(
+      docBlock.includes("TERMINATION INVARIANT"),
+      "the TERMINATION INVARIANT marker must stand in the append_decimal doc block",
+    ).toBe(true);
+    // (i)+(ii) the proc_target body window (definition -> next top-level
+    // static symbol marker): the whitespace-normalized terminator
+    // statement occurs STRICTLY after the append_decimal(pidbuf fill and
+    // STRICTLY before the FIRST strlen( in the window.
+    const winStart = src.indexOf("static long proc_target(");
+    expect(winStart, "proc_target definition not found").toBeGreaterThanOrEqual(
+      0,
+    );
+    const winEnd = src.indexOf("\nstatic ", winStart);
+    expect(
+      winEnd,
+      "next top-level static marker not found after proc_target",
+    ).toBeGreaterThan(winStart);
+    const window = src.slice(winStart, winEnd);
+    const norm = window.replace(/\s+/g, " ");
+    const stmtIdx = norm.indexOf(`pidbuf[pn] = '\\0';`);
+    const fillIdx = norm.indexOf("append_decimal(pidbuf");
+    const strlenIdx = norm.indexOf("strlen(");
+    expect(
+      fillIdx >= 0 &&
+        strlenIdx > fillIdx &&
+        stmtIdx > fillIdx &&
+        stmtIdx < strlenIdx,
+      `termination ordering violated in the proc_target window (fill=@${fillIdx}, statement=@${stmtIdx}, first strlen=@${strlenIdx})`,
+    ).toBe(true);
+  });
+
+  it.skipIf(iSkip)(
+    `I1 committed prebuild in the standard bubble: combined-probe positive chain GREEN x3 (byte channels + host-visible scratch receipts)${iNote}`,
+    () => {
+      const scratchRoot = mkdtempSync(path.join(os.tmpdir(), "llh-i1-"));
+      try {
+        for (let run = 1; run <= 3; run++) {
+          const rootHost = path.join(scratchRoot, `root${run}`);
+          mkdirSync(rootHost); // grammar: the probe root must EXIST
+          const r = recordSpawn(
+            "bwrap",
+            bubbleArgs(scratchRoot, [
+              BUBBLE_HELPER_PATH,
+              "--overlay-probe",
+              `${BUBBLE_SCRATCH_MOUNT}/root${run}`,
+            ]),
+            HELPER_TIMEOUT_MS,
+          );
+          assertSound(r);
+          expect(
+            r.stdout,
+            `run ${run}: the ok-cell report line EXACTLY (one stdout line, zero others)`,
+          ).toBe("landlock-helper overlay realm=ok status=ok\n");
+          expect(
+            r.stderr,
+            `run ${run}: stderr EXACTLY empty (success path stays silent - the reap fold emits only on the map-stage fault path)`,
+          ).toBe("");
+          expect(r.status, `run ${run}: exit 0`).toBe(0);
+          // Host-visible receipts through the scratch mapping: the minted
+          // subtree cleaned in-bubble; the caller root survives.
+          expect(
+            existsSync(path.join(rootHost, ".llh-overlay-probe")),
+            `run ${run}: minted subtree must be removed in-bubble (host-visible via the scratch bind)`,
+          ).toBe(false);
+          expect(existsSync(rootHost), `run ${run}: caller root survives`).toBe(
+            true,
+          );
+        }
+      } finally {
+        rmSync(scratchRoot, { recursive: true, force: true });
+      }
+    },
+    30_000,
+  );
+
+  it.skipIf(iSkip)(
+    `I2 committed prebuild in the standard bubble: supervisor-mode positive chain GREEN (establishment in the production layout - the silence law across the full chain)${iNote}`,
+    () => {
+      const scratchRoot = mkdtempSync(path.join(os.tmpdir(), "llh-i2-"));
+      const L = path.join(scratchRoot, "lower");
+      const U = path.join(scratchRoot, "upper");
+      const W = path.join(scratchRoot, "work");
+      mkdirSync(L);
+      mkdirSync(U);
+      mkdirSync(W);
+      try {
+        const r = recordSpawn(
+          "bwrap",
+          bubbleArgs(scratchRoot, [
+            BUBBLE_HELPER_PATH,
+            "--mount",
+            `${BUBBLE_SCRATCH_MOUNT}/lower`,
+            `${BUBBLE_SCRATCH_MOUNT}/upper`,
+            `${BUBBLE_SCRATCH_MOUNT}/work`,
+            "--",
+            SH,
+            "-c",
+            "true",
+          ]),
+          HELPER_TIMEOUT_MS,
+        );
+        assertSound(r);
+        // Minimal green-establishment receipt over the FULL establishment
+        // chain (clone -> hardened maps -> verdict -> realm continuation
+        // -> shell execve): exit 0 with EXACTLY-empty stdout AND stderr -
+        // the silence law pinned IN production context. Deeper capture-
+        // mechanic legs are deliberately NOT added here (the bare H-group
+        // rows pin them; this row tests ESTABLISHMENT IN THE PRODUCTION
+        // LAYOUT - precisely what the D1 defect broke).
+        expect(
+          r.status,
+          `supervisor in-bubble exit 0 (stderr=${JSON.stringify(r.stderr)})`,
+        ).toBe(0);
+        expect(r.stdout, "production arm success emits NOTHING on stdout").toBe(
+          "",
+        );
+        expect(r.stderr, "production arm success emits NOTHING on stderr").toBe(
+          "",
+        );
+      } finally {
+        // Tolerant teardown: after a realm death WITHOUT umount (the
+        // production no-self-teardown posture) the workdir may retain the
+        // kernel-managed mode-000 metadata dir - purgeTree owns the
+        // retry ladder (H-group physics note).
+        purgeTree(scratchRoot);
+      }
+    },
+    30_000,
+  );
+
+  // Inducibility ledger update (suite comment, not a forced row): forcing
+  // a reliable BEHAVIORAL map-stage fault that YIELDS a reaped child is a
+  // host-variance race - in most induced corners the child is alive at
+  // reap time (blocked in its verdict read), so the WNOHANG corner
+  // resolves conservatively (NO detail line emitted). The H12 targeted-
+  // kill corner is the closest inducer and its outcome distribution is
+  // variance-classified. The reaped line's PRESENCE therefore rides its
+  // FORM row above + the diff-bound emission site in the carrier source,
+  // following the standing ledger precedent for non-inducible corners
+  // (106/109/111).
+});

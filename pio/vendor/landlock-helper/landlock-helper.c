@@ -222,7 +222,12 @@ static void die(int code)
 }
 
 /* Append a decimal integer to a fixed buffer; returns the new length. No
- * heap, no stdio formatting. */
+ * heap, no stdio formatting.
+ *
+ * TERMINATION INVARIANT: a filled decimal-format region is either
+ * length-driven end-to-end or explicitly terminated by its writer; a
+ * consumer may size or copy such a region under exactly one of those
+ * two safe forms (never strlen over an unterminated fill). */
 static size_t append_decimal(char *buf, size_t len, long v)
 {
   char tmp[16];
@@ -518,6 +523,7 @@ static long proc_target(char *out, size_t cap, pid_t child, const char *field)
   size_t pn = append_decimal(pidbuf, 0, (long)child);
   if (pn + 1 >= sizeof pidbuf)
     return -1;
+  pidbuf[pn] = '\0';
   const char *parts[4] = {"/proc/", pidbuf, "/", field};
   size_t total = 0;
   for (int i = 0; i < 4; i++)
@@ -642,28 +648,38 @@ static void emit_overlay_line(int realm_ok, int status_ok)
  * (parent-side stages emit before the verdict; child-side stages emit in
  * the child after it) - no execution path crosses the partition twice.
  * Vehicle stages carry realm=fail; the non-vehicle legs (setup/mount/
- * verify/umount) carry realm=ok. Noreturn. */
-static void overlay_fault(const char *stage, int code, int realm_ok)
-    __attribute__((noreturn));
+ * verify/umount) carry realm=ok. Noreturn. reap_detail (NULL at every
+ * pre-existing site): when non-NULL, ONE reaped-child detail line is
+ * emitted BETWEEN the stage diagnostic and the report line (the measured
+ * corner only - see the map-stage fault site in establish_and_wait). */
+static void overlay_fault(const char *stage, int code, int realm_ok,
+                          const char *reap_detail) __attribute__((noreturn));
 
-static void overlay_fault(const char *stage, int code, int realm_ok)
+static void overlay_fault(const char *stage, int code, int realm_ok,
+                          const char *reap_detail)
 {
   overlay_diag(stage);
+  if (reap_detail != NULL) {
+    ssize_t rw = write(STDERR_FILENO, reap_detail, strlen(reap_detail));
+    (void)rw;
+  }
   emit_overlay_line(realm_ok, 0);
   _exit(code);
 }
 
 /* Fault exit honoring the active mode's channel: production => the silent
  * classified exit (silence law across BOTH fault-emitting modes - the code
- * is the entire channel); combined arm => overlay_fault. Noreturn. */
+ * is the entire channel; the reap detail is never rendered here); combined
+ * arm => overlay_fault. Noreturn. */
 static void est_fault(const struct realm_ctx *c, const char *stage, int code,
-                      int realm_ok) __attribute__((noreturn));
+                      int realm_ok, const char *reap_detail)
+    __attribute__((noreturn));
 
 static void est_fault(const struct realm_ctx *c, const char *stage, int code,
-                      int realm_ok)
+                      int realm_ok, const char *reap_detail)
 {
   if (c->emit != 0)
-    overlay_fault(stage, code, realm_ok);
+    overlay_fault(stage, code, realm_ok, reap_detail);
   _exit(code);
 }
 
@@ -750,17 +766,17 @@ static int realm_child(void *arg)
   (void)close(c->verdict_read);
 
   if (unshare(CLONE_NEWNS) != 0)
-    est_fault(c, "unshare", FAULT_REALM_UNSHARE_FAILURE, 0);
+    est_fault(c, "unshare", FAULT_REALM_UNSHARE_FAILURE, 0, NULL);
 
   for (int i = 0; i < c->ntriples; i++) {
     const struct mirror_triple *t = &c->table[i];
     char data[MOUNT_DATA_BYTES];
     long dl = mount_data(data, sizeof data, t);
     if (dl < 0)
-      est_fault(c, "mount", FAULT_OVERLAY_MOUNT_FAILURE, 1);
+      est_fault(c, "mount", FAULT_OVERLAY_MOUNT_FAILURE, 1, NULL);
     long m = syscall(SYS_mount, t->lower, t->lower, "overlay", 0UL, data, 0UL);
     if (m != 0)
-      est_fault(c, "mount", FAULT_OVERLAY_MOUNT_FAILURE, 1);
+      est_fault(c, "mount", FAULT_OVERLAY_MOUNT_FAILURE, 1, NULL);
   }
 
   if (c->child_argv != NULL) {
@@ -779,26 +795,26 @@ static int realm_child(void *arg)
   char seed_at[4352];
   long sl = join_name(seed_at, sizeof seed_at, c->table[0].lower, "seed.txt");
   if (sl < 0 || !file_holds_exact(seed_at, OVERLAY_SEED))
-    est_fault(c, "verify", FAULT_OVERLAY_MOUNT_FAILURE, 1);
+    est_fault(c, "verify", FAULT_OVERLAY_MOUNT_FAILURE, 1, NULL);
   char cow_view[4352];
   sl = join_name(cow_view, sizeof cow_view, c->table[0].lower, "cow.txt");
   if (sl < 0)
-    est_fault(c, "verify", FAULT_OVERLAY_MOUNT_FAILURE, 1);
+    est_fault(c, "verify", FAULT_OVERLAY_MOUNT_FAILURE, 1, NULL);
   int cf = open(cow_view, O_WRONLY | O_CREAT | O_TRUNC, 0600);
   if (cf < 0)
-    est_fault(c, "verify", FAULT_OVERLAY_MOUNT_FAILURE, 1);
+    est_fault(c, "verify", FAULT_OVERLAY_MOUNT_FAILURE, 1, NULL);
   ssize_t cw = write(cf, OVERLAY_COW, sizeof(OVERLAY_COW) - 1);
   (void)close(cf);
   if (cw != (ssize_t)(sizeof(OVERLAY_COW) - 1))
-    est_fault(c, "verify", FAULT_OVERLAY_MOUNT_FAILURE, 1);
+    est_fault(c, "verify", FAULT_OVERLAY_MOUNT_FAILURE, 1, NULL);
   char cow_upper[4352];
   sl = join_name(cow_upper, sizeof cow_upper, c->table[0].upper, "cow.txt");
   if (sl < 0 || !file_holds_exact(cow_upper, OVERLAY_COW))
-    est_fault(c, "verify", FAULT_OVERLAY_MOUNT_FAILURE, 1);
+    est_fault(c, "verify", FAULT_OVERLAY_MOUNT_FAILURE, 1, NULL);
 
   long u = syscall(SYS_umount2, c->table[0].lower, 0UL, 0UL, 0UL, 0UL, 0UL);
   if (u != 0)
-    est_fault(c, "umount", FAULT_OVERLAY_UMOUNT_FAILURE, 1);
+    est_fault(c, "umount", FAULT_OVERLAY_UMOUNT_FAILURE, 1, NULL);
 
   remove_tree(c->probe_root); /* swallow-all; never changes the outcome */
   emit_overlay_line(1, 1);
@@ -823,12 +839,12 @@ static void establish_and_wait(struct realm_ctx *c, unsigned long cap_uid,
   /* (b) pipe + clone(CLONE_NEWUSER). Failure => 106. */
   int pipefd[2];
   if (pipe(pipefd) != 0)
-    est_fault(c, "realm-clone", FAULT_REALM_CLONE_FAILURE, 0);
+    est_fault(c, "realm-clone", FAULT_REALM_CLONE_FAILURE, 0, NULL);
   c->verdict_read = pipefd[0];
   pid_t child = clone(realm_child, realm_stack + REALM_STACK_BYTES,
                       CLONE_NEWUSER | SIGCHLD, c);
   if (child < 0)
-    est_fault(c, "realm-clone", FAULT_REALM_CLONE_FAILURE, 0);
+    est_fault(c, "realm-clone", FAULT_REALM_CLONE_FAILURE, 0, NULL);
 
   /* SIGPIPE-disposition refinement (PARENT ONLY): a DISPOSITION change,
    * strictly AFTER clone and BEFORE the first verdict-channel write -
@@ -871,9 +887,53 @@ static void establish_and_wait(struct realm_ctx *c, unsigned long cap_uid,
       ssize_t dw = write(pipefd[1], &deny, 1);
       (void)dw; /* best-effort deny; errors deliberately ignored */
     }
+    /* REAP-BEFORE-CLASSIFY (observability hardening, amendment 2026-10-07):
+     * ONE NON-BLOCKING reap of the direct child strictly BEFORE the
+     * classification below - fault 108 must not assert "the child
+     * vanished" without consulting the child. Lifecycle-neutral hygiene:
+     * it never signals, blocks, or kills, and nothing waits past this
+     * bounded instant. A still-alive child (blocked in its verdict read -
+     * the EXPECTED corner in most map-stage faults) remains orphaned
+     * exactly as before (closing the write end makes its pending read
+     * EOF; it aborts silently without establishing). Both modes PERFORM
+     * the reap; only EMISSION is mode-gated - the measured outcome folds
+     * into the COMBINED-ARM stderr diagnostic as its own pinned line
+     * (after the stage diagnostic, before the report line); production
+     * arms render nothing. Conservative corner (not exited yet, reap
+     * failure, or stopped status): NO detail, the classification stands
+     * as-is. errno is captured before the waitpid and restored before the
+     * sink so the stage diagnostic renders the MAP operation's errno
+     * byte-pinned (waitpid success leaves errno untouched by glibc; the
+     * restore makes that guarantee mechanical, not implementation-
+     * dependent). The assembled line rides a stack frame valid through
+     * the synchronous est_fault -> overlay_fault chain (no fork between).
+     */
+    int saved_errno = errno;
+    int reap_status = 0;
+    char reap_line[96];
+    const char *reap_detail = NULL;
+    if (waitpid(child, &reap_status, WNOHANG) > 0 &&
+        (WIFEXITED(reap_status) || WIFSIGNALED(reap_status))) {
+      static const char reaped_pre[] =
+          "landlock-helper overlay: reaped child: ";
+      size_t rn = sizeof(reaped_pre) - 1;
+      memcpy(reap_line, reaped_pre, rn);
+      if (WIFEXITED(reap_status)) {
+        memcpy(reap_line + rn, "exit=", 5);
+        rn += 5;
+        rn = append_decimal(reap_line, rn, (long)WEXITSTATUS(reap_status));
+      } else {
+        memcpy(reap_line + rn, "signal=", 7);
+        rn += 7;
+        rn = append_decimal(reap_line, rn, (long)WTERMSIG(reap_status));
+      }
+      reap_line[rn++] = '\n';
+      reap_detail = reap_line;
+    }
+    errno = saved_errno;
     est_fault(c, rc == FAULT_CHILD_EARLY_DEATH ? "child-early-death"
                                                : "realm-map",
-              rc, 0);
+              rc, 0, reap_detail);
   }
 
   /* (e) CONTINUE-VERDICT. Write failure (vanishing child between maps and
@@ -881,7 +941,7 @@ static void establish_and_wait(struct realm_ctx *c, unsigned long cap_uid,
   char cont = 'c';
   ssize_t vw = write(pipefd[1], &cont, 1);
   if (vw != 1)
-    est_fault(c, "child-early-death", FAULT_CHILD_EARLY_DEATH, 0);
+    est_fault(c, "child-early-death", FAULT_CHILD_EARLY_DEATH, 0, NULL);
   (void)close(pipefd[1]);
 
   /* (h) waitpid outcome propagates UNTRANSFORMED in observational class. */
@@ -1019,18 +1079,18 @@ static int run_overlay_probe(int argc, char **argv)
    * with the realm applicability untouched (non-vehicle leg). */
   if (make_dir(tree) != 0 || make_dir(lower) != 0 || make_dir(upper) != 0 ||
       make_dir(work) != 0)
-    overlay_fault("setup", FAULT_OVERLAY_MOUNT_FAILURE, 1);
+    overlay_fault("setup", FAULT_OVERLAY_MOUNT_FAILURE, 1, NULL);
   char seed_path[4352];
   pl = join_name(seed_path, sizeof seed_path, lower, "seed.txt");
   if (pl < 0)
     die(FAULT_SUPERVISOR_TABLE_MALFORMED); /* unreachable - guarded corner */
   int sfd = open(seed_path, O_WRONLY | O_CREAT | O_TRUNC, 0600);
   if (sfd < 0)
-    overlay_fault("setup", FAULT_OVERLAY_MOUNT_FAILURE, 1);
+    overlay_fault("setup", FAULT_OVERLAY_MOUNT_FAILURE, 1, NULL);
   ssize_t sw = write(sfd, OVERLAY_SEED, sizeof(OVERLAY_SEED) - 1);
   (void)close(sfd);
   if (sw != (ssize_t)(sizeof(OVERLAY_SEED) - 1))
-    overlay_fault("setup", FAULT_OVERLAY_MOUNT_FAILURE, 1);
+    overlay_fault("setup", FAULT_OVERLAY_MOUNT_FAILURE, 1, NULL);
 
   struct mirror_triple table;
   table.lower = lower;

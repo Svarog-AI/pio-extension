@@ -34,6 +34,41 @@ artifact verbatim.
   amendment record). Apply mode and the existing probe arm stay
   behavior-and-protocol-byte-stable; the 2026-10-04 measured entry stands as
   HISTORY for the apply/probe surface.
+- Amendment (2026-10-07, revision round 6 - quality-gate rework): the
+  MAP-TARGET TERMINATION REPAIR + the REAP-BEFORE-CLASSIFY OBSERVABILITY
+  HARDENING, landing after the QUALITY-GATE REJECTION of the live battery
+  (two compounding defects; D1 = this repair). Kickoff reproduction matrix
+  (deterministic per context, provisioned host, HEAD ba02a68): bare host
+  6/6 PASS vs the STANDARD BUBBLE (base flags VERBATIM from buildBaseFlags
+  + the minimum ro-bind set + an rw scratch bind) 6/6 FAIL exit 108 with
+  the byte-identical live-battery signature (`realm=fail status=fail` /
+  `failed at child-early-death (errno=2)`). ROOT CAUSE: `proc_target()`
+  sized/copied the pid segment with `strlen()` over the region
+  `append_decimal()` fills WITHOUT a NUL terminator - the constructed path
+  was adjacent-memory-layout-dependent (bare layouts terminated early;
+  the bubble's exposed long residue -> garbage pid -> ENOENT), and the
+  ENOENT masked the true cause as `child-early-death` although strace
+  proved the child alive and blocked in its verdict read for the whole
+  failing window. VERIFIED FIX: the explicit terminator after the digit
+  fill (the SINGLE defective site per the full audit of every
+  `append_decimal` consumer - the remaining four are length-driven
+  end-to-end or explicitly terminated) + the TERMINATION INVARIANT
+  registered in the source doc comment (never strlen over an unterminated
+  fill). Companion hardening: the map-stage fault path reaps the direct
+  child NON-BLOCKING before classification and folds the measured outcome
+  into the combined-arm diagnostic (mechanics-section entry below; 108's
+  number and trigger conditions UNCHANGED). COVERAGE-HOLE CLOSURE: the
+  standing IN-BUBBLE suite rows now run the SHIPPED prebuild inside the
+  standard bubble topology - no committed test had done so before
+  (hermetic positive rows run bare; the S13 in-bubble GREEN used throwaway
+  vehicle sources). IN-BUBBLE APPLICABILITY POST-FIX: measured GREEN on
+  the provisioned host (kernel `7.0.0-34-generic` x86_64, bwrap 0.12.0
+  non-setuid, standard bubble topology with verbatim base flags) - >=3
+  consecutive combined-probe greens plus the supervisor-mode positive
+  chain, both legs standing in the suite; bare behavior UNCHANGED (every
+  pre-existing row held unedited). The argv grammar, the fault-code
+  assignments, the protocol lines, and the apply/supervise silence law all
+  stay byte-stable.
 
 ## Argv protocol
 
@@ -235,6 +270,35 @@ POST-MOUNT continuation (production: `execve`; arm: verify / umount / remove
    targeted kills classify 107 (the non-ENOENT rung); after reaping they
    fault ENOENT (errno 2) - the 108 signature, which also covers the
    verdict-write EPIPE corner.
+
+   REAP-BEFORE-CLASSIFY (amendment 2026-10-07 - the masking-channel
+   closure): on the MAP-STAGE fault path (the parent-side non-zero-rung
+   corner above), the parent attempts ONE NON-BLOCKING reap
+   (`waitpid(child, _, WNOHANG)`) STRICTLY BEFORE the 107/108
+   classification. The fold closes the masking channel of record: fault
+   108 historically asserted "the child vanished" without ever consulting
+   the child - the kickoff strace proved the child alive and blocked in
+   its verdict read while the parent's path construction ENOENTed. LIFECYCLE
+   NEUTRALITY: the reap never signals, blocks, or kills, and nothing waits
+   past that bounded instant; a still-alive child (blocked in its verdict
+   read - the EXPECTED corner in most map-stage faults) remains orphaned
+   exactly as before (closing the write end makes its pending read EOF; it
+   aborts silently without establishing); BOTH arms PERFORM the reap - only
+   EMISSION is mode-gated. MEASURED OUTCOME: when the child has exited by
+   reap time, its status folds into the COMBINED-ARM stderr diagnostic at
+   a dedicated pinned position - its OWN line, immediately AFTER the stage
+   diagnostic line and BEFORE the stdout report line:
+
+       landlock-helper overlay: reaped child: exit=<N>
+       landlock-helper overlay: reaped child: signal=<N>
+
+   CONSERVATIVE CORNER: child not exited at reap time (or the reap fails,
+   or the status is stopped) => NO detail emission; the classification
+   stands as-is. SILENCE LAW RESTATED: the production arms emit ZERO new
+   bytes on ANY fault path - the classified exit code remains the entire
+   channel in BOTH arms; the fold refines a DIAGNOSTIC, never a code
+   (108's number and trigger conditions are UNCHANGED; the stage-
+   diagnostic line itself is byte-pinned and gains nothing inline).
 5. **(e) CONTINUE-VERDICT.** Write `'c'`; failure (a vanishing child between
    the maps and the verdict) => 108; close the write end.
 6. **(f)-(g) IN-REALM (vehicle).** `unshare(CLONE_NEWNS)` (=> 109); per
@@ -277,7 +341,10 @@ pair only - nothing long-lived is ever mounted (the standing ratchet doctrine
 extends: the agent/session process stays unrestricted AND unmounted).
 
 Report: EXACTLY ONE stdout line in BOTH outcomes, zero other stdout bytes;
-a FAILURE adds ONE short stderr diagnostic. Protocol constants:
+a FAILURE adds ONE short stderr diagnostic (plus the reaped-child detail
+line at its own pinned position when the map-stage reap fold measures one -
+see the REAP-BEFORE-CLASSIFY note in the mechanics section). Protocol
+constants:
 
 ```
 landlock-helper overlay realm=<ok|fail> status=<ok|fail>
@@ -348,7 +415,7 @@ exits with a DISTINCT code before any execve.
 | 105 | `supervisor-table-malformed` | supervisor-family argv violation: mirror-table grammar (unknown leading token incl. `--write`, dangling/incomplete triple, empty/relative/root component, missing table/separator/child) OR combined-arm arity/path (absent/non-directory root) - STRICTLY pre-state-change, SILENT in both fault modes |
 | 106 | `realm-clone-failure` | vehicle `clone(CLONE_NEWUSER \| SIGCHLD)` (or the verdict pipe) failed - issued before any in-realm work |
 | 107 | `realm-map-write-failure` | parent-side map open/write failure, NON-ENOENT (EPERM on zombie-target opens rides here per the zombie-physics record) - parent-side window pre-any-in-realm-work |
-| 108 | `child-early-death` | ENOENT signature at the map targets (child vanished) OR the continue-verdict write failed - the pre-map/post-reap/EPIPE corners |
+| 108 | `child-early-death` | ENOENT signature at the map targets - reaped-child status folded into the combined-arm diagnostic when obtainable (conservative corner: child not exited at reap time => no detail, the classification stands) OR the continue-verdict write failed - the pre-map/post-reap/EPIPE corners (number and trigger conditions unchanged by the 2026-10-07 observability amendment) |
 | 109 | `realm-unshare-failure` | in-realm `unshare(CLONE_NEWNS)` failed - post-realm pre-shell |
 | 110 | `overlay-mount-failure` | setup / attach / in-flight verification umbrella - before the shell exec (carries the kernel overlap-refusal classes: absent/non-directory components, workdir nested under a declaring directory, self-overlapping components) |
 | 111 | `overlay-umount-failure` | COMBINED ARM ONLY - the production supervisor never tears down |

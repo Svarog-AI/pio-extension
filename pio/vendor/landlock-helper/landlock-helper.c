@@ -905,8 +905,11 @@ static void establish_and_wait(struct realm_ctx *c, unsigned long cap_uid,
      * sink so the stage diagnostic renders the MAP operation's errno
      * byte-pinned (waitpid success leaves errno untouched by glibc; the
      * restore makes that guarantee mechanical, not implementation-
-     * dependent). The assembled line rides a stack frame valid through
-     * the synchronous est_fault -> overlay_fault chain (no fork between).
+     * dependent). The assembled line is writer-terminated - an explicit
+     * NUL after the LF (TERMINATION INVARIANT safe form 2, like
+     * map_line's explicit trailing NUL) - before the sink handoff, and
+     * rides a stack frame valid through the synchronous est_fault ->
+     * overlay_fault chain (no fork between).
      */
     int saved_errno = errno;
     int reap_status = 0;
@@ -928,6 +931,7 @@ static void establish_and_wait(struct realm_ctx *c, unsigned long cap_uid,
         rn = append_decimal(reap_line, rn, (long)WTERMSIG(reap_status));
       }
       reap_line[rn++] = '\n';
+      reap_line[rn] = '\0'; /* writer-terminated before the sink handoff */
       reap_detail = reap_line;
     }
     errno = saved_errno;

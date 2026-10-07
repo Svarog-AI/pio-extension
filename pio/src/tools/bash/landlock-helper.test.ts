@@ -2309,6 +2309,45 @@ describe("landlock-helper production-context (in-bubble) receipts & regression g
         stmtIdx < strlenIdx,
       `termination ordering violated in the proc_target window (fill=@${fillIdx}, statement=@${stmtIdx}, first strlen=@${strlenIdx})`,
     ).toBe(true);
+    // (v)+(vi) the REAP ASSEMBLY SITE (the unit-B combined-arm emission
+    // fold) is pinned under the SAME invariant: exactly two length-driven
+    // fill sites (exit=/signal= branches), the writer-terminator STRICTLY
+    // after the last fill and the LF write and BEFORE the sink handoff,
+    // the assembly window strlen-free, and no strlen sizing of the buffer
+    // anywhere in the source (the sink consumes the writer-terminated
+    // payload via the handoff pointer only - explicit-assembly safe form 2,
+    // like map_line's explicit trailing NUL).
+    const rWinStart = src.indexOf("char reap_line[");
+    expect(rWinStart, "reap_line declaration not found").toBeGreaterThanOrEqual(
+      0,
+    );
+    const rWinEnd = src.indexOf("reap_detail = reap_line;", rWinStart);
+    expect(
+      rWinEnd,
+      "sink handoff assignment not found after the reap_line declaration",
+    ).toBeGreaterThan(rWinStart);
+    const rWindow = src.slice(rWinStart, rWinEnd);
+    const rNorm = rWindow.replace(/\s+/g, " ");
+    let rFills = 0;
+    let rAt = 0;
+    for (;;) {
+      const found = rWindow.indexOf("append_decimal(reap_line", rAt);
+      if (found < 0) break;
+      rFills += 1;
+      rAt = found + 1;
+    }
+    expect(rFills, "exactly TWO reap-fill sites bound the audit scope").toBe(2);
+    const rFillLast = rNorm.lastIndexOf("append_decimal(reap_line");
+    const rLfIdx = rNorm.indexOf(`reap_line[rn++] = '\\n';`);
+    const rTermIdx = rNorm.indexOf(`reap_line[rn] = '\\0';`);
+    expect(
+      rFillLast >= 0 &&
+        rLfIdx > rFillLast &&
+        rTermIdx > rLfIdx &&
+        !rNorm.includes("strlen("),
+      `reap-site termination violated (lastFill=@${rFillLast}, LF=@${rLfIdx}, terminator=@${rTermIdx}; window strlen-free: ${!rNorm.includes("strlen(")})`,
+    ).toBe(true);
+    expect(src.includes("strlen(reap_line")).toBe(false);
   });
 
   it.skipIf(iSkip)(

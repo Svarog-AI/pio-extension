@@ -48,10 +48,11 @@
 // agent-dir baseline covers phase-driving rows and every remaining
 // PI_CODING_AGENT_DIR touch stays a row-scoped save/restore nested over it.
 import { randomUUID } from "node:crypto";
-import { readFileSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import type {
   AgentSession,
   AgentSessionEvent,
@@ -1731,86 +1732,8 @@ describe("SessionVariableStore — typed reads (overloaded surface)", () => {
   });
 });
 
-describe("SessionVariableStore — delta-window primitive (cursor idiom)", () => {
-  it("initial baseline EMPTY: pre-mark reads report everything currently stored with final values", () => {
-    const store = new SessionVariableStore();
-    store.declare("x", "number");
-    store.set("x", 1);
-    store.declare("y", "string");
-    store.set("y", "a");
-    expect(store.getVarsDelta()).toEqual({ x: 1, y: "a" });
-  });
-
-  it("reports every variable ADDED OR MODIFIED since the mark with FINAL values; untouched names stay out", () => {
-    const store = new SessionVariableStore();
-    store.declare("p", "number");
-    store.set("p", 1);
-    store.declare("q", "string");
-    store.set("q", "keep");
-    store.resetVarsDelta();
-    store.declare("r", "number");
-    store.set("r", 3); // addition
-    store.set("p", 9); // modification (final value reported)
-    expect(store.getVarsDelta()).toEqual({ p: 9, r: 3 });
-    expect(store.getVarsDelta().q).toBeUndefined();
-  });
-
-  it("setting the SAME primitive twice reports NO modification (value equality); overwrites with distinct references report the FINAL value — and a flip back to the EXACT baseline reference is net-unmodified (reference-inequality semantics)", () => {
-    const store = new SessionVariableStore();
-    store.declare("n", "number");
-    store.set("n", 5);
-    store.declare("o", "object");
-    const v1: Record<string, unknown> = { a: 1 };
-    const v2: Record<string, unknown> = { a: 2 };
-    const v3: Record<string, unknown> = { a: 3 };
-    store.set("o", v1);
-    store.resetVarsDelta();
-    store.set("n", 5); // identical value — invisible
-    store.set("o", v2); // distinct reference — visible (final value v2)
-    expect(store.getVarsDelta()).toEqual({ o: v2 });
-    store.set("o", v1); // flip back to the BASELINE reference — net unchanged
-    expect(store.getVarsDelta()).toEqual({});
-    store.set("o", v3); // another distinct reference — visible again
-    expect(store.getVarsDelta()).toEqual({ o: v3 });
-  });
-
-  it("in-place mutation of a RETAINED object reference is NOT a modification (reference semantics; engine writers route through set)", () => {
-    const store = new SessionVariableStore();
-    store.declare("o", "object");
-    const obj: Record<string, unknown> = { a: 1 };
-    store.set("o", obj);
-    store.resetVarsDelta();
-    obj.a = 2; // mutated in place — invisible to the window
-    expect(store.getVarsDelta()).toEqual({});
-  });
-
-  it("re-marking ADVANCES past the current state: intermediate churn drops off, post-second-mark modifications remain", () => {
-    const store = new SessionVariableStore();
-    store.declare("x", "number");
-    store.set("x", 1);
-    store.resetVarsDelta();
-    store.set("x", 2); // churn between the marks
-    store.resetVarsDelta(); // advance past the churn
-    expect(store.getVarsDelta()).toEqual({});
-    store.set("x", 3);
-    expect(store.getVarsDelta()).toEqual({ x: 3 });
-  });
-
-  it("repeated reads are STABLE (deep-equal) but FRESH objects per call (non-consuming, never aliased)", () => {
-    const store = new SessionVariableStore();
-    store.declare("x", "number");
-    store.set("x", 1);
-    store.resetVarsDelta();
-    store.set("x", 2);
-    const first = store.getVarsDelta();
-    const second = store.getVarsDelta();
-    expect(second).toEqual(first);
-    expect(second).not.toBe(first);
-  });
-});
-
 describe("SessionVariableStore — cross-instance independence over the new surface", () => {
-  it("two created sessions carry DISJOINT registries and stores: same names AND crossing names over declare/set/typed-read/delta", async () => {
+  it("two created sessions carry DISJOINT registries and stores: same names AND crossing names over declare/set/typed-read", async () => {
     const a = await PioSession.create(CWD);
     const b = await PioSession.create(CWD);
     // SAME name, disjoint worlds: the registry never leaks across hosts.
@@ -1822,7 +1745,6 @@ describe("SessionVariableStore — cross-instance independence over the new surf
       () => b.vars.get("k", "string"),
       varReadAbsentLine("k", "string"),
     );
-    expect(b.vars.getVarsDelta()).toEqual({});
     // Crossing names: each side sees only its own world.
     a.vars.declare("only-a", "number");
     a.vars.set("only-a", 1);
@@ -1838,12 +1760,6 @@ describe("SessionVariableStore — cross-instance independence over the new surf
     b.vars.set("k", 7);
     expect(a.vars.get("k", "string")).toBe("a-val");
     expect(b.vars.get("k", "number")).toBe(7);
-    // Delta windows never leak across instances.
-    a.vars.resetVarsDelta();
-    b.vars.resetVarsDelta();
-    a.vars.set("k", "again");
-    expect(b.vars.getVarsDelta()).toEqual({});
-    expect(a.vars.getVarsDelta()).toEqual({ k: "again" });
   });
 
   it("two fromRuntime hosts over the SAME settled runtime carry disjoint stores and registries over the new surface", async () => {
@@ -1860,10 +1776,7 @@ describe("SessionVariableStore — cross-instance independence over the new surf
     expect(H2.vars.get("k", "number")).toBe(9);
     expect(H.vars.declarations()).toEqual({ k: "string" });
     expect(H2.vars.declarations()).toEqual({ k: "number" });
-    H.vars.resetVarsDelta();
     H2.vars.set("k", 10);
-    expect(H.vars.getVarsDelta()).toEqual({});
-    expect(H2.vars.getVarsDelta()).toEqual({ k: 10 });
     // Both hosts wrap the SAME settled runtime by reference (disjoint
     // stores ride the shared handle — D1 placement row-1 mechanics).
     expect(H.runtime).toBe(rawRuntime);
@@ -2740,16 +2653,19 @@ describe("PioSession — phase result shape", () => {
     const result: PhaseResult = await instance.execute_phase("structure", {
       shouldStopLoop: async () => true,
     });
+    // Fragment-assembled key: the raw placeholder identifier is confined to
+    // the owning module (residue-row doctrine — never in any test file).
+    const placeholderKey = ["vars", "Delta"].join("");
     expect(Object.keys(result).sort()).toEqual([
       "counters",
       "done",
       "iterations",
       "messages",
       "tokens",
-      "varsDelta",
+      placeholderKey,
     ]);
     expect(result.done).toBe(true);
-    expect(result.varsDelta).toEqual({});
+    expect(new Map(Object.entries(result)).get(placeholderKey)).toEqual({});
     expect(result.tokens).toBe(result.counters.tokens);
     expect(result.counters).toEqual({
       filesWritten: 1,
@@ -3581,6 +3497,935 @@ describe("PioSession — expectation gate (write:)", () => {
   });
 });
 
+// ---------------------------------------------------------------------
+// Variable expectation gate (vars:) — arm-time registry validation plus the
+// fresh-presence settlement consult over the retained effective listing.
+// Structure mirrors the file-gate sibling: host(), scriptRuns / quietRun,
+// sentTexts, identity-over-goldens replica builders, and a TEST-LOCAL
+// fixture capability (real base, session-present, never loader-registered).
+// Round-trip legs drive the REAL threaded trio bodies and the REAL
+// predicate over a fresh governing snapshot — no second mock of the system
+// under test. Vars rows need no filesystem except the joint-corner rows
+// (mkdtemp for the file half).
+// ---------------------------------------------------------------------
+
+class VarsFixtureCapability extends PioCapability {
+  readonly contract: Contract = {
+    name: "vars-fixture",
+    version: "0.1.0",
+    inputs: [],
+    outputs: [],
+    writes: [],
+  };
+  /** Observed phase results — the assertion channel for the BINDING legs. */
+  readonly phaseResults: PhaseResult[] = [];
+  #names: string[];
+  #registerNames: boolean;
+
+  constructor(
+    params: CapabilityParams & { names: string[]; registerNames?: boolean },
+  ) {
+    super(params);
+    this.#names = params.names;
+    this.#registerNames = params.registerNames ?? true;
+  }
+
+  async call(
+    _inputs: Record<string, unknown>,
+  ): Promise<Record<string, unknown>> {
+    // Mandatory-type doctrine: every listed name registers strictly before
+    // the phase arms (skippable for the arm-time fault row).
+    if (this.#registerNames) {
+      for (const name of this.#names) {
+        this.s?.vars.declare(name, "string");
+      }
+    }
+    this.phaseResults.push(
+      await this.execute_phase("var-guarded", {
+        instructions: "Define the thing",
+        vars: this.#names,
+      }),
+    );
+    return {};
+  }
+}
+
+/** Replica of the fixture phase's prompt baseline text (existing
+ * prompt-text golden discipline): marker line, instructions, then the
+ * disclosure empty-form block trailing. */
+const VAR_FIXTURE_BASELINE = `\u2014\u2014 var-guarded \u2014\u2014\nDefine the thing\n\n${expectedDisclosure()}`;
+
+/** Pinned variable corrective-block replica (SOLE OWNER: the module-private
+ * template in ./pio-session.ts). */
+const varCorrectiveNoteReplica = (
+  iterations: number,
+  missing: string[],
+): string =>
+  `\u2014\u2014 variable guard \u2014\u2014\nRequired variable(s) still missing after ${iterations} run(s): ${missing.join(", ")}. Define each listed variable with the setVar tool before you finish this run.`;
+
+/** Pinned variable ceiling-violation line replica (SOLE OWNER: the
+ * module-private template in ./pio-session.ts); N = 3 pinned ceiling. */
+const varViolationLineReplica = (phaseId: string, name: string): string =>
+  `phase '${phaseId}' variable '${name}' missing \u2014 still undefined after 3 variable expectation re-run(s); the ceiling is exhausted`;
+
+/** Pinned arm-time fault-line replica (SOLE OWNER: the module-private
+ * template in ./pio-session.ts): PURE ASCII, effective-listing order. */
+const armFaultLineReplica = (phaseId: string, misses: string[]): string =>
+  `phase '${phaseId}': variable(s) listed without a declared base type: ${misses.join(", ")}`;
+
+/** Claim-mismatch line replica (SOLE OWNER: ../tools/vars/var-tools.ts). */
+const claimMismatchLineReplica = (
+  name: string,
+  declared: string,
+  claimed: string,
+): string =>
+  `variable '${name}' is declared as type '${declared}' \u2014 claimed type '${claimed}' does not match the declaration`;
+
+/** One isolated scratch dir for the rows that touch disk; guaranteed restore. */
+async function withTmp<T>(body: (tmp: string) => Promise<T>): Promise<T> {
+  const dir = await mkdtemp(path.join(tmpdir(), "pio-var-gate-"));
+  try {
+    return await body(dir);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+}
+
+/** The four threaded entries or a loud harness fault (zero-cast guard). */
+function threadedTools(): FakeThreadedTool[] {
+  const tools = lastFromServicesArg().customTools;
+  if (tools === undefined || tools.length !== 4) {
+    throw new Error("expected the four threaded entries");
+  }
+  return [...tools];
+}
+
+describe("PioSession — variable expectation gate (vars:)", () => {
+  /** Captured prompt texts in send order (one element per prompt call). */
+  const sentTexts = (round: Round): unknown[] =>
+    round.session.prompt.mock.calls.map((call: readonly unknown[]) => call[0]);
+
+  it("round-trip leg 1 (model -> TS): the admitted REAL setVar body writes the store during the scripted pass (guard verdict over a FRESH governing snapshot deep-equal to the threaded handler's admission), and the BETWEEN-RUNS hook reads the SAME converted value from ctx.vars in the SAME run (reference identity asserted); the gate settles on presence with zero corrective retries", async () => {
+    const { instance, round, gate } = await host();
+    instance.vars.declare("m", "string");
+    const input = { name: "m", type: "string", value: "model-wrote" };
+    const tools = threadedTools();
+    round.session.prompt.mockImplementationOnce(async () => {
+      expect(gate.toolCallHandler(toolCall("setVar", input))).toBeUndefined();
+      expect(gate.toolCallHandler(toolCall("setVar", input))).toStrictEqual(
+        decideVarWrite(gate.state.snapshot(), "setVar", input),
+      );
+      const settlement = await driveVarEntry(tools[1], input);
+      expect(settlement.content).toEqual([
+        {
+          type: "text",
+          text: `variable 'm' set to ${JSON.stringify("model-wrote")}.`,
+        },
+      ]);
+      emit(round, ...quietRun());
+    });
+    let seenCtx: IterationCtx | undefined;
+    const result = await instance.execute_phase("rt-model-ts", {
+      vars: ["m"],
+      shouldStopLoop: async (ctx) => {
+        seenCtx = ctx;
+        return true;
+      },
+    });
+    expect(seenCtx?.vars).toBe(instance.vars);
+    expect(seenCtx?.vars.get("m")).toBe("model-wrote");
+    expect(result.done).toBe(true);
+    expect(result.iterations).toBe(1);
+    expect(sentTexts(round)).toEqual([
+      `\u2014\u2014 rt-model-ts \u2014\u2014\n\n${expectedDisclosure()}`,
+    ]);
+  });
+
+  it("round-trip leg 2 (TS -> model): a programmatic store.set during the between-runs window of run N is observed by the model-side getVar tool call driven in the FOLLOWING run N+1 (settled rendering asserted — bare string AND compact JSON split)", async () => {
+    const { instance, round } = await host();
+    instance.vars.declare("t", "string");
+    instance.vars.declare("n", "number");
+    const tools = threadedTools();
+    scriptRuns(round, quietRun());
+    round.session.prompt.mockImplementationOnce(async () => {
+      const stringRead = await driveVarEntry(tools[2], { name: "t" });
+      // Strings come back bare; everything else compact JSON.
+      expect(stringRead.content).toEqual([{ type: "text", text: "ts-wrote" }]);
+      const numberRead = await driveVarEntry(tools[2], { name: "n" });
+      expect(numberRead.content).toEqual([
+        { type: "text", text: JSON.stringify(9) },
+      ]);
+      emit(round, ...quietRun());
+    });
+    let settledPasses = 0;
+    const result = await instance.execute_phase("rt-ts-model", {
+      vars: ["t", "n"],
+      shouldStopLoop: async (ctx) => {
+        settledPasses += 1;
+        if (settledPasses === 1) {
+          // Between-runs window of run N: write programmatically, demand
+          // the following turn.
+          ctx.vars.set("t", "ts-wrote");
+          ctx.vars.set("n", 9);
+          return false;
+        }
+        return true;
+      },
+    });
+    expect(result.done).toBe(true);
+    expect(result.iterations).toBe(2);
+    expect(instance.vars.get("t")).toBe("ts-wrote");
+    expect(instance.vars.get("n")).toBe(9);
+    expect(sentTexts(round)[1]).toBe(
+      `\u2014\u2014 rt-ts-model \u2014\u2014\n\n${expectedDisclosure()}`,
+    );
+  });
+
+  it("round-trip leg 3 (badly-shaped from either side): programmatic set THROWS the family with REAL-THROW replica bytes (undeclared-name corner + boolean-token reject), and the model setVar lane RENDERS the same-family failure as the failed tool RESULT (claim-mismatch module line; undeclared short-circuit rides the store's caught line verbatim); well-typed values land IDENTICALLY for both origins", async () => {
+    const { instance } = await host();
+    instance.vars.declare("flag", "boolean");
+    expectFamilyFault(
+      () => instance.vars.set("undecl", 1),
+      varUndeclaredWriteLine("undecl"),
+    );
+    expectFamilyFault(
+      () => instance.vars.set("flag", "yes"),
+      varCoercionRejectLine("flag", "boolean", "string", CLAUSE_BOOLEAN_TOKEN),
+    );
+    // Model lane: the same family settles AS THE TOOL RESULT.
+    instance.vars.declare("s", "string");
+    const tools = threadedTools();
+    const mismatch = await driveVarEntry(tools[1], {
+      name: "s",
+      type: "number",
+      value: 4,
+    });
+    expect(mismatch.content).toEqual([
+      {
+        type: "text",
+        text: `${VAR_REJECTION_PREFIX}${claimMismatchLineReplica("s", "string", "number")}`,
+      },
+    ]);
+    const undecl = await driveVarEntry(tools[1], {
+      name: "ghost",
+      type: "string",
+      value: "x",
+    });
+    expect(undecl.content).toEqual([
+      {
+        type: "text",
+        text: `${VAR_REJECTION_PREFIX}${varUndeclaredWriteLine("ghost")}`,
+      },
+    ]);
+    // Well-typed values land identically for both origins (read back equal
+    // from the TS lane, safe AND typed).
+    instance.vars.declare("p", "number");
+    instance.vars.declare("q", "string");
+    instance.vars.set("p", 42);
+    await driveVarEntry(tools[1], {
+      name: "q",
+      type: "string",
+      value: "landed",
+    });
+    expect(instance.vars.get("p")).toBe(42);
+    expect(instance.vars.get("q")).toBe("landed");
+    expect(instance.vars.get("p", "number")).toBe(42);
+    expect(instance.vars.get("q", "string")).toBe("landed");
+  });
+
+  it("gate behavior (first-pass miss): the scripted first pass defines nothing, the engine denies settlement and re-enters with the PINNED variable corrective block VERBATIM, the second pass's write settles the phase with ZERO further denials — the pass's write is OBSERVABLE VIA STORE READS (safe AND typed) and the stop-rule invocation count equals PhaseResult.iterations (budget bookkeeping untouched across retries)", async () => {
+    const { instance, round } = await host();
+    instance.vars.declare("v", "string");
+    const baseline = `\u2014\u2014 gate-miss \u2014\u2014\n\n${expectedDisclosure()}`;
+    round.session.prompt.mockImplementationOnce(async () => {
+      emit(round, ...quietRun());
+    });
+    round.session.prompt.mockImplementationOnce(async () => {
+      instance.vars.set("v", "defined-on-retry");
+      emit(round, ...quietRun());
+    });
+    let hookCalls = 0;
+    const result = await instance.execute_phase("gate-miss", {
+      vars: ["v"],
+      shouldStopLoop: async () => {
+        hookCalls += 1;
+        return true;
+      },
+    });
+    expect(round.session.prompt).toHaveBeenCalledTimes(2);
+    const sent = sentTexts(round);
+    expect(sent[0]).toBe(baseline);
+    expect(sent[1]).toBe(`${baseline}\n${varCorrectiveNoteReplica(1, ["v"])}`);
+    expect(instance.vars.get("v")).toBe("defined-on-retry");
+    expect(instance.vars.get("v", "string")).toBe("defined-on-retry");
+    // One stop-rule consult per settled run INCLUDING the retry.
+    expect(hookCalls).toBe(2);
+    expect(result.done).toBe(true);
+    expect(result.iterations).toBe(2);
+    expect(hookCalls).toBe(result.iterations);
+  });
+
+  it("gate behavior (earlier-phase inheritance): phase A defines the value and phase B declares the SAME name, writes nothing, and settles at ONE prompt — existence-based satisfaction (an inherited origin satisfies; no corrective retry ever fires)", async () => {
+    const { instance, round } = await host();
+    instance.vars.declare("inh", "string");
+    round.session.prompt.mockImplementationOnce(async () => {
+      instance.vars.set("inh", "from-phase-a");
+      emit(round, ...quietRun());
+    });
+    const a = await instance.execute_phase("inherit-def", { vars: ["inh"] });
+    expect(a.done).toBe(true);
+    expect(a.iterations).toBe(1);
+
+    scriptRuns(round, quietRun());
+    const b = await instance.execute_phase("inherit-use", { vars: ["inh"] });
+    expect(b.done).toBe(true);
+    expect(b.iterations).toBe(1);
+    // Pure baseline: the inherited value satisfied the gate at the FIRST
+    // break (existence-based, origin-blind).
+    expect(sentTexts(round)[1]).toBe(
+      `\u2014\u2014 inherit-use \u2014\u2014\n\n${expectedDisclosure()}`,
+    );
+  });
+
+  it("gate behavior (programmatic-write satisfaction): the hook writes mid-flight in the between-runs window and the gate observes the value at the SAME break — one prompt, zero corrective retries (presence is origin-blind; permission still binds the model lane only)", async () => {
+    const { instance, round } = await host();
+    instance.vars.declare("pv", "boolean");
+    scriptRuns(round, quietRun());
+    const result = await instance.execute_phase("prog-satisfy", {
+      vars: ["pv"],
+      shouldStopLoop: async (ctx) => {
+        ctx.vars.set("pv", true);
+        return true;
+      },
+    });
+    expect(round.session.prompt).toHaveBeenCalledTimes(1);
+    expect(sentTexts(round)[0]).toBe(
+      `\u2014\u2014 prog-satisfy \u2014\u2014\n\n${expectedDisclosure()}`,
+    );
+    expect(result.done).toBe(true);
+    expect(result.iterations).toBe(1);
+    expect(instance.vars.get("pv")).toBe(true);
+  });
+
+  it("gate behavior (corrective-note freshness): two declared variables, the first lands during retry one — the retry-two block lists ONLY the still-missing variable (landed name dropped; effective-listing comma-space join preserved on the earlier block) and the ceiling throw carries one line per STILL-MISSING variable only", async () => {
+    const { instance, round } = await host();
+    instance.vars.declare("f", "string");
+    instance.vars.declare("s", "string");
+    const baseline = `\u2014\u2014 var-fresh \u2014\u2014\n\n${expectedDisclosure()}`;
+    round.session.prompt.mockImplementationOnce(async () => {
+      emit(round, ...quietRun());
+    });
+    round.session.prompt.mockImplementationOnce(async () => {
+      instance.vars.set("f", "lands-on-retry-one");
+      emit(round, ...quietRun());
+    });
+    scriptRuns(round, quietRun(), quietRun());
+    let thrown: unknown;
+    try {
+      await instance.execute_phase("var-fresh", { vars: ["f", "s"] });
+    } catch (error) {
+      thrown = error;
+    }
+    expect(thrown).toBeInstanceOf(ContractViolationError);
+    const sent = sentTexts(round);
+    expect(sent[0]).toBe(baseline);
+    expect(sent[1]).toBe(
+      `${baseline}\n${varCorrectiveNoteReplica(1, ["f", "s"])}`,
+    );
+    // The landed name drops off (fresh per retry).
+    expect(sent[2]).toBe(`${baseline}\n${varCorrectiveNoteReplica(2, ["s"])}`);
+    expect(sent[3]).toBe(`${baseline}\n${varCorrectiveNoteReplica(3, ["s"])}`);
+    expect((thrown as ContractViolationError).violations).toEqual([
+      varViolationLineReplica("var-fresh", "s"),
+    ]);
+  });
+
+  it("degenerate declarations: an UNDECLARED vars phase and an EMPTY vars: [] phase each settle with the DISCLOSURE-TRAILING baseline (empty-form header plus None over the governing-empty fixture span) — one prompt each, exact text, done: true (byte-identical ungated settlement)", async () => {
+    const { instance, round } = await host();
+    scriptRuns(round, quietRun());
+    const a = await instance.execute_phase("unguarded-vars");
+    expect(round.session.prompt).toHaveBeenCalledTimes(1);
+    expect(round.session.prompt.mock.calls[0]?.[0]).toBe(
+      `\u2014\u2014 unguarded-vars \u2014\u2014\n\n${expectedDisclosure()}`,
+    );
+    expect(a.done).toBe(true);
+    expect(a.iterations).toBe(1);
+
+    scriptRuns(round, quietRun());
+    const b = await instance.execute_phase("empty-vars", { vars: [] });
+    expect(round.session.prompt).toHaveBeenCalledTimes(2);
+    expect(round.session.prompt.mock.calls[1]?.[0]).toBe(
+      `\u2014\u2014 empty-vars \u2014\u2014\n\n${expectedDisclosure()}`,
+    );
+    expect(b.done).toBe(true);
+    expect(b.iterations).toBe(1);
+  });
+
+  it("dedupe parity: a [a, a, b] listing governs and expects EXACTLY [a, b] — the corrective block names each missing name ONCE (declaration-order first-occurrence dedupe, identical semantics to the guard's judgment-time listing)", async () => {
+    const { instance, round } = await host();
+    instance.vars.declare("a", "string");
+    instance.vars.declare("b", "string");
+    const baseline = `\u2014\u2014 dedupe \u2014\u2014\n\n${expectedDisclosure()}`;
+    round.session.prompt.mockImplementationOnce(async () => {
+      emit(round, ...quietRun());
+    });
+    round.session.prompt.mockImplementationOnce(async () => {
+      instance.vars.set("a", "a-val");
+      instance.vars.set("b", "b-val");
+      emit(round, ...quietRun());
+    });
+    const result = await instance.execute_phase("dedupe", {
+      vars: ["a", "a", "b"],
+    });
+    expect(round.session.prompt).toHaveBeenCalledTimes(2);
+    const sent = sentTexts(round);
+    expect(sent[0]).toBe(baseline);
+    // Each missing name ONCE — the duplicate entry drops out.
+    expect(sent[1]).toBe(
+      `${baseline}\n${varCorrectiveNoteReplica(1, ["a", "b"])}`,
+    );
+    expect(result.done).toBe(true);
+    expect(result.iterations).toBe(2);
+  });
+
+  it("budget isolation (max: 1): the budget bounds SETTLEMENT ATTEMPTS only — an always-missing variable still receives ALL THREE corrective re-runs (4 prompts total) before the ceiling throws, mirroring the measured file-gate mechanics", async () => {
+    const { instance, round } = await host();
+    instance.vars.declare("bx", "string");
+    const baseline = `\u2014\u2014 budget-isolate \u2014\u2014\n\n${expectedDisclosure()}`;
+    scriptRuns(round, quietRun(), quietRun(), quietRun(), quietRun());
+    let thrown: unknown;
+    try {
+      await instance.execute_phase("budget-isolate", {
+        max: 1,
+        vars: ["bx"],
+      });
+    } catch (error) {
+      thrown = error;
+    }
+    expect(thrown).toBeInstanceOf(ContractViolationError);
+    expect(round.session.prompt).toHaveBeenCalledTimes(4);
+    expect(sentTexts(round)).toEqual([
+      baseline,
+      `${baseline}\n${varCorrectiveNoteReplica(1, ["bx"])}`,
+      `${baseline}\n${varCorrectiveNoteReplica(2, ["bx"])}`,
+      `${baseline}\n${varCorrectiveNoteReplica(3, ["bx"])}`,
+    ]);
+    expect((thrown as ContractViolationError).violations).toEqual([
+      varViolationLineReplica("budget-isolate", "bx"),
+    ]);
+  });
+
+  it("floor consumption (min: 2): with a never-landing variable the first two prompts are BOTH pure baseline (the floor-driven continuation sees no gate) and the first denial carries run count 2 (5 prompts: floor runs 2 + corrective 3)", async () => {
+    const { instance, round } = await host();
+    instance.vars.declare("fx", "string");
+    const baseline = `\u2014\u2014 floored-vars \u2014\u2014\n\n${expectedDisclosure()}`;
+    scriptRuns(
+      round,
+      quietRun(),
+      quietRun(),
+      quietRun(),
+      quietRun(),
+      quietRun(),
+    );
+    let thrown: unknown;
+    try {
+      await instance.execute_phase("floored-vars", { min: 2, vars: ["fx"] });
+    } catch (error) {
+      thrown = error;
+    }
+    expect(thrown).toBeInstanceOf(ContractViolationError);
+    expect(round.session.prompt).toHaveBeenCalledTimes(5);
+    expect(sentTexts(round)).toEqual([
+      baseline,
+      baseline,
+      `${baseline}\n${varCorrectiveNoteReplica(2, ["fx"])}`,
+      `${baseline}\n${varCorrectiveNoteReplica(3, ["fx"])}`,
+      `${baseline}\n${varCorrectiveNoteReplica(4, ["fx"])}`,
+    ]);
+  });
+
+  it("independence and accounting (mirror of the measured file-gate coexist row): a declared phase whose hook ALWAYS demands continuation past max: 3 keeps failing the gate beyond the budget — EXACTLY 6 prompts (budget runs 3 + corrective 3), the stop-rule invoked ONCE PER SETTLED RUN (6 consults), then the typed throw naming the missing variable", async () => {
+    const { instance, round } = await host();
+    instance.vars.declare("cx", "string");
+    const baseline = `\u2014\u2014 coexist-vars \u2014\u2014\n\n${expectedDisclosure()}`;
+    scriptRuns(
+      round,
+      quietRun(),
+      quietRun(),
+      quietRun(),
+      quietRun(),
+      quietRun(),
+      quietRun(),
+    );
+    let hookCalls = 0;
+    let thrown: unknown;
+    try {
+      await instance.execute_phase("coexist-vars", {
+        max: 3,
+        shouldStopLoop: async () => {
+          hookCalls += 1;
+          return false;
+        },
+        vars: ["cx"],
+      });
+    } catch (error) {
+      thrown = error;
+    }
+    expect(hookCalls).toBe(6);
+    expect(thrown).toBeInstanceOf(ContractViolationError);
+    expect(round.session.prompt).toHaveBeenCalledTimes(6);
+    const sent = sentTexts(round);
+    // Budget runs re-send the baseline: the gate sits strictly at breaks.
+    expect(sent.slice(0, 3)).toEqual([baseline, baseline, baseline]);
+    expect(sent[3]).toBe(`${baseline}\n${varCorrectiveNoteReplica(3, ["cx"])}`);
+    expect(sent[4]).toBe(`${baseline}\n${varCorrectiveNoteReplica(4, ["cx"])}`);
+    expect(sent[5]).toBe(`${baseline}\n${varCorrectiveNoteReplica(5, ["cx"])}`);
+    expect((thrown as ContractViolationError).violations).toEqual([
+      varViolationLineReplica("coexist-vars", "cx"),
+    ]);
+  });
+
+  it("the CEILING rejection closes both windows: after the typed throw the next phase on the SAME host sees empty deltas and messages (the finally closeout fires on the reject cause; cumulative counters survive)", async () => {
+    const { instance, round } = await host();
+    instance.vars.declare("dw", "string");
+    const deadPass = [
+      agentStart(),
+      start("d1", "write", { path: "/leaked/a.md" }),
+      end("d1", "write", false),
+      agentEnd(["d1"], false),
+    ];
+    scriptRuns(round, deadPass, deadPass, deadPass, deadPass);
+    await expect(
+      instance.execute_phase("ceiling-die-vars", { vars: ["dw"] }),
+    ).rejects.toBeInstanceOf(ContractViolationError);
+    expect(instance.getFilesWrittenDelta()).toEqual([]);
+    expect(instance.getRunMessages()).toEqual([]);
+    expect(instance.counters().filesWritten).toBe(4);
+
+    round.session.prompt.mockImplementationOnce(async () => {
+      emit(round, agentStart(), agentEnd(["n1"], false));
+    });
+    let first: IterationCtx | undefined;
+    const next = await instance.execute_phase("after", {
+      shouldStopLoop: async (ctx) => {
+        first = ctx;
+        return true;
+      },
+    });
+    expect(next.messages).toEqual(["n1"]);
+    expect(first?.filesWritten).toEqual([]);
+    expect(first?.counters.filesWritten).toBe(4);
+  });
+
+  it("arm-time validation (engine-level): a listing containing an unregistered name REJECTS with the name-asserted bookkeeping class and PINNED message bytes — ZERO prompt invocations, the execution-state phase slot still NULL, both windows pristine, cumulative counters untouched (nothing armed, nothing detached, no window opened)", async () => {
+    const { instance, round, gate } = await host();
+    scriptRuns(round, quietRun());
+    let thrown: unknown;
+    try {
+      await instance.execute_phase("arm-miss", {
+        instructions: "Define the thing",
+        vars: ["ghost"],
+      });
+    } catch (error) {
+      thrown = error;
+    }
+    // Name-asserted bookkeeping voice (unexported — the suite asserts by
+    // name only) + pinned PURE-ASCII message bytes.
+    expect(thrown).toBeInstanceOf(Error);
+    expect((thrown as Error).name).toBe("PhaseVarDeclarationError");
+    expect((thrown as Error).message).toBe(
+      armFaultLineReplica("arm-miss", ["ghost"]),
+    );
+    expect(Object.hasOwn(thrown as Error, "cause")).toBe(false);
+    expect(round.session.prompt).toHaveBeenCalledTimes(0);
+    expect(gate.state.snapshot().phase).toBeNull();
+    expect(instance.getFilesWrittenDelta()).toEqual([]);
+    expect(instance.getRunMessages()).toEqual([]);
+    expect(instance.counters()).toEqual({
+      filesWritten: 0,
+      askUserCalls: 0,
+      toolUses: {},
+      tokens: 0,
+    });
+  });
+
+  it("arm-time validation (multi-miss collect-all): two unregistered names fault with ONE message naming BOTH in effective-listing order (single loud fault, pre-turn)", async () => {
+    const { instance } = await host();
+    let thrown: unknown;
+    try {
+      await instance.execute_phase("arm-multi", {
+        vars: ["z-ghost", "a-ghost"],
+      });
+    } catch (error) {
+      thrown = error;
+    }
+    expect(thrown).toBeInstanceOf(Error);
+    expect((thrown as Error).name).toBe("PhaseVarDeclarationError");
+    expect((thrown as Error).message).toBe(
+      armFaultLineReplica("arm-multi", ["z-ghost", "a-ghost"]),
+    );
+  });
+
+  it("complementarity: a REGISTERED-but-UNDEFINED name does NOT fault at arm — the phase proceeds to the gate (which then settles normally once the value lands): unsatisfiable declarations die at arm, satisfiable-but-unmet ones live to the gate", async () => {
+    const { instance, round } = await host();
+    instance.vars.declare("complementary", "string");
+    round.session.prompt.mockImplementationOnce(async () => {
+      emit(round, ...quietRun());
+    });
+    round.session.prompt.mockImplementationOnce(async () => {
+      instance.vars.set("complementary", "landed-at-gate");
+      emit(round, ...quietRun());
+    });
+    const result = await instance.execute_phase("complementary", {
+      vars: ["complementary"],
+    });
+    expect(result.done).toBe(true);
+    expect(result.iterations).toBe(2);
+  });
+
+  it("own-store proof (composed-frame corner): a fromRuntime host over the shared runtime validates over ITS OWN disjoint (empty) registry — it FAULTS at arm on a name the created host HAS registered, while the created host settles the SAME declaration cleanly over its own store", async () => {
+    const { instance: createdHost, round } = await host();
+    createdHost.vars.declare("shared-name", "string");
+    const composedHost = PioSession.fromRuntime(createdHost.runtime);
+    expect(composedHost.vars.declarations()).toEqual({});
+    expect(composedHost.vars).not.toBe(createdHost.vars);
+    let thrown: unknown;
+    try {
+      await composedHost.execute_phase("own-store", { vars: ["shared-name"] });
+    } catch (error) {
+      thrown = error;
+    }
+    // Validation reads the INSTANCE'S OWN store: the name IS registered on
+    // the created host, yet the composed frame loud-faults at arm.
+    expect((thrown as Error).name).toBe("PhaseVarDeclarationError");
+    expect((thrown as Error).message).toBe(
+      armFaultLineReplica("own-store", ["shared-name"]),
+    );
+    expect(round.session.prompt).toHaveBeenCalledTimes(0);
+    scriptRuns(round, quietRun());
+    createdHost.vars.set("shared-name", "created-host-value");
+    const result = await createdHost.execute_phase("own-store-ok", {
+      vars: ["shared-name"],
+    });
+    expect(result.done).toBe(true);
+    expect(result.iterations).toBe(1);
+  });
+
+  it("BINDING leg 1 (auto re-run and normal settle): the scripted first pass defines NOTHING, the engine denies settlement and re-runs with the PINNED variable corrective block, the second pass's REAL threaded setVar body defines the variable, and the FULL chain (fixture call() -> real base run() -> real emitter) settles ok:true with exit code 0", async () => {
+    const { instance, round } = await host();
+    instance.vars.declare("demo-var", "string");
+    const tools = threadedTools();
+    round.session.prompt.mockImplementationOnce(async () => {
+      emit(round, ...quietRun());
+    });
+    round.session.prompt.mockImplementationOnce(async () => {
+      const settlement = await driveVarEntry(tools[1], {
+        name: "demo-var",
+        type: "string",
+        value: "settled-by-model",
+      });
+      expect(settlement.content).toEqual([
+        {
+          type: "text",
+          text: `variable 'demo-var' set to ${JSON.stringify("settled-by-model")}.`,
+        },
+      ]);
+      emit(round, ...quietRun());
+    });
+    const cap = new VarsFixtureCapability({
+      session: instance,
+      names: ["demo-var"],
+    });
+    await withTmp(async (tmp) => {
+      const sessionsRoot = path.join(tmp, ".sessions");
+      const emitter = createStatusEmitter({
+        sessionsRoot,
+        capability: {
+          name: cap.contract.name,
+          version: cap.contract.version,
+        },
+        tokens: () => instance.counters().tokens,
+        sessionFile: () => undefined,
+      });
+      const result = await cap.run({});
+      expect(round.session.prompt).toHaveBeenCalledTimes(2);
+      expect(round.session.prompt.mock.calls[0]?.[0]).toBe(
+        VAR_FIXTURE_BASELINE,
+      );
+      expect(round.session.prompt.mock.calls[1]?.[0]).toBe(
+        `${VAR_FIXTURE_BASELINE}\n${varCorrectiveNoteReplica(1, ["demo-var"])}`,
+      );
+      expect(round.session.sendCustomMessage).toHaveBeenCalledTimes(1);
+      // A retry IS a run: the accounting invariant.
+      expect(cap.phaseResults).toHaveLength(1);
+      expect(cap.phaseResults[0].done).toBe(true);
+      expect(cap.phaseResults[0].iterations).toBe(2);
+      expect(result.ok).toBe(true);
+      if (!result.ok) throw new Error("unreachable");
+      expect(result.outputs).toEqual({});
+      const emission = await emitter.emit(result);
+      expect(emission.status.ok).toBe(true);
+      expect(emission.exitCode).toBe(0);
+      expect(exitCodeFor(emission.status)).toBe(0);
+      const record = JSON.parse(
+        readFileSync(statusPath(sessionsRoot), "utf8"),
+      ) as {
+        ok: boolean;
+        capability: { name: string; version: string; source: string };
+        outputs: Record<string, unknown>;
+        errors?: unknown;
+      };
+      expect(record.ok).toBe(true);
+      expect(record.capability).toEqual({
+        name: "vars-fixture",
+        version: "0.1.0",
+        source: "builtin",
+      });
+      expect(record.outputs).toEqual({});
+      expect(record.errors).toBeUndefined();
+    });
+  });
+
+  it("BINDING leg 2 (never materializes => typed failure at the gate's OWN ceiling): four quiet passes burn the first pass + exactly 3 corrective re-runs, execute_phase REJECTS with the pinned ContractViolationError (engine-level), and through the FULL chain the captured record names the missing variable with ok:false and exit code 1", async () => {
+    // ENGINE-LEVEL: the raw rejection shape over a dedicated host.
+    const engine = await host();
+    engine.instance.vars.declare("engine-var", "string");
+    scriptRuns(engine.round, quietRun(), quietRun(), quietRun(), quietRun());
+    let thrown: unknown;
+    try {
+      await engine.instance.execute_phase("guarded-vars", {
+        instructions: "Define the thing",
+        vars: ["engine-var"],
+      });
+    } catch (error) {
+      thrown = error;
+    }
+    expect(thrown).toBeInstanceOf(ContractViolationError);
+    expect((thrown as ContractViolationError).violations).toEqual([
+      varViolationLineReplica("guarded-vars", "engine-var"),
+    ]);
+
+    // FULL CHAIN: the same trajectory through the fixture -> real base
+    // run() -> real emitter.
+    const { instance, round } = await host();
+    instance.vars.declare("chain-var", "string");
+    scriptRuns(round, quietRun(), quietRun(), quietRun(), quietRun());
+    const cap = new VarsFixtureCapability({
+      session: instance,
+      names: ["chain-var"],
+    });
+    await withTmp(async (tmp) => {
+      const sessionsRoot = path.join(tmp, ".sessions");
+      const emitter = createStatusEmitter({
+        sessionsRoot,
+        capability: {
+          name: cap.contract.name,
+          version: cap.contract.version,
+        },
+        tokens: () => instance.counters().tokens,
+        sessionFile: () => undefined,
+      });
+      const result = await cap.run({});
+      // First pass + 3 corrective re-runs — the gate's own ceiling.
+      expect(round.session.prompt).toHaveBeenCalledTimes(4);
+      const sent = sentTexts(round);
+      expect(sent[0]).toBe(VAR_FIXTURE_BASELINE);
+      expect(sent[1]).toBe(
+        `${VAR_FIXTURE_BASELINE}\n${varCorrectiveNoteReplica(1, ["chain-var"])}`,
+      );
+      expect(sent[2]).toBe(
+        `${VAR_FIXTURE_BASELINE}\n${varCorrectiveNoteReplica(2, ["chain-var"])}`,
+      );
+      expect(sent[3]).toBe(
+        `${VAR_FIXTURE_BASELINE}\n${varCorrectiveNoteReplica(3, ["chain-var"])}`,
+      );
+      expect(result.ok).toBe(false);
+      if (result.ok) throw new Error("unreachable");
+      const line = varViolationLineReplica("var-guarded", "chain-var");
+      expect(result.errors?.[0]).toStrictEqual({
+        type: "ContractViolationError",
+        cause: "contract",
+        message: `Contract violation: ${line}`,
+        violations: [line],
+      });
+      const emission = await emitter.emit(result);
+      expect(emission.status.ok).toBe(false);
+      expect(emission.exitCode).toBe(1);
+      expect(exitCodeFor(emission.status)).toBe(1);
+      const record = JSON.parse(
+        readFileSync(statusPath(sessionsRoot), "utf8"),
+      ) as { ok: boolean; errors?: Array<{ violations?: string[] }> };
+      expect(record.ok).toBe(false);
+      expect(record.errors?.[0]?.violations).toEqual([line]);
+    });
+  });
+
+  it("ARM-TIME FULL CHAIN: a fixture phase listing an unregistered name faults LOUDLY at arm (before the first turn) and the base capture settles the bare-identity {type, message} with ok:false and exit code 1 — zero prompts, and NEVER at the ceiling", async () => {
+    const { instance, round } = await host();
+    const cap = new VarsFixtureCapability({
+      session: instance,
+      names: ["unreg"],
+      registerNames: false,
+    });
+    await withTmp(async (tmp) => {
+      const sessionsRoot = path.join(tmp, ".sessions");
+      const emitter = createStatusEmitter({
+        sessionsRoot,
+        capability: {
+          name: cap.contract.name,
+          version: cap.contract.version,
+        },
+        tokens: () => instance.counters().tokens,
+        sessionFile: () => undefined,
+      });
+      const result = await cap.run({});
+      // ZERO prompts: the fault fires before the first turn issues.
+      expect(round.session.prompt).toHaveBeenCalledTimes(0);
+      expect(cap.phaseResults).toHaveLength(0);
+      expect(result.ok).toBe(false);
+      if (result.ok) throw new Error("unreachable");
+      const message = armFaultLineReplica("var-guarded", ["unreg"]);
+      // Bare-identity capture: NO cause key.
+      expect(result.errors?.[0]).toStrictEqual({
+        type: "PhaseVarDeclarationError",
+        message,
+      });
+      const emission = await emitter.emit(result);
+      expect(emission.status.ok).toBe(false);
+      expect(emission.exitCode).toBe(1);
+      expect(exitCodeFor(emission.status)).toBe(1);
+      const record = JSON.parse(
+        readFileSync(statusPath(sessionsRoot), "utf8"),
+      ) as {
+        ok: boolean;
+        errors?: Array<{ type?: string; message?: string }>;
+      };
+      expect(record.ok).toBe(false);
+      expect(record.errors?.[0]).toStrictEqual({
+        type: "PhaseVarDeclarationError",
+        message,
+      });
+    });
+  });
+
+  it("joint corner (ordered blocks): a phase declaring one file target AND one variable with BOTH missing on pass one renders the COMPOSITE note (output guard block FIRST, then the variable guard block, a single LF between — byte-pinned), and when the file lands on retry two the next note DEGRADES to the var-only block BYTE-EQUAL to the pure var-face replica", async () => {
+    const { instance, round } = await host();
+    instance.vars.declare("jv", "string");
+    await withTmp(async (tmp) => {
+      const target = path.join(tmp, "joint-file.md");
+      const baseline = `\u2014\u2014 joint-both \u2014\u2014\n\n${expectedDisclosure()}`;
+      round.session.prompt.mockImplementationOnce(async () => {
+        emit(round, ...quietRun());
+      });
+      round.session.prompt.mockImplementationOnce(async () => {
+        await writeFile(target, "lands on retry one\n");
+        emit(round, ...quietRun());
+      });
+      round.session.prompt.mockImplementationOnce(async () => {
+        instance.vars.set("jv", "lands-on-retry-two");
+        emit(round, ...quietRun());
+      });
+      const result = await instance.execute_phase("joint-both", {
+        write: [target],
+        vars: ["jv"],
+      });
+      expect(round.session.prompt).toHaveBeenCalledTimes(3);
+      const sent = sentTexts(round);
+      expect(sent[0]).toBe(baseline);
+      // Composite: file block first, var block second, single LF between.
+      expect(sent[1]).toBe(
+        `${baseline}\n${correctiveNoteReplica(1, [target])}\n${varCorrectiveNoteReplica(1, ["jv"])}`,
+      );
+      // Degradation invariant: the landed file drops off and the note is
+      // byte-equal to the pure var-face replica.
+      expect(sent[2]).toBe(
+        `${baseline}\n${varCorrectiveNoteReplica(2, ["jv"])}`,
+      );
+      expect(result.done).toBe(true);
+      expect(result.iterations).toBe(3);
+    });
+  });
+
+  it("joint corner (full exhaustion): both dimensions never land — the counters advance IN LOCKSTEP and the collect-all throw interleaves FILE LINES FIRST (declaration order) THEN variable lines (effective-listing order)", async () => {
+    const { instance, round } = await host();
+    instance.vars.declare("jd", "string");
+    await withTmp(async (tmp) => {
+      const target = path.join(tmp, "joint-death.md");
+      const baseline = `\u2014\u2014 joint-death \u2014\u2014\n\n${expectedDisclosure()}`;
+      scriptRuns(round, quietRun(), quietRun(), quietRun(), quietRun());
+      let thrown: unknown;
+      try {
+        await instance.execute_phase("joint-death", {
+          write: [target],
+          vars: ["jd"],
+        });
+      } catch (error) {
+        thrown = error;
+      }
+      expect(thrown).toBeInstanceOf(ContractViolationError);
+      expect(round.session.prompt).toHaveBeenCalledTimes(4);
+      const sent = sentTexts(round);
+      expect(sent[0]).toBe(baseline);
+      // Composites carry BOTH blocks at denial points 1..3.
+      for (let i = 1; i <= 3; i += 1) {
+        expect(sent[i]).toBe(
+          `${baseline}\n${correctiveNoteReplica(i, [target])}\n${varCorrectiveNoteReplica(i, ["jd"])}`,
+        );
+      }
+      // File lines first, then the variable line.
+      expect((thrown as ContractViolationError).violations).toEqual([
+        violationLineReplica("joint-death", target, target),
+        varViolationLineReplica("joint-death", "jd"),
+      ]);
+    });
+  });
+
+  it("joint corner (single-dimension exhaustion): the variable lands late and the file NEVER lands — the notes degrade to the pure file-face replica, and the collect-all carry has FILE LINES ONLY (the satisfied dimension contributes zero lines)", async () => {
+    const { instance, round } = await host();
+    instance.vars.declare("jo", "string");
+    await withTmp(async (tmp) => {
+      const target = path.join(tmp, "joint-one.md");
+      const baseline = `\u2014\u2014 joint-one \u2014\u2014\n\n${expectedDisclosure()}`;
+      round.session.prompt.mockImplementationOnce(async () => {
+        emit(round, ...quietRun());
+      });
+      round.session.prompt.mockImplementationOnce(async () => {
+        instance.vars.set("jo", "lands-on-retry-one");
+        emit(round, ...quietRun());
+      });
+      scriptRuns(round, quietRun(), quietRun());
+      let thrown: unknown;
+      try {
+        await instance.execute_phase("joint-one", {
+          write: [target],
+          vars: ["jo"],
+        });
+      } catch (error) {
+        thrown = error;
+      }
+      expect(thrown).toBeInstanceOf(ContractViolationError);
+      expect(round.session.prompt).toHaveBeenCalledTimes(4);
+      const sent = sentTexts(round);
+      expect(sent[0]).toBe(baseline);
+      // Pass-one denial: composite (both dimensions denying).
+      expect(sent[1]).toBe(
+        `${baseline}\n${correctiveNoteReplica(1, [target])}\n${varCorrectiveNoteReplica(1, ["jo"])}`,
+      );
+      // Thereafter: the satisfied dimension stops advancing its counter
+      // and its block drops off — pure file-face bytes.
+      expect(sent[2]).toBe(
+        `${baseline}\n${correctiveNoteReplica(2, [target])}`,
+      );
+      expect(sent[3]).toBe(
+        `${baseline}\n${correctiveNoteReplica(3, [target])}`,
+      );
+      expect((thrown as ContractViolationError).violations).toEqual([
+        violationLineReplica("joint-one", target, target),
+      ]);
+    });
+  });
+});
+
 describe("export surface", () => {
   it("runtime export surface is EXACTLY ['PioSession', 'SessionHandleRefusalError', 'SessionVariableStore', 'renderCapabilityMarker', 'renderPhaseMarker', 'renderPhasePermissionDisclosure'] sorted (types erase under erasable syntax)", async () => {
     expect(Object.keys(await import("./pio-session.ts")).sort()).toEqual(
@@ -3690,6 +4535,78 @@ describe("source guards (composed-host edge discipline over pio-session.ts)", ()
 
   it("zero dynamic import( occurrences in the module", () => {
     expect(src.match(/import\(/g)?.length ?? 0).toBe(0);
+  });
+
+  it("the surviving placeholder trinity is INTACT in the module: the interface field line, the EXACTLY-ONCE settle literal, and the corrected doc statement all present (needles fragment-assembled so this suite never carries the raw identifier)", () => {
+    const slot = ["vars", "Delta"].join("");
+    expect(src.includes(`readonly ${slot}: Record<string, unknown>;`)).toBe(
+      true,
+    );
+    expect(src.split(`${slot}: {}`).length - 1).toBe(1);
+    // Comment-continuation asterisks elided before the whitespace collapse:
+    // the statement spans several JSDoc lines.
+    expect(
+      src
+        .replace(/^[ \t]*\*/gm, "")
+        .replace(/\s+/g, " ")
+        .includes(
+          "Unreported by design in v1: the store IS the live state every reader can consult directly; the change-record rationale was retired by owner ruling.",
+        ),
+    ).toBe(true);
+  });
+});
+
+// ---------------------------------------------------------------------
+// Residue sweep over the whole pio source tree: the pruned delta-primitive
+// vocabulary must be GONE everywhere, and the surviving placeholder
+// identifier is confined to its owning module. Recursive walk with tests
+// included; needles fragment-assembled so the scan cannot match itself.
+// ---------------------------------------------------------------------
+
+/** Recursive .ts listing under a directory (tests included). */
+function tsFilesUnder(dirPath: string): string[] {
+  const results: string[] = [];
+  for (const entry of readdirSync(dirPath, { withFileTypes: true })) {
+    const full = path.join(dirPath, entry.name);
+    if (entry.isDirectory()) {
+      results.push(...tsFilesUnder(full));
+    } else if (entry.name.endsWith(".ts")) {
+      results.push(full);
+    }
+  }
+  return results;
+}
+
+describe("residue sweep over the pio source tree (prune audit)", () => {
+  const PIO_SRC_ROOT = fileURLToPath(new URL("../", import.meta.url));
+  const files = tsFilesUnder(PIO_SRC_ROOT);
+
+  it("zero delta-primitive residue across EVERY .ts under the package root (recursive walk, tests included): the pruned cursor pair and its backing field are GONE everywhere", () => {
+    const needles = [
+      ["reset", "VarsDelta"].join(""),
+      ["get", "VarsDelta"].join(""),
+      ["delta", "Baseline"].join(""),
+    ];
+    for (const file of files) {
+      const content = readFileSync(file, "utf8");
+      for (const needle of needles) {
+        expect(content.includes(needle), `${file} carries ${needle}`).toBe(
+          false,
+        );
+      }
+    }
+  });
+
+  it("the surviving placeholder identifier occurs ONLY in the owning module (field declaration + settle literal, exactly two sites), never in any test file and never in any other module", () => {
+    const slot = ["vars", "Delta"].join("");
+    const carriers: string[] = [];
+    for (const file of files) {
+      const count = readFileSync(file, "utf8").split(slot).length - 1;
+      if (count > 0) {
+        carriers.push(`${path.basename(file)}:${count}`);
+      }
+    }
+    expect(carriers).toEqual(["pio-session.ts:2"]);
   });
 });
 
@@ -4410,6 +5327,12 @@ describe("PioSession \u2014 var-gate interceptor wiring (second handler row)", (
     await withAgentDir(AGENT_DIR_LITERAL, async () => {
       const { instance, round, gate } = await host();
       scriptRuns(round, quietRun());
+      // Arm-time clause: every listed name carries a base-type registration;
+      // pre-set values settle the expectation face at the first break.
+      instance.vars.declare("alpha", "string");
+      instance.vars.set("alpha", "a-val");
+      instance.vars.declare("beta", "string");
+      instance.vars.set("beta", "b-val");
       const declaredVars = ["alpha", "beta"];
       let observed: VarPhaseRecord | null = null;
       let seenRef: readonly string[] | null = null;
@@ -4470,6 +5393,11 @@ describe("PioSession \u2014 var-gate interceptor wiring (second handler row)", (
         await writeFile(seeded, "seeded\n");
         const { instance, round, gate } = await host();
         scriptRuns(round, quietRun());
+        // Arm-time clause + expectation-face settlement at the first break.
+        instance.vars.declare("x", "string");
+        instance.vars.set("x", "x-val");
+        instance.vars.declare("y", "string");
+        instance.vars.set("y", "y-val");
         const bagVars = ["x", "y"];
         let paths: string[] | null = null;
         let vars: string[] | null = null;
@@ -4499,6 +5427,9 @@ describe("PioSession \u2014 var-gate interceptor wiring (second handler row)", (
     await withAgentDir(AGENT_DIR_LITERAL, async () => {
       const { instance, round, gate } = await host();
       scriptRuns(round, quietRun());
+      // Arm-time clause + expectation-face settlement at the first break.
+      instance.vars.declare("only-var", "string");
+      instance.vars.set("only-var", "only-val");
       let midDisclosure: string | undefined;
       await instance.execute_phase("disc-vars-only", {
         vars: ["only-var"],
@@ -4528,6 +5459,9 @@ describe("PioSession \u2014 var-gate interceptor wiring (second handler row)", (
     await withAgentDir(AGENT_DIR_LITERAL, async () => {
       const hf = harness.mintFakeHandle();
       const foreign = PioSession.fromRuntime(asRuntime({ session: hf }));
+      // The foreign host mints its OWN store: the arm-time clause reads it.
+      foreign.vars.declare("some-decl", "string");
+      foreign.vars.set("some-decl", "settled");
       hf.prompt.mockImplementationOnce(async () => {
         emitTo(hf, ...quietRun());
       });

@@ -44,16 +44,21 @@
 // `capability:` prefix is reserved for that mark (no runtime enforcement).
 // Only session-present runs are stamped, once per span (see base.ts).
 //
-// Settlement gate (write: expectations): a phase that declares deliverable
-// paths cannot settle until they exist. The gate sits strictly at the normal
-// settlement break (stop-rule verdict or budget break) — floor/hook
-// continuations pre-break see no gate. Each settlement consults FRESH
-// existsSync over the resolved declared paths: directories pass
-// mechanically; non-emptiness stays a capability-local quality bar. Any
-// missing path denies the settlement: a dedicated expectation-retry counter
-// (independent of the iteration budget and the stopping rule) increments and
-// the phase re-enters the loop body; iterations counts all settled runs,
-// retries included.
+// Settlement gate (dual face: write + vars expectations): a phase that
+// declares deliverable paths and/or variable names cannot settle until EVERY
+// declared expectation holds. The gate sits strictly at the normal settlement
+// break (stop-rule verdict or budget break) — floor/hook continuations
+// pre-break see no gate. Each settlement consults BOTH faces FRESH:
+// existsSync over the resolved declared paths (directories pass mechanically;
+// non-emptiness stays a capability-local quality bar) and PRESENCE over the
+// retained effective variable listing — origin-blind by design (an inherited
+// value from an earlier phase or a programmatic mid-flight write satisfies
+// equally; permission still binds the model lane only, and the safe read
+// tested against undefined is the sound presence consult because no stored
+// value can ever BE undefined). Any missing expectation denies the settlement:
+// a dedicated retry counter PER FACE (each independent of the iteration budget
+// and the stopping rule) increments and the phase re-enters the loop body;
+// iterations counts all settled runs, retries included.
 //
 // Durable-declaration retention: entries resolve ONCE at phase start
 // (absolute normalized; relative under process.cwd()) into a list retained
@@ -63,20 +68,40 @@
 // the phase's normalized project-files scope flag, detached on every exit
 // cause): the session's execution-state phase record rides this single
 // retained list plus the normalized class flags and the verbatim
-// variable-name list - the four declared permission dimensions.
+// variable-name list - the four declared permission dimensions. The
+// effective variable listing (declaration-order, first-occurrence dedupe)
+// computes ONCE at phase start the same way and retains for the whole
+// duration: the arm-time registry validation and the settlement gate's
+// variable face consult this same retained listing.
 //
-// Corrective-note channel: gate-triggered retries alone append ONE fresh
-// deterministic MARKED BLOCK (a flanked em-dash delimiter line labeled
-// output guard above the body sentence — every currently-missing resolved
-// path plus the settled-run count at that point) strictly after the
-// marker-leading baseline text; landed paths drop off, no history
-// accumulates, and the composition stays private to execute_phase.
+// Corrective-note channel: gate-triggered retries alone append UP TO TWO
+// fresh deterministic MARKED BLOCKS strictly after the marker-leading
+// baseline text: the flanked em-dash delimiter line labeled output guard
+// (body sentence naming every currently-missing resolved path) and/or the
+// one labeled variable guard (body sentence naming every still-undefined
+// variable name), each with the settled-run count at that point. FIXED ORDER
+// (output guard first, then variable guard) with a SINGLE LF between them
+// when both are present; a single-face denial renders exactly the pure
+// single-face shape (degradation invariant). Satisfied paths and defined
+// variables drop off fresh per retry, no history accumulates, and the
+// composition stays private to execute_phase.
 //
-// Typed failure at the ceiling: with MAX_EXPECTATION_RETRIES corrective
-// re-runs settled and paths still missing, the phase throws the error
-// home's ContractViolationError (collect-all, one line per missing path) —
-// unwrapped through the finally closeout into the standard containment
-// channels on both placements.
+// Typed failure at the ceiling: with a face's ceiling of corrective re-runs
+// settled (MAX_EXPECTATION_RETRIES for files, the mirrored
+// MAX_VAR_EXPECTATION_RETRIES for variables) and that face's expectations
+// still unmet, the phase throws the error home's ContractViolationError
+// COLLECTING ALL still-missing violations — file lines first (declaration
+// order) followed by variable lines (effective-listing order; a satisfied
+// face contributes zero lines) — unwrapped through the finally closeout into
+// the standard containment channels on both placements.
+//
+// Arm-time registry validation: BEFORE the first turn issues, the phase
+// validates that every listed variable name carries a base-type registration
+// (fresh declarations() snapshot consult, prototype-safe); a miss faults
+// LOUDLY at arm in the module-local ASCII bookkeeping voice — unsatisfiable
+// phases die at arm, NEVER at the ceiling. The fault fires pre-attach and
+// pre-disclosure: nothing arms, no window opens, zero prompts issue, and the
+// throw escapes VERBATIM.
 //
 // Per-session write-gate producer wiring: create mints EXACTLY ONE
 // SessionExecutionState over its two owned anchor channels (the
@@ -210,6 +235,56 @@ function renderMissingOutputLine(
   return `phase '${phaseId}' output '${entry}' missing at ${resolvedPath} \u2014 still absent after ${MAX_EXPECTATION_RETRIES} expectation re-run(s); the ceiling is exhausted`;
 }
 
+/** Mirrors MAX_EXPECTATION_RETRIES; distinct constant; shrink-only,
+ * module-private; no public configurability in v1. */
+const MAX_VAR_EXPECTATION_RETRIES = 3;
+
+/** One corrective MARKED BLOCK for a variable-gate denial: the flanked
+ * em-dash delimiter line labeled variable guard above the body sentence —
+ * every still-undefined variable name (effective-listing order) plus the
+ * settled-run count at the denial point; fresh per retry. Two lines joined
+ * by a single LF; no trailing newline. */
+function renderVariableRetryLine(
+  iterations: number,
+  missing: readonly string[],
+): string {
+  return `\u2014\u2014 variable guard \u2014\u2014\nRequired variable(s) still missing after ${iterations} run(s): ${missing.join(", ")}. Define each listed variable with the setVar tool before you finish this run.`;
+}
+
+/** ONE collect-all violation line per still-missing declared variable at
+ * the exhausted ceiling (the name renders RAW — variables have no
+ * resolved-path analog; the 3 embeds the cap CONSTANT like the file
+ * renderer's shape — never a live counter value). */
+function renderMissingVariableLine(phaseId: string, name: string): string {
+  return `phase '${phaseId}' variable '${name}' missing \u2014 still undefined after ${MAX_VAR_EXPECTATION_RETRIES} variable expectation re-run(s); the ceiling is exhausted`;
+}
+
+/** ONE arm-time fault line (PURE ASCII — no em dashes; developer-facing):
+ * names the phase and every listed-but-unregistered variable in
+ * effective-listing order. */
+function renderPhaseVarFaultLine(
+  phaseId: string,
+  misses: readonly string[],
+): string {
+  return `phase '${phaseId}': variable(s) listed without a declared base type: ${misses.join(", ")}`;
+}
+
+/** Declaration-order, first-occurrence dedupe of the phase's variable
+ * listing — identical semantics to the guard's judgment-time listing, so
+ * both faces judge over the SAME set; mirrored locally, fresh array per
+ * call. */
+function effectiveVarListing(list: readonly string[]): string[] {
+  const seen: Set<string> = new Set();
+  const result: string[] = [];
+  for (const entry of list) {
+    if (!seen.has(entry)) {
+      seen.add(entry);
+      result.push(entry);
+    }
+  }
+  return result;
+}
+
 /** THE phase-permission DISCLOSURE BLOCK's fixed bytes (module-private -
  * the single literal home for the label, the joiner, and the two class
  * elements; the exported renderer below is the block's SOLE BYTE OWNER).
@@ -302,10 +377,17 @@ export interface PhaseOptions {
   /** Declared variable names: while the phase is attached, the model's
    * setVar writes are admitted exactly against these names (judged at
    * decision time over the stored listing, deduplicated to first
-   * occurrence). Stored verbatim beside the other dimensions; absent or
-   * empty confers no variable governance. The governed tool is the
-   * registered setVar definition - the model-side write channel; the
-   * read lanes are unrestricted. */
+   * occurrence). EXPECTATION face: every listed name must be present in the
+   * session variable store — ANY ORIGIN (an inherited value or a programmatic
+   * mid-flight write satisfies) — before the phase may settle; a missing name
+   * burns a corrective re-run on a dedicated counter independent of the budget
+   * and the stopping rule, capped at the module-private default, terminating
+   * in the typed failure. ARM TIME: every listed name must carry a base-type
+   * registration before the first turn — a miss faults loudly at arm, so an
+   * unsatisfiable declaration dies at arm, never at the ceiling. Stored
+   * verbatim beside the other dimensions; absent or empty confers no variable
+   * governance. The governed tool is the registered setVar definition - the
+   * model-side write channel; the read lanes are unrestricted. */
   readonly vars?: readonly string[];
 }
 
@@ -315,7 +397,10 @@ export interface IterationCtx {
   readonly counters: SessionCounters;
   /** Committed paths of the just-settled run — stable under repeated reads. */
   readonly filesWritten: string[];
-  /** The session variable store, passed by reference. */
+  /** The session variable store, passed by reference: the SAME instance the
+   * model's variable tools write during the run — a hook reading it mid-run
+   * observes the LIVE values, including writes landed during the
+   * just-settled run. */
   readonly vars: SessionVariableStore;
 }
 
@@ -327,7 +412,9 @@ export interface PhaseResult {
   readonly iterations: number;
   /** Concatenated settled-end payloads of the phase, in event order. */
   readonly messages: unknown[];
-  /** Empty by construction: no mid-run variable writes occur yet. */
+  /** Unreported by design in v1: the store IS the live state every reader
+   * can consult directly; the change-record rationale was retired by owner
+   * ruling. */
   readonly varsDelta: Record<string, unknown>;
   /** One fresh cumulative snapshot taken after the final run settles. */
   readonly counters: SessionCounters;
@@ -386,6 +473,22 @@ class VarRegistryError extends Error {
   constructor(message: string) {
     super(message);
     this.name = "VarRegistryError";
+  }
+}
+
+/**
+ * Bookkeeping corruption over the PHASE VARIABLE DECLARATION: a phase lists
+ * variable names without base-type registrations. Developer-facing, PURE
+ * ASCII (no em dashes), model-invisible — deliberately DISTINCT from the
+ * model-visible VariableRejectionError (same doctrine as VarRegistryError /
+ * ExecutionStateError). Unexported on purpose: the suite asserts by name
+ * only. NO ES cause member (bare-identity capture reduces to {type,
+ * message}).
+ */
+class PhaseVarDeclarationError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "PhaseVarDeclarationError";
   }
 }
 
@@ -672,22 +775,17 @@ function isDeclaredType(type: string): boolean {
  * READ SURFACE: get(name) stays the SAFE channel (stored value or
  * undefined; never throws); the overloaded typed read get(name, type)
  * returns the CONCRETE type (VarValueOf) and throws the family on
- * absent/unconvertible values — reads mutate nothing. DELTA-WINDOW CURSOR:
- * resetVarsDelta marks the baseline (name to stored-value REFERENCE; empty
- * initial baseline; re-mark advances) and getVarsDelta reports additions
- * and reference-inequal modifications with final values (cursor idiom
- * mirrored from the committed-path baseline; v1 has no delete API).
- * Deliberately distinct from the root tree's richer same-named class
- * (different package, different surface).
+ * absent/unconvertible values — reads mutate nothing. The store IS the live
+ * state every reader consults directly: current values, current
+ * declarations, no change record riding elsewhere. Deliberately distinct
+ * from the root tree's richer same-named class (different package,
+ * different surface).
  */
 export class SessionVariableStore {
   #entries: Map<string, unknown> = new Map();
   /** Base-type registry (name to type, insertion-ordered): written ONLY
    * by declare — the mandatory-type sole-writer invariant. */
   #types: Map<string, VarType> = new Map();
-  /** Delta-window baseline (cursor idiom): name to stored-value REFERENCE
-   * frozen at the last mark; EMPTY until the first mark. */
-  #deltaBaseline: Map<string, unknown> = new Map();
 
   /** Safe channel: the stored value, or undefined when the name is
    * absent. Never throws — the typed overload below is the faulting
@@ -789,33 +887,6 @@ export class SessionVariableStore {
       snapshot[name] = type;
     }
     return snapshot;
-  }
-
-  /** Mark the delta-window baseline: freezes the current entries (name to
-   * stored-value REFERENCE) into the cursor. The initial baseline is
-   * EMPTY (pre-mark reads report everything currently stored); marking
-   * AGAIN advances past the current state (intermediate churn drops off).
-   * Taken once at phase arm by the phase engine. */
-  resetVarsDelta(): void {
-    this.#deltaBaseline = new Map(this.#entries);
-  }
-
-  /** Compute the delta window: fresh object per call (non-consuming, stable
-   * under repeated reads) reporting every variable ADDED OR MODIFIED since
-   * the baseline with FINAL values. Modification detection is REFERENCE
-   * inequality of stored values (primitives compare by value; in-place
-   * mutation of a retained reference is NOT a modification — writers
-   * routing through set are always observed). v1 has no delete API: no
-   * removals are reported. */
-  getVarsDelta(): Record<string, unknown> {
-    const delta: Record<string, unknown> = {};
-    for (const [name, value] of this.#entries) {
-      const baseline = this.#deltaBaseline.get(name);
-      if (baseline !== value) {
-        delta[name] = value;
-      }
-    }
-    return delta;
   }
 }
 
@@ -1199,11 +1270,16 @@ export class PioSession {
    * One phase = a budgeted sequence of settled agent runs driven through the
    * session's prompt channel; the once-composed marker line leads every
    * run's text and the between-runs hook observes each settling run.
-   * Declared deliverable paths (write) arm the settlement gate: every
-   * normal break point passes a fresh existence consult before settling —
-   * a denial burns one corrective re-run (max MAX_EXPECTATION_RETRIES) and
-   * the ceiling throws the error home's ContractViolationError. Every exit
-   * closes both windows so the phase leaks nothing into the next one.
+   * Declared deliverable paths (write) and declared variable names (vars)
+   * arm the dual-face settlement gate: every normal break point passes the
+   * fresh EXISTS-and-PRESENCE consults before settling — a denial burns one
+   * corrective re-run per denying face (mirrored ceilings) and exhaustion
+   * throws the error home's ContractViolationError collecting ALL
+   * still-missing violations (file lines first, then variable lines). Arm
+   * time: every listed variable name must carry a base-type registration
+   * before the first turn — a miss faults LOUDLY at arm (module-local ASCII
+   * bookkeeping voice) and never reaches the ceiling. Every exit closes both
+   * windows so the phase leaks nothing into the next one.
    */
   async execute_phase(id: string, opts?: PhaseOptions): Promise<PhaseResult> {
     const min = opts?.min ?? 1;
@@ -1227,6 +1303,24 @@ export class PioSession {
     // Rides by reference (verbatim carriage - no copy or transform):
     // present-and-non-empty arms the phase's variable governance.
     const declaredVars = opts?.vars ?? [];
+    // Retained for the whole duration, parallel to the retained write
+    // declarations: declaration-order, first-occurrence dedupe — the SAME
+    // semantics the guard applies at judgment time.
+    const effectiveVars = effectiveVarListing(declaredVars);
+    // ARM-TIME REGISTRY VALIDATION (strictly between the listing computation
+    // and the attach, pre-disclosure, pre-try): a miss FAULTS LOUDLY before
+    // the first turn — nothing is attached (no detach needed, no window
+    // opens, zero prompts issue) and the throw escapes VERBATIM through the
+    // standard containment channels.
+    const registrySnapshot = this.vars.declarations();
+    const varMisses = effectiveVars.filter(
+      (name) => !Object.hasOwn(registrySnapshot, name),
+    );
+    if (varMisses.length > 0) {
+      throw new PhaseVarDeclarationError(
+        renderPhaseVarFaultLine(id, varMisses),
+      );
+    }
     // Paths, both class flags, and the variable-name list feed the
     // execution state when any dimension is declared: attach STRICTLY AT PHASE START
     // (outside the try block, so a loud bookkeeping fault escapes with no
@@ -1274,6 +1368,8 @@ export class PioSession {
     let iterations = 0;
     // Independent of budget and stop rule; never surfaced on PhaseResult.
     let expectationRetries = 0;
+    // The variable face's twin counter (mirrored ceiling; same isolation).
+    let varExpectationRetries = 0;
     // Next run's corrective block: set only at a gate denial, consumed once —
     // floor/hook continuations re-send the untouched baseline.
     let pendingNote: string | undefined;
@@ -1299,30 +1395,63 @@ export class PioSession {
           proceed = proceed || !verdict;
         }
         if (!proceed || iterations >= max) {
-          // Settlement gate — this break path only: fresh existsSync over
-          // the retained resolved declarations (declaration order); an
-          // absent/empty declaration settles identically to the ungated case.
+          // Dual-face settlement gate — this break path only: fresh
+          // existsSync over the retained resolved declarations plus FRESH
+          // PRESENCE over the retained effective variable listing
+          // (origin-blind — an inherited or programmatic value satisfies
+          // equally). A face with no declarations settles identically to
+          // the ungated case.
           const missing = declarations.filter(
             (declaration) => !existsSync(declaration.resolved),
           );
-          if (missing.length > 0) {
-            if (expectationRetries >= MAX_EXPECTATION_RETRIES) {
-              // Ceiling exhausted: collect-all typed failure.
-              throw new ContractViolationError(
-                missing.map((declaration) =>
+          const missingVars = effectiveVars.filter(
+            (name) => this.vars.get(name) === undefined,
+          );
+          if (missing.length > 0 || missingVars.length > 0) {
+            // Cap check BEFORE any increment (mirror of the file comparison
+            // order): a face at ITS OWN cap with expectations still unmet
+            // ends the phase.
+            const fileAtCap =
+              missing.length > 0 &&
+              expectationRetries >= MAX_EXPECTATION_RETRIES;
+            const varAtCap =
+              missingVars.length > 0 &&
+              varExpectationRetries >= MAX_VAR_EXPECTATION_RETRIES;
+            if (fileAtCap || varAtCap) {
+              // Collect-all: file lines first (declaration order), then
+              // variable lines (effective-listing order); satisfied faces
+              // contribute zero lines.
+              throw new ContractViolationError([
+                ...missing.map((declaration) =>
                   renderMissingOutputLine(
                     id,
                     declaration.entry,
                     declaration.resolved,
                   ),
                 ),
+                ...missingVars.map((name) =>
+                  renderMissingVariableLine(id, name),
+                ),
+              ]);
+            }
+            // One corrective note per denying face, FIXED ORDER (output
+            // guard first, then variable guard), single LF when both
+            // present; a single-face denial degrades to the pure bytes.
+            const notes: string[] = [];
+            if (missing.length > 0) {
+              expectationRetries += 1;
+              notes.push(
+                renderExpectationRetryLine(
+                  iterations,
+                  missing.map((declaration) => declaration.resolved),
+                ),
               );
             }
-            expectationRetries += 1;
-            pendingNote = renderExpectationRetryLine(
-              iterations,
-              missing.map((declaration) => declaration.resolved),
-            );
+            if (missingVars.length > 0) {
+              varExpectationRetries += 1;
+              notes.push(renderVariableRetryLine(iterations, missingVars));
+            }
+            pendingNote = notes.join("\n");
             continue; // denied settlement: re-enter the loop body
           }
           break;

@@ -11,7 +11,8 @@
 // application impossible) and hands PLAIN VALUES downstream: nothing past this
 // module ever sees a closure. Stores PLAIN DATA only (sources by reference,
 // the phase's full raw record verbatim - raw resolved paths plus BOTH raw
-// flags, zero-copy trust boundary; caller mutation is documented, not
+// flags plus the variable-name list, zero-copy trust boundary; caller
+// mutation is documented, not
 // defended against). Bookkeeping corruption is deterministic
 // and LOUD: the unexported ExecutionStateError carries the four fault forms;
 // silent tolerance is forbidden.
@@ -31,8 +32,9 @@ import type {
  * session's invariant paths — the execution state's `snapshot()` output,
  * given as-is. Lives in ITS PRODUCER'S MODULE (any snapshot-consuming guard
  * depends on the state by construction — producer-side typing adds no consumer
- * edge). Shared by EVERY guard member (write gate today; the bash-command-guard
- * tomorrow consumes the SAME record — no per-guard snapshot fork, ever).
+ * edge). Shared by EVERY guard member (the write gate and the variable-
+ * write gate today; a future command guard consumes the SAME record - no
+ * per-guard snapshot fork, ever).
  * SINGLE SOURCE OF TRUTH — `write-gate.ts` takes the plain type-only import. */
 export interface ExecutionSnapshot {
   /** NULL = no capability span active. A real sources object with empty
@@ -113,19 +115,22 @@ export class SessionExecutionState {
   }
 
   /** Store the CURRENT phase AS A RECORD: { id, declared,
-   * allowProjectWrites, tmpDirAllowed } VERBATIM in the top layer's SCALAR
-   * slot - the FULL RAW RECORD exactly as passed (raw resolved paths plus
-   * the raw scope flag plus the raw scratch flag: no filtering, validation,
+   * allowProjectWrites, tmpDirAllowed, vars } VERBATIM in the top layer's
+   * SCALAR slot - the FULL RAW RECORD exactly as passed (raw resolved paths
+   * plus the raw scope flag plus the raw scratch flag plus the raw
+   * variable-name list: no filtering, validation,
    * contract consultation, channel consult, or copy-transformation).
    * Attaching while a phase is already attached OVERWRITES the slot
-   * (last-wins). An EMPTY declaration with BOTH flags FALSE is a valid no-op
-   * attachment (confers no governance - the predicate's phase branch falls
-   * through lazily; keeps detach symmetric). Sole fault: depth 0. */
+   * (last-wins). An EMPTY declaration with BOTH flags FALSE and an EMPTY
+   * variable-name list is a valid no-op attachment (confers no governance -
+   * the predicates' phase branches fall through lazily; keeps detach
+   * symmetric). Sole fault: depth 0. */
   attachPhase(
     phaseId: string,
     declaredPaths: readonly string[],
     allowProjectWrites: boolean,
     tmpDirAllowed: boolean,
+    vars: readonly string[],
   ): void {
     const top = this.layers.at(-1);
     if (top === undefined) {
@@ -138,6 +143,7 @@ export class SessionExecutionState {
       declared: declaredPaths,
       allowProjectWrites,
       tmpDirAllowed,
+      vars,
     };
   }
 

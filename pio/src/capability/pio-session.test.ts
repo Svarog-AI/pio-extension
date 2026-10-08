@@ -65,6 +65,7 @@ import {
 import type { Contract } from "./contract.ts";
 import { ContractViolationError, VariableRejectionError } from "./errors.ts";
 import type { CapabilitySources } from "./guards/guard-vocabulary.ts";
+import { decideVarWrite } from "./guards/var-gate.ts";
 import { decideWrite } from "./guards/write-gate.ts";
 import type { IterationCtx, PhaseResult, VarType } from "./pio-session.ts";
 import {
@@ -2214,6 +2215,7 @@ describe("PioSession — phase-permission disclosure", () => {
         declared: ["/slot/root/a.md"],
         allowProjectWrites: false,
         tmpDirAllowed: false,
+        vars: [],
       },
       paths: { projectSlotRoot: "/slot/root", workspaceCwd: "/ws" },
     };
@@ -2224,6 +2226,7 @@ describe("PioSession — phase-permission disclosure", () => {
         declared: [],
         allowProjectWrites: true,
         tmpDirAllowed: true,
+        vars: [],
       },
       paths: { projectSlotRoot: "/slot/root", workspaceCwd: "/ws" },
     };
@@ -2234,6 +2237,7 @@ describe("PioSession — phase-permission disclosure", () => {
         declared: ["/slot/root/a.md", "/slot/root/b.md"],
         allowProjectWrites: true,
         tmpDirAllowed: true,
+        vars: [],
       },
       paths: { projectSlotRoot: "/slot/root", workspaceCwd: "/ws" },
     };
@@ -3601,7 +3605,7 @@ describe("source guards (composed-host edge discipline over pio-session.ts)", ()
     expect(src.includes("isComposed")).toBe(false);
   });
 
-  it("the SDK root sits in EXACTLY ONE clause — the TYPE clause, normalized byte form pinned with AgentSession LEADING — and the VALUE clause set is exactly the pinned ten-specifier gate-wiring set behind it", () => {
+  it("the SDK root sits in EXACTLY ONE clause — the TYPE clause, normalized byte form pinned with AgentSession LEADING — and the VALUE clause set is exactly the pinned eleven-specifier gate-wiring set behind it", () => {
     // EXACTLY ONE clause references the SDK root, and it is the TYPE
     // clause.
     expect(src.match(/from "@earendil-works\/pi-coding-agent"/g)?.length).toBe(
@@ -3636,12 +3640,27 @@ describe("source guards (composed-host edge discipline over pio-session.ts)", ()
       "../tools/bash/landlock-bash.ts",
       "./base.ts",
       "./errors.ts",
+      "./guards/var-gate.ts",
       "./guards/write-gate.ts",
     ]);
     // ...BEHIND the external type clause.
     expect(src.indexOf('from "@earendil-works/pi-coding-agent"')).toBeLessThan(
       src.indexOf('from "../session.ts"'),
     );
+  });
+
+  it("the guard install threads the TWO handler closures BY ORDER (write row first, var row second) - whitespace-normalized module bytes pin the exact list, so a reordering or a third handler slips this mechanical pin", () => {
+    const normalized = src.replace(/\s+/g, " ");
+    expect(
+      normalized.includes(
+        "handlers: [writeToolCallHandler, varToolCallHandler]",
+      ),
+    ).toBe(true);
+    // Both closure declarations consult their FRESH snapshots through the
+    // two stateless predicates - one callsite each, zero other decide*
+    // sites in the module.
+    expect(normalized.match(/decideWrite\(/g)?.length).toBe(1);
+    expect(normalized.match(/decideVarWrite\(/g)?.length).toBe(1);
   });
 
   it("fragment occurrences over the disclosure channel: the module-private disclosure static appears EXACTLY TWICE (declaration + the renderer's single destructure read) and the renderer itself is declared EXACTLY ONCE beside its SINGLE invocation — the injection site consults one optional-chained snapshot reading, never more", () => {
@@ -3790,7 +3809,7 @@ describe("PioSession \u2014 gate mint + threading (producer side)", () => {
       // SAME /tmp/ target from refused to allowed - scratch rides the
       // phase declaration at decision time end-to-end through the real
       // registered handler.
-      gate.state.attachPhase("freshness-scratch", [], false, true);
+      gate.state.attachPhase("freshness-scratch", [], false, true, []);
       expect(gate.toolCallHandler(toolCall("write", tmpInput))).toBe(undefined);
       gate.state.detachPhase();
 
@@ -3809,7 +3828,7 @@ describe("PioSession \u2014 gate mint + threading (producer side)", () => {
         writes: ["research/*.md"],
         allowProjectWrites: false,
       });
-      gate.state.attachPhase("freshness", [coveredTarget], false, false);
+      gate.state.attachPhase("freshness", [coveredTarget], false, false, []);
       expect(gate.toolCallHandler(toolCall("write", coveredInput))).toBe(
         undefined,
       );
@@ -4005,12 +4024,14 @@ describe("PioSession \u2014 gate phase feeding (attach/detach lifecycle)", () =>
     declared: readonly string[];
     allowProjectWrites: boolean;
     tmpDirAllowed: boolean;
+    vars: readonly string[];
   };
   const recordOf = (phase: PhaseRecord): PhaseRecord => ({
     id: phase.id,
     declared: phase.declared,
     allowProjectWrites: phase.allowProjectWrites,
     tmpDirAllowed: phase.tmpDirAllowed,
+    vars: phase.vars,
   });
 
   it("ATTACH stores the RAW declared VERBATIM: a double declaration (BOTH files seeded so the expectation gate passes) is stored WHOLE at the mid-run reading - declaration order pinned, the contract-uncovered ghost entry present, proving NO filtering at attach - the phase id pinned, and the post-detach reading STRUCTURALLY IDENTICAL to the pre-attach reading", async () => {
@@ -4191,6 +4212,7 @@ describe("PioSession \u2014 gate phase feeding (attach/detach lifecycle)", () =>
         declared: [],
         allowProjectWrites: true,
         tmpDirAllowed: false,
+        vars: [],
       });
       // Normal-break detach over the widened attach:
       expect(gate.state.snapshot().phase).toBeNull();
@@ -4218,6 +4240,7 @@ describe("PioSession \u2014 gate phase feeding (attach/detach lifecycle)", () =>
         declared: [],
         allowProjectWrites: false,
         tmpDirAllowed: true,
+        vars: [],
       });
       expect(gate.state.snapshot().phase).toBeNull();
     });
@@ -4249,6 +4272,7 @@ describe("PioSession \u2014 gate phase feeding (attach/detach lifecycle)", () =>
           declared: [path.resolve(seeded)],
           allowProjectWrites: true,
           tmpDirAllowed: false,
+          vars: [],
         });
         expect(gate.state.snapshot().phase).toBeNull();
       } finally {
@@ -4305,6 +4329,204 @@ describe("PioSession \u2014 gate phase feeding (attach/detach lifecycle)", () =>
   });
 });
 
+describe("PioSession \u2014 var-gate interceptor wiring (second handler row)", () => {
+  /** Structural mirror of the mid-run phase reading (hook-observed through
+   * the REAL state snapshot - never a fake of the system under test). */
+  type VarPhaseRecord = {
+    id: string;
+    declared: readonly string[];
+    allowProjectWrites: boolean;
+    tmpDirAllowed: boolean;
+    vars: readonly string[];
+  };
+
+  it("the composed tool_call handler walks BOTH rows IN ORDER: the setVar lane deep-equals the REAL decideVarWrite over deny shapes while the write lane stays deep-equal to decideWrite - and getVar/listVars/bash pass through from every lane with NO verdict", async () => {
+    await withAgentDir(AGENT_DIR_LITERAL, async () => {
+      const { gate } = await host();
+      // SetVar lane (depth-0 fixture window -> universal line shape):
+      // identity with the real predicate judged on a fresh snapshot.
+      const vInput = { name: "anything" };
+      expect(gate.toolCallHandler(toolCall("setVar", vInput))).toStrictEqual(
+        decideVarWrite(gate.state.snapshot(), "setVar", vInput),
+      );
+      expect(gate.toolCallHandler(toolCall("setVar", vInput))?.block).toBe(
+        true,
+      );
+      // Write lane unchanged: still composes decideWrite verbatim.
+      const wInput = { path: "/outside/a.md" };
+      expect(gate.toolCallHandler(toolCall("write", wInput))).toStrictEqual(
+        decideWrite(gate.state.snapshot(), "write", wInput),
+      );
+      // Pass-through lanes: neither row intercepts these names.
+      expect(gate.toolCallHandler(toolCall("getVar", {}))).toBeUndefined();
+      expect(gate.toolCallHandler(toolCall("listVars", {}))).toBeUndefined();
+      expect(
+        gate.toolCallHandler(toolCall("bash", { command: "ls" })),
+      ).toBeUndefined();
+    });
+  });
+
+  it("per-call freshness on the var lane: the SAME composed handler judges against the moment's declaration - reattaching a different vars bag flips admit into refusal and back between calls without re-minting anything", async () => {
+    await withAgentDir(AGENT_DIR_LITERAL, async () => {
+      const { gate } = await host();
+      const input = { name: "alpha" };
+      // (i) governs the name: admitted by the var row (no verdict).
+      gate.state.attachPhase("v-fresh", [], false, false, ["alpha"]);
+      expect(gate.toolCallHandler(toolCall("setVar", input))).toBeUndefined();
+      // (ii) swap the declaration on the SAME live state: refused now.
+      gate.state.detachPhase();
+      gate.state.attachPhase("v-fresh", [], false, false, ["other"]);
+      const refused = gate.toolCallHandler(toolCall("setVar", input));
+      expect(refused?.block).toBe(true);
+      // (iii) restore the admission on the same state: admitted again.
+      gate.state.detachPhase();
+      gate.state.attachPhase("v-fresh", [], false, false, ["alpha"]);
+      expect(gate.toolCallHandler(toolCall("setVar", input))).toBeUndefined();
+      gate.state.detachPhase();
+      expect(gate.state.snapshot().phase).toBeNull();
+    });
+  });
+
+  it("VARS-ONLY ATTACHES END-TO-END: a vars bag WITHOUT the write bag and WITHOUT the class flags arms the FULL five-field record (mid-run reading deep-equals all five fields; the stored vars array is the EXACT passed array BY REFERENCE - verbatim storage) and detaches after the normal break", async () => {
+    await withAgentDir(AGENT_DIR_LITERAL, async () => {
+      const { instance, round, gate } = await host();
+      scriptRuns(round, quietRun());
+      const declaredVars = ["alpha", "beta"];
+      let observed: VarPhaseRecord | null = null;
+      let seenRef: readonly string[] | null = null;
+      const result = await instance.execute_phase("vars-only-leg", {
+        vars: declaredVars,
+        shouldStopLoop: async () => {
+          const phase = gate.state.snapshot().phase;
+          if (phase !== null) {
+            observed = {
+              id: phase.id,
+              declared: [...phase.declared],
+              allowProjectWrites: phase.allowProjectWrites,
+              tmpDirAllowed: phase.tmpDirAllowed,
+              vars: [...phase.vars],
+            };
+            seenRef = phase.vars;
+          }
+          return true;
+        },
+      });
+      expect(result.iterations).toBe(1);
+      expect(observed).toStrictEqual({
+        id: "vars-only-leg",
+        declared: [],
+        allowProjectWrites: false,
+        tmpDirAllowed: false,
+        vars: ["alpha", "beta"],
+      });
+      // Verbatim carriage: the stored reference IS the passed array.
+      expect(seenRef).toBe(declaredVars);
+      expect(gate.state.snapshot().phase).toBeNull();
+    });
+  });
+
+  it("DIMENSION-LESS PHASES ATTACH NOTHING: a bare instructions-only execute_phase leaves the phase slot EMPTY at the mid-run AND post-run readings (the widened attach condition admits nothing new for them - eager no-op cleanliness end-to-end)", async () => {
+    await withAgentDir(AGENT_DIR_LITERAL, async () => {
+      const { instance, round, gate } = await host();
+      scriptRuns(round, quietRun());
+      let mid: string | null = null;
+      const result = await instance.execute_phase("no-perms", {
+        instructions: "go",
+        shouldStopLoop: async () => {
+          mid = gate.state.snapshot().phase?.id ?? null;
+          return true;
+        },
+      });
+      expect(result.iterations).toBe(1);
+      expect(mid).toBeNull();
+      expect(gate.state.snapshot().phase).toBeNull();
+    });
+  });
+
+  it("PATHS+VARS COMBINE VERBATIM: a seeded deliverable PLUS the vars bag feeds the resolved path AND the exact declaration into ONE five-field record (both dimensions stored whole, declaration order pinned) with the symmetric post-break detach", async () => {
+    await withAgentDir(AGENT_DIR_LITERAL, async () => {
+      const tmp = await mkdtemp(path.join(tmpdir(), "pio-gate-vcombo-"));
+      try {
+        const seeded = path.join(tmp, "c.md");
+        await writeFile(seeded, "seeded\n");
+        const { instance, round, gate } = await host();
+        scriptRuns(round, quietRun());
+        const bagVars = ["x", "y"];
+        let paths: string[] | null = null;
+        let vars: string[] | null = null;
+        const result = await instance.execute_phase("combined-leg", {
+          write: [seeded],
+          vars: bagVars,
+          shouldStopLoop: async () => {
+            const phase = gate.state.snapshot().phase;
+            if (phase !== null) {
+              paths = [...phase.declared];
+              vars = [...phase.vars];
+            }
+            return true;
+          },
+        });
+        expect(result.iterations).toBe(1);
+        expect(paths).toEqual([path.resolve(seeded)]);
+        expect(vars).toEqual(bagVars);
+        expect(gate.state.snapshot().phase).toBeNull();
+      } finally {
+        await rm(tmp, { recursive: true, force: true });
+      }
+    });
+  });
+
+  it("VARS-ONLY DISCLOSURE IS THE MARKER + STANDING LABEL + None: the phase-permission block renders IDENTICALLY to the no-dimension case (the renderer consults only the file dimension and the class flags - the variable clause contributes no bytes there)", async () => {
+    await withAgentDir(AGENT_DIR_LITERAL, async () => {
+      const { instance, round, gate } = await host();
+      scriptRuns(round, quietRun());
+      let midDisclosure: string | undefined;
+      await instance.execute_phase("disc-vars-only", {
+        vars: ["only-var"],
+        shouldStopLoop: async () => {
+          const snap = gate.state.snapshot();
+          midDisclosure = renderPhasePermissionDisclosure(snap);
+          return true;
+        },
+      });
+      // The vars-only reading carries a non-null phase whose file
+      // dimension is empty and both class flags are down: the block
+      // collapses to the standing label plus the None marker - exactly
+      // what the absent-phase rendering produces.
+      expect(midDisclosure).toBe(expectedDisclosure());
+      // Identity with the ABSENT-reading rendering byte-for-byte:
+      expect(
+        renderPhasePermissionDisclosure({
+          sources: FIXTURE_SPAN,
+          phase: null,
+          paths: gate.state.snapshot().paths,
+        }),
+      ).toBe(midDisclosure);
+    });
+  });
+
+  it("a FOREIGN unstamped host runs execute_phase over the vars bag CLEANLY: no execution state means the widened attach condition short-circuits (no depth-0 fault, no side effect) and the phase settles normally", async () => {
+    await withAgentDir(AGENT_DIR_LITERAL, async () => {
+      const hf = harness.mintFakeHandle();
+      const foreign = PioSession.fromRuntime(asRuntime({ session: hf }));
+      hf.prompt.mockImplementationOnce(async () => {
+        emitTo(hf, ...quietRun());
+      });
+      const result = await foreign.execute_phase("foreign-vars", {
+        vars: ["some-decl"],
+      });
+      expect(result.done).toBe(true);
+      expect(result.iterations).toBe(1);
+      expect(foreign.counters()).toEqual({
+        filesWritten: 0,
+        askUserCalls: 0,
+        toolUses: {},
+        tokens: 0,
+      });
+    });
+  });
+});
+
 describe("PioSession \u2014 gate rebind span survival (a successful swap leaves the state intact)", () => {
   it("a SUCCESSFUL swap rebind LEAVES THE STATE INTACT: the pre-existing outer span layer survives the switch-back ON THE SHARED STATE (by reference, phase still attached), a follow-up enter/attach round-trips under it, and the extracted handler's consultations track the surviving layers by identity with the real predicate (span-survival visibility end-to-end)", async () => {
     await withAgentDir(AGENT_DIR_LITERAL, async () => {
@@ -4321,6 +4543,7 @@ describe("PioSession \u2014 gate rebind span survival (a successful swap leaves 
         ["/window/declared.md"],
         false,
         false,
+        [],
       );
       expect(gate.state.snapshot().phase?.id).toBe("open-window");
 
@@ -4336,7 +4559,7 @@ describe("PioSession \u2014 gate rebind span survival (a successful swap leaves 
       // A follow-up enter/attach round-trips UNDER the surviving layers
       // cleanly (the LIFO stack composes after the swap).
       gate.state.enterCapability(FIXTURE_SPAN);
-      gate.state.attachPhase("post-switch", ["/post/x.md"], false, false);
+      gate.state.attachPhase("post-switch", ["/post/x.md"], false, false, []);
       expect(gate.state.snapshot().phase?.id).toBe("post-switch");
       gate.state.detachPhase();
       gate.state.exitCapability();
@@ -4640,7 +4863,13 @@ describe("PioSession \u2014 Landlock-bash customTools threading", () => {
       expect(windowA.phase).toBeNull();
       stateA.enterCapability(FIXTURE_SPAN);
       const literalTarget = "/lit/guard/target.md";
-      stateA.attachPhase("landlock-late-binding", [literalTarget], true, true);
+      stateA.attachPhase(
+        "landlock-late-binding",
+        [literalTarget],
+        true,
+        true,
+        [],
+      );
       const windowB = stateA.snapshot();
       expect(windowB.sources).toEqual(FIXTURE_SPAN);
       expect(windowB.phase).toStrictEqual({
@@ -4648,6 +4877,7 @@ describe("PioSession \u2014 Landlock-bash customTools threading", () => {
         declared: [literalTarget],
         allowProjectWrites: true,
         tmpDirAllowed: true,
+        vars: [],
       });
       expect(windowB.paths).toEqual(windowA.paths);
       // (iii) Single-expression linkage (design-type glue, flagged): the

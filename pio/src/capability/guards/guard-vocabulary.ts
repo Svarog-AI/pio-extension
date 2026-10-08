@@ -17,14 +17,17 @@ export interface CapabilitySources {
   allowProjectWrites: boolean;
 }
 
-/** The active phase's RAW RESOLVED DECLARATION - THREE declared permission
+/** The active phase's RAW RESOLVED DECLARATION - FOUR declared permission
  * dimensions, exactly as the phase declared them (the execution state stores
  * all of them VERBATIM - no filtering/validation at attach; judgment runs at
  * DECISION TIME in the predicate). (i) concrete absolute PATHS as declared;
  * (ii) the project-files (workspace-cwd) SCOPE FLAG, clamped against the
  * running capability's contract flag when judged; (iii) the SCRATCH FLAG
  * (tmpDirAllowed), a SINGLE phase flag with NO contract-side counterpart
- * (judged unclamped at decision time). The EFFECTIVE construction (declared
+ * (judged unclamped at decision time); (iv) the VARIABLE NAME declaration,
+ * a NAME-space-only list that the model's setVar writes bind to at the
+ * var-gate PDP (no paths, no clamping - the gate consults the list alone).
+ * The EFFECTIVE construction (declared
  * intersect contract-covered, plus the scope class when both flags agree,
  * plus the scratch class when the flag is set) is materialized by the
  * predicate at DECISION TIME; an EMPTY effective construction confers NO
@@ -35,6 +38,13 @@ export interface PhasePermission {
   allowProjectWrites: boolean;
   // the phase's own scratch declaration - single-flag doctrine, never clamped
   tmpDirAllowed: boolean;
+  // the phase's declared VARIABLE NAME declaration - the model's setVar
+  // writes bind to these names at the var-gate PDP (NAME space only: no
+  // paths, no clamping - the gate consults the list alone). Stored
+  // VERBATIM like the paths/flags; an empty list confers NO var governance
+  // (the gate's phase branch falls through lazily, like the file gate's
+  // empty effective construction).
+  vars: readonly string[];
 }
 
 /** The session's path anchors — PLAIN RESOLVED STRINGS, session-invariant.

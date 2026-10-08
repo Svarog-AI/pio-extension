@@ -2300,7 +2300,7 @@ describe("module-driven write-gate rows (real execution state + decideWrite comp
   it("clamped: an over-layer co-declared scratch entry NEVER covered by the contract is INVISIBLE at decision time - refused AS IF UNDECLARED on the universal no-permission byte (the pure plain-data clamp-at-source CORNER stands: uncovered entries invisible, nothing named)", () => {
     const d = drivenState();
     d.state.enterCapability(DEMO_SOURCES);
-    d.state.attachPhase("clamped", [d.uncovered], false, false);
+    d.state.attachPhase("clamped", [d.uncovered], false, false, []);
     const verdict = decideWrite(d.state.snapshot(), "write", {
       path: d.uncovered,
     });
@@ -2361,7 +2361,7 @@ describe("module-driven write-gate rows (real execution state + decideWrite comp
       allowProjectWrites: false,
     };
     d.state.enterCapability(unbackedSources);
-    d.state.attachPhase("flag-present-no-paths", [], true, false);
+    d.state.attachPhase("flag-present-no-paths", [], true, false, []);
     const flagged = decideWrite(d.state.snapshot(), "write", {
       path: d.cwdFile,
     });
@@ -2382,7 +2382,7 @@ describe("module-driven write-gate rows (real execution state + decideWrite comp
   it("backed flag admits the class ALONE: demo sources plus a flag-declaring phase (NO paths) admit the workspace-cwd target", () => {
     const d = drivenState();
     d.state.enterCapability(DEMO_SOURCES);
-    d.state.attachPhase("scope-only", [], true, false);
+    d.state.attachPhase("scope-only", [], true, false, []);
     const verdict = decideWrite(d.state.snapshot(), "write", {
       path: d.cwdFile,
     });
@@ -2394,7 +2394,7 @@ describe("module-driven write-gate rows (real execution state + decideWrite comp
   it("flag-only attach confers EXCLUSIVE class governance: the slot-pattern target is REFUSED with the phase named and the scope element as the ONLY listing element", () => {
     const d = drivenState();
     d.state.enterCapability(DEMO_SOURCES);
-    d.state.attachPhase("scope-only", [], true, false);
+    d.state.attachPhase("scope-only", [], true, false, []);
     const verdict = decideWrite(d.state.snapshot(), "write", {
       path: d.covered,
     });
@@ -2409,7 +2409,7 @@ describe("module-driven write-gate rows (real execution state + decideWrite comp
   it("scratch-class plain data: DEMO_SOURCES plus a tmp-flag-only phase confers EXCLUSIVE scratch governance - the /tmp/ target ADMITTED, the slot-pattern target REFUSED with the phase named and the scratch element as the ONLY listing element; a survivor-carrying phase WITHOUT the flag refuses the SAME /tmp/ target phase-named with the survivor-only listing", () => {
     const d = drivenState();
     d.state.enterCapability(DEMO_SOURCES);
-    d.state.attachPhase("scratch-only", [], false, true);
+    d.state.attachPhase("scratch-only", [], false, true, []);
     const scratchAdmitted = decideWrite(d.state.snapshot(), "write", {
       path: "/tmp/gd-scratch.txt",
     });
@@ -2419,7 +2419,7 @@ describe("module-driven write-gate rows (real execution state + decideWrite comp
     d.state.detachPhase();
     // The twin: a survivor-carrying phase WITHOUT the flag keeps /tmp/
     // closed.
-    d.state.attachPhase("survivor-tmp-off", [d.covered], false, false);
+    d.state.attachPhase("survivor-tmp-off", [d.covered], false, false, []);
     const scratchRefused = decideWrite(d.state.snapshot(), "write", {
       path: "/tmp/gd-scratch.txt",
     });

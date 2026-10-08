@@ -8,7 +8,7 @@
 // runtime values cross a parse boundary or an assign-widening instead of an
 // annotation (the checkers assert shapes at runtime; the annotation
 // documents shape, not protection). Mechanical source guards pin the import
-// surface and the four-entry table literal.
+// surface and the five-entry table literal.
 
 import { readFileSync } from "node:fs";
 import ComposeNewSessionDemoCapability from "../capabilities/compose-new-session-demo.ts";
@@ -84,12 +84,13 @@ const FIXTURE_GAMMA = class extends PioCapability {
 };
 
 describe("miss path (default table)", () => {
-  it("the registration table ships EXACTLY the four entries in INSERTION order ('research' first, then the temporary demo, the permanent same-session demo, then the PERMANENT guard-demonstration home 'guards-demo' last)", () => {
+  it("the registration table ships EXACTLY the five entries in INSERTION order ('research' first, then the temporary demo, the permanent same-session demo, the PERMANENT guard-demonstration home 'guards-demo', and the PERMANENT variable-store home 'vars-demo' last)", () => {
     expect(Object.keys(CAPABILITY_TABLE)).toEqual([
       "research",
       "compose-new-session-demo",
       "compose-same-session-demo",
       "guards-demo",
+      "vars-demo",
     ]);
   });
 
@@ -674,7 +675,7 @@ describe("lazy discipline and structural guards", () => {
     expect(src.includes("@earendil-works/pi-coding-agent")).toBe(false);
   });
 
-  it("dynamic-import literal specifier set is EXACTLY the four shipped entries in table order AND total import( count equals the literal-set length (no interpolation)", () => {
+  it("dynamic-import literal specifier set is EXACTLY the five shipped entries in table order AND total import( count equals the literal-set length (no interpolation)", () => {
     const literalSet = [
       ...src.matchAll(/import\(\s*["']([^"']*)["']\s*\)/g),
     ].map((match) => match[1]);
@@ -684,6 +685,7 @@ describe("lazy discipline and structural guards", () => {
       "../capabilities/compose-new-session-demo.ts",
       "../capabilities/compose-same-session-demo.ts",
       "../capabilities/guards-demo.ts",
+      "../capabilities/vars-demo.ts",
     ]);
     expect(totalImportCalls).toBe(literalSet.length);
   });

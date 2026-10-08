@@ -320,6 +320,9 @@ vi.mock("../capabilities/research.ts", async () => {
       if (this.s !== undefined) {
         stubKit.state.varsRef = this.s.vars;
         stubKit.state.seenCallerVar = this.s.vars.get("caller-seeded");
+        // W2C mechanical preamble (mandatory-type ruling): declare before
+        // the first write; row intent unchanged.
+        this.s.vars.declare("callee-written", "string");
         this.s.vars.set("callee-written", "from-callee-span");
       }
       switch (stubKit.state.mode) {
@@ -937,6 +940,9 @@ describe("sharing (AC#3 evidence)", () => {
     const tmp = newTempRoot();
     enterWorkTree(tmp);
     const { instance, round } = await host();
+    // W2C mechanical preamble (mandatory-type ruling): declare before the
+    // first write; row intent unchanged.
+    instance.vars.declare("caller-seeded", "string");
     instance.vars.set("caller-seeded", "visible-across-spans");
     scriptRuns(round, quietSettle(), quietSettle(), quietSettle());
     const demo = new ComposeSameSessionDemoCapability({ session: instance });

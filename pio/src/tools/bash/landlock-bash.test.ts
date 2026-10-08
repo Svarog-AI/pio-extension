@@ -758,7 +758,7 @@ describe("B. pre-spawn fault truth table", () => {
     // matching requires absolute targets under the slot root), so the window
     // carries no strictly-concrete survivor and stays non-engaged.
     state.enterCapability(RESEARCH);
-    state.attachPhase("impl", ["research/a.md"], true, false);
+    state.attachPhase("impl", ["research/a.md"], true, false, []);
     const h = makeHarness(
       state,
       [{ stdin: false, actions: probePassActions() }],
@@ -1079,7 +1079,7 @@ describe("D. the standing-note matrix", () => {
     state.enterCapability(RESEARCH);
     // CLASS-FLAG-ONLY window (no declarations): the listing stays phase-
     // shaped over the class channel while the window stays non-engaged.
-    state.attachPhase("impl", [], true, false);
+    state.attachPhase("impl", [], true, false, []);
     const fake = scriptedOps((box) => {
       box.push(Buffer.from("attempting write...\n"));
       return { exitCode: 1 };
@@ -1122,7 +1122,7 @@ describe("D. the standing-note matrix", () => {
     state.enterCapability(RESEARCH);
     // CLASS-FLAG-ONLY window on the landed side too: phase-shaped note
     // without any strictly-concrete survivor (non-engaged).
-    state.attachPhase("impl", [], true, false);
+    state.attachPhase("impl", [], true, false, []);
     const ops2 = createLandlockBashOperations(WORKSPACE_CWD, state, {
       localOps: fake2.ops,
     });
@@ -2065,7 +2065,7 @@ describe("I. engaged-form serialization (supervisor preamble over the apply-form
     try {
       fx.state.enterCapability(RESEARCH);
       const leaf = `${fx.slot}/research/a.md`;
-      fx.state.attachPhase("impl", [leaf], true, false);
+      fx.state.attachPhase("impl", [leaf], true, false, []);
       const rec = dataRecorder();
       const fake = scriptedOps(() => ({ exitCode: 0 }));
       const h = makeHarness(fx.state, twoProbePreamble(), {
@@ -2115,7 +2115,13 @@ describe("I. engaged-form serialization (supervisor preamble over the apply-form
       fx.state.enterCapability(RESEARCH);
       const hostile =
         'don\'t "quote" $HOME \u00e9 back\\slash\nline-two `tick`';
-      fx.state.attachPhase("impl", [`${fx.slot}/research/a.md`], true, false);
+      fx.state.attachPhase(
+        "impl",
+        [`${fx.slot}/research/a.md`],
+        true,
+        false,
+        [],
+      );
       const fake = scriptedOps(() => ({ exitCode: 0 }));
       const h = makeHarness(fx.state, twoProbePreamble(), {
         localOps: fake.ops,
@@ -2156,7 +2162,13 @@ describe("I. engaged-form serialization (supervisor preamble over the apply-form
       const fx = openEngagedRoot();
       try {
         fx.state.enterCapability(RESEARCH);
-        fx.state.attachPhase("impl", [`${fx.slot}/research/a.md`], true, false);
+        fx.state.attachPhase(
+          "impl",
+          [`${fx.slot}/research/a.md`],
+          true,
+          false,
+          [],
+        );
         const rec = recorderOps();
         const h = makeHarness(fx.state, twoProbePreamble(), {
           resolveShellConfig: () => shellShape,
@@ -2188,7 +2200,7 @@ describe("I. engaged-form serialization (supervisor preamble over the apply-form
         `${fx.slot}/a/x/f2.md`,
         `${fx.slot}/deep/n/c.md`,
       ];
-      fx.state.attachPhase("impl", declared, false, false);
+      fx.state.attachPhase("impl", declared, false, false, []);
       const fake = scriptedOps(() => ({ exitCode: 0 }));
       const h = makeHarness(fx.state, twoProbePreamble(), {
         localOps: fake.ops,
@@ -2229,7 +2241,13 @@ describe("I. engaged-form serialization (supervisor preamble over the apply-form
     const fx = openEngagedRoot();
     try {
       fx.state.enterCapability(RESEARCH);
-      fx.state.attachPhase("impl", [`${fx.slot}/research/a.md`], true, false);
+      fx.state.attachPhase(
+        "impl",
+        [`${fx.slot}/research/a.md`],
+        true,
+        false,
+        [],
+      );
       const envBag = { PIO_SUITE_ENV: "marker-value" };
       const controller = new AbortController();
       let seenEnv: NodeJS.ProcessEnv | undefined;
@@ -2282,6 +2300,7 @@ describe("J. planner-refusal & pre-child engaged faults (all typed, zero spawns,
         [`${inner}/f2.md`, `${outer}/f1.md`],
         false,
         false,
+        [],
       );
       const rec = recorderOps();
       const h = makeHarness(fx.state, twoProbePreamble(), {
@@ -2331,7 +2350,7 @@ describe("J. planner-refusal & pre-child engaged faults (all typed, zero spawns,
           direction === 0
             ? [`${fx.slot}/.fence-capture/seed.md`]
             : [`${fx.slot}/.fence-capture/j-nonce/sub/d.md`];
-        fx.state.attachPhase("impl", declared, false, false);
+        fx.state.attachPhase("impl", declared, false, false, []);
         const rec = recorderOps();
         const h = makeHarness(fx.state, twoProbePreamble(), {
           localOps: rec.ops,
@@ -2369,7 +2388,13 @@ describe("J. planner-refusal & pre-child engaged faults (all typed, zero spawns,
         writes: ["area/*.md"],
         allowProjectWrites: false,
       });
-      fx.state.attachPhase("impl", [`${fx.slot}/area/seed.md`], false, false);
+      fx.state.attachPhase(
+        "impl",
+        [`${fx.slot}/area/seed.md`],
+        false,
+        false,
+        [],
+      );
       const rec = recorderOps();
       const h = makeHarness(fx.state, twoProbePreamble(), {
         localOps: rec.ops,
@@ -2427,7 +2452,13 @@ describe("J. planner-refusal & pre-child engaged faults (all typed, zero spawns,
     const fx = openEngagedRoot();
     try {
       fx.state.enterCapability(RESEARCH);
-      fx.state.attachPhase("impl", [`${fx.slot}/research/a.md`], true, false);
+      fx.state.attachPhase(
+        "impl",
+        [`${fx.slot}/research/a.md`],
+        true,
+        false,
+        [],
+      );
       const rec = recorderOps();
       const h = makeHarness(fx.state, twoProbePreamble(), {
         resolveShellConfig: () => ({ shell: "sh", args: ["-c"] }),
@@ -2488,7 +2519,13 @@ describe("K. combined-applicability probe over the second per-instance latch", (
     const fx = openEngagedRoot();
     try {
       fx.state.enterCapability(RESEARCH);
-      fx.state.attachPhase("impl", [`${fx.slot}/research/a.md`], true, false);
+      fx.state.attachPhase(
+        "impl",
+        [`${fx.slot}/research/a.md`],
+        true,
+        false,
+        [],
+      );
       const fake = scriptedOps(() => ({ exitCode: 0 }));
       const h = makeHarness(fx.state, twoProbePreamble(), {
         localOps: fake.ops,
@@ -2521,7 +2558,13 @@ describe("K. combined-applicability probe over the second per-instance latch", (
     const fx = openEngagedRoot();
     try {
       fx.state.enterCapability(RESEARCH);
-      fx.state.attachPhase("impl", [`${fx.slot}/research/a.md`], true, false);
+      fx.state.attachPhase(
+        "impl",
+        [`${fx.slot}/research/a.md`],
+        true,
+        false,
+        [],
+      );
       const stageDiag = "landlock-helper overlay: failed at mount (errno=95)\n";
       const probes: Array<{ stdin: boolean; actions: Action[] }> = [
         { stdin: false, actions: probePassActions() },
@@ -2656,7 +2699,13 @@ describe("K. combined-applicability probe over the second per-instance latch", (
       const fx = openEngagedRoot();
       try {
         fx.state.enterCapability(RESEARCH);
-        fx.state.attachPhase("impl", [`${fx.slot}/research/a.md`], true, false);
+        fx.state.attachPhase(
+          "impl",
+          [`${fx.slot}/research/a.md`],
+          true,
+          false,
+          [],
+        );
         const rec = dataRecorder();
         const recorder = recorderOps();
         const h = makeHarness(
@@ -2689,7 +2738,13 @@ describe("K. combined-applicability probe over the second per-instance latch", (
     const fx = openEngagedRoot();
     try {
       fx.state.enterCapability(RESEARCH);
-      fx.state.attachPhase("impl", [`${fx.slot}/research/a.md`], true, false);
+      fx.state.attachPhase(
+        "impl",
+        [`${fx.slot}/research/a.md`],
+        true,
+        false,
+        [],
+      );
       const fake = scriptedOps(() => ({ exitCode: 0 }));
       const h = makeHarness(fx.state, twoProbePreamble(), {
         localOps: fake.ops,
@@ -2721,7 +2776,7 @@ describe("L. manifest walk -> verdict -> selective commit (scripted local-ops st
       const leaf = `${fx.slot}/research/a.md`;
       mkdirSync(`${fx.slot}/research`);
       writeFileSync(leaf, "lower-v0");
-      fx.state.attachPhase("impl", [leaf], true, false);
+      fx.state.attachPhase("impl", [leaf], true, false, []);
       const rec = dataRecorder();
       const fake = scriptedOps((box) => {
         box.push(Buffer.from("raw-chunk\n"));
@@ -2760,7 +2815,7 @@ describe("L. manifest walk -> verdict -> selective commit (scripted local-ops st
       // Leaf ABSENT at spawn time: engagement is declarative under the
       // files-only invariant - the planner reads no disk, so an absent leaf
       // engages exactly as a present one does.
-      fx.state.attachPhase("impl", [leaf], true, false);
+      fx.state.attachPhase("impl", [leaf], true, false, []);
       const rec = dataRecorder();
       const fake = scriptedOps((box) => {
         const triple = triplesOf(box.cmd)[0]!;
@@ -2793,7 +2848,7 @@ describe("L. manifest walk -> verdict -> selective commit (scripted local-ops st
       fx.state.enterCapability(RESEARCH);
       const leaf = `${fx.slot}/research/a.md`;
       mkdirSync(`${fx.slot}/research`);
-      fx.state.attachPhase("impl", [leaf], true, false);
+      fx.state.attachPhase("impl", [leaf], true, false, []);
       const rec = dataRecorder();
       const fake = scriptedOps((box) => {
         const triple = triplesOf(box.cmd)[0]!;
@@ -2840,7 +2895,7 @@ describe("L. manifest walk -> verdict -> selective commit (scripted local-ops st
       // only invariant, declaration-order dedupe - a single mount); the
       // sub token admits by IDENTITY ONLY - a write underneath its path
       // discards + notes below.
-      fx.state.attachPhase("impl", [leaf, subDir], true, false);
+      fx.state.attachPhase("impl", [leaf, subDir], true, false, []);
       const rec = dataRecorder();
       const fake = scriptedOps((box) => {
         const triple = triplesOf(box.cmd)[0]!;
@@ -2882,7 +2937,7 @@ describe("L. manifest walk -> verdict -> selective commit (scripted local-ops st
       fx.state.enterCapability(RESEARCH);
       const leaf = `${fx.slot}/research/a.md`;
       mkdirSync(`${fx.slot}/research`);
-      fx.state.attachPhase("impl", [leaf], true, false);
+      fx.state.attachPhase("impl", [leaf], true, false, []);
       const rec = dataRecorder();
       const fake = scriptedOps((box) => {
         const triple = triplesOf(box.cmd)[0]!;
@@ -2931,7 +2986,7 @@ describe("L. manifest walk -> verdict -> selective commit (scripted local-ops st
       const blockedDir = `${fx.slot}/research/zblocked.md`;
       mkdirSync(`${fx.slot}/research`);
       mkdirSync(blockedDir); // real target pre-exists as a DIRECTORY
-      fx.state.attachPhase("impl", [leaf, blockedDir], true, false);
+      fx.state.attachPhase("impl", [leaf, blockedDir], true, false, []);
       const rec = dataRecorder();
       const fake = scriptedOps((box) => {
         const triple = triplesOf(box.cmd)[0]!;
@@ -2987,7 +3042,7 @@ describe("L. manifest walk -> verdict -> selective commit (scripted local-ops st
       const subTarget = `${fx.slot}/research/sub`;
       mkdirSync(`${fx.slot}/research`);
       writeFileSync(subTarget, "i-am-a-file"); // real target PRE-EXISTS as a REGULAR FILE
-      fx.state.attachPhase("impl", [subTarget], true, false);
+      fx.state.attachPhase("impl", [subTarget], true, false, []);
       const rec = dataRecorder();
       const fake = scriptedOps((box) => {
         const triple = triplesOf(box.cmd)[0]!;
@@ -3033,7 +3088,7 @@ describe("L. manifest walk -> verdict -> selective commit (scripted local-ops st
       const leaf = `${fx.slot}/research/a.md`;
       mkdirSync(`${fx.slot}/research`);
       writeFileSync(leaf, "original");
-      fx.state.attachPhase("impl", [leaf], true, false);
+      fx.state.attachPhase("impl", [leaf], true, false, []);
       let trappedDuringRun: boolean | undefined;
       const fake1 = scriptedOps((box) => {
         const triple = triplesOf(box.cmd)[0]!;
@@ -3099,7 +3154,7 @@ describe("M. kill/timeout/abort discard-all + extended band settlement over the 
         const leaf = `${fx.slot}/research/a.md`;
         mkdirSync(`${fx.slot}/research`);
         writeFileSync(leaf, "pristine-lower");
-        fx.state.attachPhase("impl", [leaf], true, false);
+        fx.state.attachPhase("impl", [leaf], true, false, []);
         const rec = dataRecorder();
         const seeded: string[] = [];
         const fake = scriptedOps((box) => {
@@ -3141,7 +3196,7 @@ describe("M. kill/timeout/abort discard-all + extended band settlement over the 
       const leaf = `${fx.slot}/research/a.md`;
       mkdirSync(`${fx.slot}/research`);
       writeFileSync(leaf, "pristine-lower");
-      fx.state.attachPhase("impl", [leaf], true, false);
+      fx.state.attachPhase("impl", [leaf], true, false, []);
       const rec = dataRecorder();
       const fake = scriptedOps((box) => {
         const triple = triplesOf(box.cmd)[0]!;
@@ -3198,7 +3253,7 @@ describe("M. kill/timeout/abort discard-all + extended band settlement over the 
         const leaf = `${fx.slot}/research/a.md`;
         mkdirSync(`${fx.slot}/research`);
         writeFileSync(leaf, "pristine-lower");
-        fx.state.attachPhase("impl", [leaf], true, false);
+        fx.state.attachPhase("impl", [leaf], true, false, []);
         const rec = dataRecorder();
         const fake = scriptedOps((box) => {
           const triple = triplesOf(box.cmd)[0]!;
@@ -3233,7 +3288,7 @@ describe("M. kill/timeout/abort discard-all + extended band settlement over the 
       fx.state.enterCapability(RESEARCH);
       const leaf = `${fx.slot}/research/a.md`;
       mkdirSync(`${fx.slot}/research`);
-      fx.state.attachPhase("impl", [leaf], true, false);
+      fx.state.attachPhase("impl", [leaf], true, false, []);
       const rec = dataRecorder();
       const fake = scriptedOps((box) => {
         box.push(Buffer.from("raw\n"));
@@ -3294,7 +3349,7 @@ describe("N. vehicle-establishment faults and post-delegate vehicle deaths over 
     fx.state.enterCapability(RESEARCH);
     const leaf = `${fx.slot}/research/a.md`;
     mkdirSync(`${fx.slot}/research`);
-    fx.state.attachPhase("impl", [leaf], true, false);
+    fx.state.attachPhase("impl", [leaf], true, false, []);
     return { state: fx.state, leaf };
   };
 
@@ -3563,7 +3618,7 @@ describe("O. voice artifact goldens (template ownership, placement order, case-t
       fx.state.enterCapability(RESEARCH);
       const leaf = `${fx.slot}/research/a.md`;
       mkdirSync(`${fx.slot}/research`);
-      fx.state.attachPhase("impl", [leaf], true, false);
+      fx.state.attachPhase("impl", [leaf], true, false, []);
       const plan = composeSpawnPlan(fx.state.snapshot());
       if (plan.kind !== "ready") {
         throw new Error(
@@ -3618,7 +3673,7 @@ describe("O. voice artifact goldens (template ownership, placement order, case-t
       workspaceCwd: () => WORKSPACE_CWD,
     });
     st.enterCapability(RESEARCH);
-    st.attachPhase("impl", [KEPT_A], true, false);
+    st.attachPhase("impl", [KEPT_A], true, false, []);
     const plan = composeSpawnPlan(st.snapshot());
     if (plan.kind !== "ready") {
       throw new Error(
@@ -3694,7 +3749,7 @@ describe.skipIf(!OVERLAY_LATCH.usable)(
         workspaceCwd: () => ws,
       });
       state.enterCapability(RESEARCH);
-      state.attachPhase("impl", [leaf], true, false);
+      state.attachPhase("impl", [leaf], true, false, []);
       const chunks: Buffer[] = [];
       const ops = createLandlockBashOperations(ws, state);
       const t0 = Date.now();
@@ -3743,7 +3798,7 @@ describe.skipIf(!OVERLAY_LATCH.usable)(
         workspaceCwd: () => ws,
       });
       state.enterCapability(RESEARCH);
-      state.attachPhase("impl", [leaf], true, false);
+      state.attachPhase("impl", [leaf], true, false, []);
       const chunks: Buffer[] = [];
       const ops = createLandlockBashOperations(ws, state);
       const outcome = await settle(
@@ -3777,7 +3832,7 @@ describe.skipIf(!OVERLAY_LATCH.usable)(
         workspaceCwd: () => ws,
       });
       state.enterCapability(RESEARCH);
-      state.attachPhase("impl", [leaf], true, false);
+      state.attachPhase("impl", [leaf], true, false, []);
       const chunks: Buffer[] = [];
       const ops = createLandlockBashOperations(ws, state, {
         nonceSource: () => "p-whiteout",
@@ -3801,7 +3856,7 @@ describe.skipIf(!OVERLAY_LATCH.usable)(
         workspaceCwd: () => ws,
       });
       state2.enterCapability(RESEARCH);
-      state2.attachPhase("impl", [leaf], true, false);
+      state2.attachPhase("impl", [leaf], true, false, []);
       // First pass already committed the deletion (leaf gone below).
       expect(existsSync(leaf)).toBe(false);
       // Idempotent SECOND pass over the absent leaf: pure no-op settlement.
@@ -3827,7 +3882,7 @@ describe.skipIf(!OVERLAY_LATCH.usable)(
         workspaceCwd: () => ws,
       });
       state3.enterCapability(RESEARCH);
-      state3.attachPhase("impl", [leaf], true, false);
+      state3.attachPhase("impl", [leaf], true, false, []);
       const ops3 = createLandlockBashOperations(ws, state3, {
         nonceSource: () => "p-whiteout-3",
       });
@@ -3872,7 +3927,7 @@ describe.skipIf(!OVERLAY_LATCH.usable)(
         workspaceCwd: () => ws,
       });
       state.enterCapability(RESEARCH);
-      state.attachPhase("impl", [leaf], true, false);
+      state.attachPhase("impl", [leaf], true, false, []);
       const plan = composeSpawnPlan(state.snapshot());
       if (plan.kind !== "ready") {
         throw new Error(`unexpected plan kind: ${plan.kind}`);
@@ -3920,7 +3975,7 @@ describe.skipIf(!OVERLAY_LATCH.usable)(
         workspaceCwd: () => ws,
       });
       state.enterCapability(RESEARCH);
-      state.attachPhase("impl", [leaf], true, false);
+      state.attachPhase("impl", [leaf], true, false, []);
       const signal = AbortSignal.timeout(500);
       const ops = createLandlockBashOperations(ws, state);
       const t0 = Date.now();
@@ -3969,7 +4024,7 @@ describe.skipIf(!OVERLAY_LATCH.usable)(
         workspaceCwd: () => ws,
       });
       state.enterCapability(RESEARCH);
-      state.attachPhase("impl", [leaf], true, false);
+      state.attachPhase("impl", [leaf], true, false, []);
       const nonce = "p-killed";
       const ops = createLandlockBashOperations(ws, state, {
         nonceSource: () => nonce,
@@ -4052,7 +4107,7 @@ describe.skipIf(!OVERLAY_LATCH.usable)(
             workspaceCwd: () => ws,
           });
           st.enterCapability(RESEARCH);
-          st.attachPhase("impl", [`${slot}/research/a.md`], true, false);
+          st.attachPhase("impl", [`${slot}/research/a.md`], true, false, []);
           return st;
         })(),
         { nonceSource: () => "par-a" },
@@ -4065,7 +4120,7 @@ describe.skipIf(!OVERLAY_LATCH.usable)(
             workspaceCwd: () => ws,
           });
           st.enterCapability(RESEARCH);
-          st.attachPhase("impl", [`${slot}/research/b.md`], true, false);
+          st.attachPhase("impl", [`${slot}/research/b.md`], true, false, []);
           return st;
         })(),
         { nonceSource: () => "par-b" },
@@ -4173,7 +4228,7 @@ describe("Q. hygiene pins", () => {
       () => undefined, // silent window: no capability entered
       (st) => {
         st.enterCapability(RESEARCH);
-        st.attachPhase("impl", [`${SLOT_ROOT}/research/*.md`], true, false);
+        st.attachPhase("impl", [`${SLOT_ROOT}/research/*.md`], true, false, []);
       }, // pattern text: survives coverage, drops at the concrete filter
       (st) => {
         st.enterCapability(RESEARCH);
@@ -4182,11 +4237,12 @@ describe("Q. hygiene pins", () => {
           [`${WORKSPACE_CWD}/outside-slot.txt`],
           true,
           false,
+          [],
         );
       }, // coverage-filtered: the contract's writes never cover the token
       (st) => {
         st.enterCapability(RESEARCH);
-        st.attachPhase("impl", [], true, true);
+        st.attachPhase("impl", [], true, true, []);
       }, // class-flag-only frame: no declarations at all
     ];
     for (const build of shapes) {

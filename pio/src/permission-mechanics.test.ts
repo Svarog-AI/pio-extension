@@ -65,6 +65,7 @@ describe("builder semantics over plain values (own fixtures)", () => {
       declared: [KEPT_A, DROPPED],
       allowProjectWrites: true,
       tmpDirAllowed: true,
+      vars: [],
     };
     const eff = materializeEffectiveSet(PHASE, BACKED, PATHS);
     expect(eff.survivors).toEqual([KEPT_A]);
@@ -94,6 +95,7 @@ describe("builder semantics over plain values (own fixtures)", () => {
       declared: [`${SLOT_ROOT}/research/x.md`],
       allowProjectWrites: true,
       tmpDirAllowed: false,
+      vars: [],
     };
     const eff = materializeEffectiveSet(PHASE, null, PATHS);
     expect(eff.survivors).toEqual([]);
@@ -112,6 +114,7 @@ describe("builder semantics over plain values (own fixtures)", () => {
       declared: [`/elsewhere/file.md`],
       allowProjectWrites: true,
       tmpDirAllowed: true,
+      vars: [],
     };
     expect(materializeEffectiveSet(PHASE, APW, PATHS).survivors).toEqual([]);
   });
@@ -124,6 +127,7 @@ describe("builder semantics over plain values (own fixtures)", () => {
       declared: [UNCOVERED, DUP, UNCOVERED, DUP],
       allowProjectWrites: false,
       tmpDirAllowed: false,
+      vars: [],
     };
     expect(materializeEffectiveSet(PHASE, RESEARCH, PATHS).survivors).toEqual([
       DUP,
@@ -137,6 +141,7 @@ describe("builder semantics over plain values (own fixtures)", () => {
       declared: [KEPT],
       allowProjectWrites: true,
       tmpDirAllowed: false,
+      vars: [],
     };
     const eff = materializeEffectiveSet(PHASE, RESEARCH, PATHS);
     expect(eff.projectWritesActive).toBe(false);
@@ -150,6 +155,7 @@ describe("builder semantics over plain values (own fixtures)", () => {
       declared: [KEPT],
       allowProjectWrites: false,
       tmpDirAllowed: true,
+      vars: [],
     };
     const first = materializeEffectiveSet(PHASE, RESEARCH, PATHS);
     const second = materializeEffectiveSet(PHASE, RESEARCH, PATHS);

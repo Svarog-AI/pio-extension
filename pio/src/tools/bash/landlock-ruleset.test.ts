@@ -119,6 +119,7 @@ const WINDOWS: readonly WindowRow[] = [
         declared: [`${SLOT_ROOT}/research/lazy.md`],
         allowProjectWrites: false,
         tmpDirAllowed: false,
+        vars: [],
       },
       paths: PATHS,
     },
@@ -133,6 +134,7 @@ const WINDOWS: readonly WindowRow[] = [
         declared: [KEPT_A, KEPT_B, UNCOVERED, WILD_ENTRY],
         allowProjectWrites: false,
         tmpDirAllowed: false,
+        vars: [],
       },
       paths: PATHS,
     },
@@ -147,6 +149,7 @@ const WINDOWS: readonly WindowRow[] = [
         declared: [KEPT_A, KEPT_B, UNCOVERED, WILD_ENTRY],
         allowProjectWrites: false,
         tmpDirAllowed: true,
+        vars: [],
       },
       paths: PATHS,
     },
@@ -161,6 +164,7 @@ const WINDOWS: readonly WindowRow[] = [
         declared: [],
         allowProjectWrites: true,
         tmpDirAllowed: false,
+        vars: [],
       },
       paths: PATHS,
     },
@@ -175,6 +179,7 @@ const WINDOWS: readonly WindowRow[] = [
         declared: [KEPT_A],
         allowProjectWrites: true,
         tmpDirAllowed: true,
+        vars: [],
       },
       paths: PATHS,
     },
@@ -189,6 +194,7 @@ const WINDOWS: readonly WindowRow[] = [
         declared: [],
         allowProjectWrites: true,
         tmpDirAllowed: false,
+        vars: [],
       },
       paths: PATHS,
     },
@@ -203,6 +209,7 @@ const WINDOWS: readonly WindowRow[] = [
         declared: [UNCOVERED],
         allowProjectWrites: false,
         tmpDirAllowed: false,
+        vars: [],
       },
       paths: PATHS,
     },
@@ -217,6 +224,7 @@ const WINDOWS: readonly WindowRow[] = [
         declared: [`${SLOT_ROOT}/research/z.md`],
         allowProjectWrites: true,
         tmpDirAllowed: true,
+        vars: [],
       },
       paths: PATHS,
     },
@@ -231,6 +239,7 @@ const WINDOWS: readonly WindowRow[] = [
         declared: ["/tmp"],
         allowProjectWrites: false,
         tmpDirAllowed: true,
+        vars: [],
       },
       // Contrived anchor pair (defensive plain-literal row - unreachable
       // through the state channel's resolved-absolute contract): an empty
@@ -248,6 +257,7 @@ const WINDOWS: readonly WindowRow[] = [
         declared: [],
         allowProjectWrites: true,
         tmpDirAllowed: false,
+        vars: [],
       },
       paths: { projectSlotRoot: SLOT_ROOT, workspaceCwd: "/dev" },
     },
@@ -266,6 +276,7 @@ const WINDOWS: readonly WindowRow[] = [
         declared: ["projslot/rel/a.txt"],
         allowProjectWrites: false,
         tmpDirAllowed: false,
+        vars: [],
       },
       paths: { projectSlotRoot: "projslot", workspaceCwd: WORKSPACE_CWD },
     },
@@ -328,6 +339,7 @@ describe("A. kernel writable-set composition (exact ordered vectors)", () => {
       [KEPT_A, KEPT_B, UNCOVERED, WILD_ENTRY],
       false,
       false,
+      [],
     );
     expect(composeKernelWritableSet(state.snapshot())).toEqual([
       KEPT_A,
@@ -335,7 +347,7 @@ describe("A. kernel writable-set composition (exact ordered vectors)", () => {
       "/dev",
     ]);
     state.detachPhase();
-    state.attachPhase("scrap", [], false, true);
+    state.attachPhase("scrap", [], false, true, []);
     expect(composeKernelWritableSet(state.snapshot())).toEqual([
       "/dev",
       "/tmp",
@@ -376,6 +388,7 @@ describe("B. lockstep byte-equality against the real gate", () => {
         declared: [],
         allowProjectWrites: true,
         tmpDirAllowed: false,
+        vars: [],
       },
       paths: PATHS,
     };
@@ -389,6 +402,7 @@ describe("B. lockstep byte-equality against the real gate", () => {
         declared: [KEPT_A],
         allowProjectWrites: false,
         tmpDirAllowed: false,
+        vars: [],
       },
       paths: PATHS,
     };
@@ -402,6 +416,7 @@ describe("B. lockstep byte-equality against the real gate", () => {
         declared: [KEPT_A],
         allowProjectWrites: false,
         tmpDirAllowed: true,
+        vars: [],
       },
       paths: PATHS,
     };
@@ -415,6 +430,7 @@ describe("B. lockstep byte-equality against the real gate", () => {
         declared: [KEPT_A],
         allowProjectWrites: true,
         tmpDirAllowed: true,
+        vars: [],
       },
       paths: PATHS,
     };
@@ -438,6 +454,7 @@ describe("B. lockstep byte-equality against the real gate", () => {
           declared: [`${SLOT_ROOT}/research/n.md`],
           allowProjectWrites: false,
           tmpDirAllowed: false,
+          vars: [],
         },
         paths: PATHS,
       },
@@ -1442,6 +1459,7 @@ describe("I. per-spawn spawn-plan materializer (pure planner beside the composer
         declared: [WILD_ENTRY],
         allowProjectWrites: false,
         tmpDirAllowed: false,
+        vars: [],
       },
       paths: PATHS,
     };
@@ -1458,6 +1476,7 @@ describe("I. per-spawn spawn-plan materializer (pure planner beside the composer
         declared: [WILD_ENTRY],
         allowProjectWrites: true,
         tmpDirAllowed: true,
+        vars: [],
       },
       paths: PATHS,
     };
@@ -1481,6 +1500,7 @@ describe("I. per-spawn spawn-plan materializer (pure planner beside the composer
         declared: [LEAF_A_MD],
         allowProjectWrites: false,
         tmpDirAllowed: false,
+        vars: [],
       },
       paths: PATHS,
     };
@@ -1507,6 +1527,7 @@ describe("I. per-spawn spawn-plan materializer (pure planner beside the composer
         declared: [LEAF_A_MD, LEAF_B_MD],
         allowProjectWrites: false,
         tmpDirAllowed: false,
+        vars: [],
       },
       paths: PATHS,
     };
@@ -1530,6 +1551,7 @@ describe("I. per-spawn spawn-plan materializer (pure planner beside the composer
         declared: [DIR_DECL],
         allowProjectWrites: false,
         tmpDirAllowed: false,
+        vars: [],
       },
       paths: PATHS,
     };
@@ -1557,6 +1579,7 @@ describe("I. per-spawn spawn-plan materializer (pure planner beside the composer
         declared: [LEAF_A_MD, DIR_DECL, WILD_ENTRY],
         allowProjectWrites: false,
         tmpDirAllowed: false,
+        vars: [],
       },
       paths: PATHS,
     };
@@ -1573,6 +1596,7 @@ describe("I. per-spawn spawn-plan materializer (pure planner beside the composer
         declared: [LEAF_A_MD, DIR_DECL, WILD_ENTRY],
         allowProjectWrites: true,
         tmpDirAllowed: true,
+        vars: [],
       },
       paths: PATHS,
     };
@@ -1596,6 +1620,7 @@ describe("I. per-spawn spawn-plan materializer (pure planner beside the composer
         declared: [DIR_DECL, LEAF_A_MD],
         allowProjectWrites: true,
         tmpDirAllowed: true,
+        vars: [],
       },
       paths: PATHS,
     };
@@ -1659,6 +1684,7 @@ describe("I. per-spawn spawn-plan materializer (pure planner beside the composer
         declared: [LEAF_A_MD, NESTED_LEAF],
         allowProjectWrites: false,
         tmpDirAllowed: false,
+        vars: [],
       },
       paths: PATHS,
     };
@@ -1682,6 +1708,7 @@ describe("I. per-spawn spawn-plan materializer (pure planner beside the composer
         declared: [`${TREE_A}/x.md`, `${TREE_AB}/y.md`, `${TREE_ABC}/z.md`],
         allowProjectWrites: false,
         tmpDirAllowed: false,
+        vars: [],
       },
       paths: PATHS,
     };
@@ -1697,6 +1724,7 @@ describe("I. per-spawn spawn-plan materializer (pure planner beside the composer
         declared: [`${TREE_ABC}/z.md`, `${TREE_AB}/y.md`, `${TREE_A}/x.md`],
         allowProjectWrites: false,
         tmpDirAllowed: false,
+        vars: [],
       },
       paths: PATHS,
     };
@@ -1719,6 +1747,7 @@ describe("I. per-spawn spawn-plan materializer (pure planner beside the composer
         declared: ["/a/b/probe.md", "/ab/probe.md"],
         allowProjectWrites: false,
         tmpDirAllowed: false,
+        vars: [],
       },
       paths: { projectSlotRoot: "", workspaceCwd: WORKSPACE_CWD },
     };
@@ -1742,6 +1771,7 @@ describe("I. per-spawn spawn-plan materializer (pure planner beside the composer
         declared: [ROOT_LEAF],
         allowProjectWrites: false,
         tmpDirAllowed: false,
+        vars: [],
       },
       paths: { projectSlotRoot: "", workspaceCwd: WORKSPACE_CWD },
     };
@@ -1760,6 +1790,7 @@ describe("I. per-spawn spawn-plan materializer (pure planner beside the composer
         declared: ["/solo.md", "/r1/a.md", "/r1/r2/b.md"],
         allowProjectWrites: false,
         tmpDirAllowed: false,
+        vars: [],
       },
       paths: { projectSlotRoot: "", workspaceCwd: WORKSPACE_CWD },
     };
@@ -1797,6 +1828,7 @@ describe("I. per-spawn spawn-plan materializer (pure planner beside the composer
         declared: [DEV_LEAF],
         allowProjectWrites: false,
         tmpDirAllowed: false,
+        vars: [],
       },
       paths: { projectSlotRoot: "", workspaceCwd: WORKSPACE_CWD },
     };
@@ -1817,6 +1849,7 @@ describe("I. per-spawn spawn-plan materializer (pure planner beside the composer
         declared: [TMP_LEAF],
         allowProjectWrites: false,
         tmpDirAllowed: true,
+        vars: [],
       },
       paths: { projectSlotRoot: "", workspaceCwd: WORKSPACE_CWD },
     };
@@ -1837,6 +1870,7 @@ describe("I. per-spawn spawn-plan materializer (pure planner beside the composer
         declared: [CWD_LEAF],
         allowProjectWrites: true,
         tmpDirAllowed: false,
+        vars: [],
       },
       paths: { projectSlotRoot: "", workspaceCwd: WORKSPACE_CWD },
     };
@@ -1860,6 +1894,7 @@ describe("I. per-spawn spawn-plan materializer (pure planner beside the composer
         declared: [LEAF_A_MD, DIR_DECL],
         allowProjectWrites: false,
         tmpDirAllowed: false,
+        vars: [],
       },
       paths: PATHS,
     };
@@ -1883,6 +1918,7 @@ describe("I. per-spawn spawn-plan materializer (pure planner beside the composer
           declared: [KEPT_A],
           allowProjectWrites: true,
           tmpDirAllowed: true,
+          vars: [],
         },
         paths: { projectSlotRoot: "", workspaceCwd: "" },
       },
@@ -1894,6 +1930,7 @@ describe("I. per-spawn spawn-plan materializer (pure planner beside the composer
           declared: [],
           allowProjectWrites: true,
           tmpDirAllowed: true,
+          vars: [],
         },
         paths: PATHS,
       },

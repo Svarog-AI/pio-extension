@@ -92,6 +92,7 @@ describe("fixture shapes - the singular effective allowlist", () => {
         declared: [DECLARED],
         allowProjectWrites: false,
         tmpDirAllowed: false,
+        vars: [],
       },
       paths: PATHS,
     };
@@ -109,6 +110,7 @@ describe("fixture shapes - the singular effective allowlist", () => {
         declared: [KEPT],
         allowProjectWrites: false,
         tmpDirAllowed: false,
+        vars: [],
       },
       paths: PATHS,
     };
@@ -127,6 +129,7 @@ describe("fixture shapes - the singular effective allowlist", () => {
         declared: [UNCOVERED, KEPT],
         allowProjectWrites: false,
         tmpDirAllowed: false,
+        vars: [],
       },
       paths: PATHS,
     };
@@ -147,6 +150,7 @@ describe("fixture shapes - the singular effective allowlist", () => {
         declared: [],
         allowProjectWrites: false,
         tmpDirAllowed: false,
+        vars: [],
       },
       paths: PATHS,
     };
@@ -229,6 +233,7 @@ describe("/tmp/ scratch class at decision time", () => {
         declared: [KEPT],
         allowProjectWrites: false,
         tmpDirAllowed: false,
+        vars: [],
       },
       paths: PATHS,
     };
@@ -254,6 +259,7 @@ describe("/tmp/ scratch class at decision time", () => {
         declared: [],
         allowProjectWrites: false,
         tmpDirAllowed: false,
+        vars: [],
       },
       paths: PATHS,
     };
@@ -311,6 +317,7 @@ describe("phase-branch decision-time matrix", () => {
         declared: [KEPT],
         allowProjectWrites: false,
         tmpDirAllowed: false,
+        vars: [],
       },
       paths: PATHS,
     };
@@ -331,6 +338,7 @@ describe("phase-branch decision-time matrix", () => {
         declared: [PROJECT_FILE],
         allowProjectWrites: false,
         tmpDirAllowed: false,
+        vars: [],
       },
       paths: PATHS,
     };
@@ -361,6 +369,7 @@ describe("phase-branch decision-time matrix", () => {
         declared: [FOREIGN],
         allowProjectWrites: false,
         tmpDirAllowed: false,
+        vars: [],
       },
       paths: PATHS,
     };
@@ -382,6 +391,7 @@ describe("phase-branch decision-time matrix", () => {
         declared: [KEPT_A, DROPPED, KEPT_B],
         allowProjectWrites: false,
         tmpDirAllowed: false,
+        vars: [],
       },
       paths: PATHS,
     };
@@ -407,6 +417,7 @@ describe("phase-branch decision-time matrix", () => {
         declared: [UNCOVERED, DUP, UNCOVERED, DUP],
         allowProjectWrites: false,
         tmpDirAllowed: false,
+        vars: [],
       },
       paths: PATHS,
     };
@@ -442,6 +453,7 @@ describe("phase-branch decision-time matrix", () => {
         declared: [TARGET, `${SENTINEL_PATHS.workspaceCwd}/proj.md`],
         allowProjectWrites: false,
         tmpDirAllowed: false,
+        vars: [],
       },
       paths: SENTINEL_PATHS,
     };
@@ -477,6 +489,7 @@ describe("phase-branch decision-time matrix", () => {
         declared: [TARGET],
         allowProjectWrites: false,
         tmpDirAllowed: false,
+        vars: [],
       },
       paths: PATHS,
     };
@@ -511,6 +524,7 @@ describe("flag-clamp decision-time matrix - the per-phase scope declaration", ()
         declared: [],
         allowProjectWrites: true,
         tmpDirAllowed: false,
+        vars: [],
       },
       paths: PATHS,
     };
@@ -545,6 +559,7 @@ describe("flag-clamp decision-time matrix - the per-phase scope declaration", ()
         declared: [KEPT],
         allowProjectWrites: true,
         tmpDirAllowed: false,
+        vars: [],
       },
       paths: PATHS,
     };
@@ -574,6 +589,7 @@ describe("flag-clamp decision-time matrix - the per-phase scope declaration", ()
         declared: [],
         allowProjectWrites: true,
         tmpDirAllowed: false,
+        vars: [],
       },
       paths: PATHS,
     };
@@ -602,6 +618,7 @@ describe("flag-clamp decision-time matrix - the per-phase scope declaration", ()
         declared: [KEPT],
         allowProjectWrites: true,
         tmpDirAllowed: false,
+        vars: [],
       },
       paths: PATHS,
     };
@@ -626,6 +643,7 @@ describe("flag-clamp decision-time matrix - the per-phase scope declaration", ()
         declared: [KEPT],
         allowProjectWrites: false,
         tmpDirAllowed: false,
+        vars: [],
       },
       paths: PATHS,
     };
@@ -647,6 +665,7 @@ describe("flag-clamp decision-time matrix - the per-phase scope declaration", ()
         declared: [],
         allowProjectWrites: false,
         tmpDirAllowed: false,
+        vars: [],
       },
       paths: PATHS,
     };
@@ -687,6 +706,7 @@ describe("flag-clamp decision-time matrix - the per-phase scope declaration", ()
         declared: [TARGET, `${SENTINEL_A.workspaceCwd}/proj.md`],
         allowProjectWrites: true,
         tmpDirAllowed: false,
+        vars: [],
       },
       paths: SENTINEL_A,
     };
@@ -698,6 +718,7 @@ describe("flag-clamp decision-time matrix - the per-phase scope declaration", ()
         declared: [TARGET, `${SENTINEL_A.workspaceCwd}/proj.md`],
         allowProjectWrites: false,
         tmpDirAllowed: false,
+        vars: [],
       },
       paths: SENTINEL_A,
     };
@@ -744,6 +765,7 @@ describe("scratch-class decision-time matrix - the per-phase scratch declaration
         declared: [],
         allowProjectWrites: false,
         tmpDirAllowed: true,
+        vars: [],
       },
       paths: PATHS,
     };
@@ -773,6 +795,7 @@ describe("scratch-class decision-time matrix - the per-phase scratch declaration
         declared: [KEPT],
         allowProjectWrites: true,
         tmpDirAllowed: true,
+        vars: [],
       },
       paths: PATHS,
     };
@@ -803,6 +826,7 @@ describe("scratch-class decision-time matrix - the per-phase scratch declaration
         declared: [FOREIGN],
         allowProjectWrites: true,
         tmpDirAllowed: true,
+        vars: [],
       },
       paths: PATHS,
     };
@@ -835,6 +859,7 @@ describe("scratch-class decision-time matrix - the per-phase scratch declaration
         declared: [KEPT],
         allowProjectWrites: false,
         tmpDirAllowed: false,
+        vars: [],
       },
       paths: PATHS,
     };
@@ -1108,6 +1133,7 @@ describe("goldens - lockstep byte-equality on every refusal shape", () => {
         declared: [KEPT],
         allowProjectWrites: false,
         tmpDirAllowed: false,
+        vars: [],
       },
       paths: PATHS,
     };
@@ -1139,6 +1165,7 @@ describe("goldens - lockstep byte-equality on every refusal shape", () => {
         declared: [],
         allowProjectWrites: true,
         tmpDirAllowed: false,
+        vars: [],
       },
       paths: PATHS,
     };
@@ -1166,6 +1193,7 @@ describe("goldens - lockstep byte-equality on every refusal shape", () => {
         declared: [],
         allowProjectWrites: false,
         tmpDirAllowed: true,
+        vars: [],
       },
       paths: PATHS,
     };
@@ -1198,6 +1226,7 @@ describe("goldens - lockstep byte-equality on every refusal shape", () => {
         declared: [],
         allowProjectWrites: true,
         tmpDirAllowed: true,
+        vars: [],
       },
       paths: PATHS,
     };
@@ -1237,6 +1266,7 @@ describe("goldens - lockstep byte-equality on every refusal shape", () => {
         declared: [KEPT],
         allowProjectWrites: true,
         tmpDirAllowed: false,
+        vars: [],
       },
       paths: PATHS,
     };
@@ -1323,6 +1353,7 @@ describe("goldens - lockstep byte-equality on every refusal shape", () => {
               declared: [KEPT],
               allowProjectWrites: false,
               tmpDirAllowed: false,
+              vars: [],
             },
             paths: PATHS,
           },
@@ -1383,6 +1414,7 @@ describe("coverage is exactly write/edit - short-circuit before any snapshot con
       declared: ["MKR-poisoned-declared"],
       allowProjectWrites: false,
       tmpDirAllowed: false,
+      vars: [],
     },
     paths: {
       projectSlotRoot: "MKR-poisoned-slot",
@@ -1428,6 +1460,7 @@ describe("coverage is exactly write/edit - short-circuit before any snapshot con
         declared: [`${SLOT_ROOT}/research/a.md`],
         allowProjectWrites: false,
         tmpDirAllowed: false,
+        vars: [],
       },
       paths: PATHS,
     };
@@ -1453,6 +1486,7 @@ describe("channel freedom + runtime namespace surface", () => {
         declared: [KEPT],
         allowProjectWrites: false,
         tmpDirAllowed: false,
+        vars: [],
       },
       paths: PATHS,
     };

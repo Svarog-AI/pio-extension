@@ -149,7 +149,7 @@ import type { ExecutionSnapshot } from "../session-execution-state.ts";
 import { SessionExecutionState } from "../session-execution-state.ts";
 import { createLandlockBash } from "../tools/bash/landlock-bash.ts";
 import { deriveStateRootFromAgentDir } from "./base.ts";
-import { ContractViolationError } from "./errors.ts";
+import { ContractViolationError, VariableRejectionError } from "./errors.ts";
 import type { CapabilitySources } from "./guards/guard-vocabulary.ts";
 import { decideWrite } from "./guards/write-gate.ts";
 
@@ -337,28 +337,471 @@ export interface SessionCounters {
   readonly tokens: number;
 }
 
+/** Base kinds of the session variable store — the six legacy kinds,
+ * module-owned here (the per-phase guard deals in names only; the model
+ * tool params validate against these literals at the schema level). */
+export type VarKind =
+  | "boolean"
+  | "number"
+  | "string"
+  | "array"
+  | "object"
+  | "null";
+
+/** Concrete TypeScript type per declared base kind — the compile-time
+ * half of the typed-read guarantee (conditional type; erased at runtime).
+ * null falls through as the final branch: a kind that is none of the
+ * five structural kinds can only be the null slot. */
+export type VarValueOf<K extends VarKind> = K extends "boolean"
+  ? boolean
+  : K extends "number"
+    ? number
+    : K extends "string"
+      ? string
+      : K extends "array"
+        ? unknown[]
+        : K extends "object"
+          ? Record<string, unknown>
+          : null;
+
 /**
- * Minimal instance variable store (get/set/list over a Map). Deliberately
- * distinct from the root tree's richer same-named class (different
- * package, different surface); later work wraps this same store rather
- * than renaming it.
+ * Bookkeeping corruption over the variable REGISTRY: conflicting or
+ * malformed declarations. Developer-facing, PURE ASCII (no em dashes),
+ * model-invisible — the separate ASCII fault voice class (à la
+ * ExecutionStateError) deliberately DISTINCT from the model-visible
+ * VariableRejectionError (name, message prefix, and dash discipline all
+ * differ). Unexported on purpose: the suite asserts by name only.
+ */
+class VarRegistryError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "VarRegistryError";
+  }
+}
+
+/** Closed fault taxonomy of the shared conversion core: one category per
+ * rejection shape, detail-free by design — the clause renderer below is
+ * the SOLE byte owner mapping category to the pinned line, and the
+ * offending value is NEVER echoed (a cyclic input would blow up any
+ * serialization; the clause grammar dodges the hazard by construction). */
+type VarRejectReason =
+  | "value-undefined"
+  | "value-function"
+  | "value-symbol"
+  | "value-bigint"
+  | "number-nan"
+  | "number-plus-infinity"
+  | "number-minus-infinity"
+  | "class-instance"
+  | "reference-cycle"
+  | "boolean-token"
+  | "shape-array"
+  | "shape-object"
+  | "does-not-coerce";
+
+/** Shared conversion outcome: success carries the CONVERSION RESULT
+ * (never the raw input); a fault carries the closed category. */
+type VarConversion =
+  | { readonly converted: unknown }
+  | { readonly rejected: VarRejectReason };
+
+/** Plainness predicate of the stored-by-reference integrity: admits
+ * exactly the Object.prototype-or-null prototype shapes (JSON-plain;
+ * class instances, wrappers, and exotic prototypes reject). */
+function isPlainVarObject(value: unknown): value is Record<string, unknown> {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    return false;
+  }
+  const proto: unknown = Object.getPrototypeOf(value);
+  return proto === Object.prototype || proto === null;
+}
+
+// The ancestor path lives in a module-level Set scoped to ONE walk: walks
+// never nest across calls (single-threaded, synchronous descent, and every
+// walk fully unwinds via its finally before any other runs), so the cursor
+// keeps the walker argument-free while staying strictly per-walk.
+const varWalkAncestors: Set<object> = new Set();
+
+/** Recursive stored-by-reference integrity walk: PLAIN prototypes
+ * everywhere (arrays included as containers), ACYCLIC by ANCESTOR-PATH
+ * tracking (shared substructures admit; back-edges reject), no class
+ * instances at ANY depth. Scalar leaves need no walk. Pure over the input
+ * (mutates nothing; the ancestor cursor is internal bookkeeping that
+ * always unwinds). */
+function walkVarIntegrity(value: unknown): VarConversion {
+  if (typeof value !== "object" || value === null) {
+    return { converted: value }; // scalar leaf — admitted, walked through
+  }
+  if (!Array.isArray(value) && !isPlainVarObject(value)) {
+    return { rejected: "class-instance" };
+  }
+  if (varWalkAncestors.has(value)) {
+    return { rejected: "reference-cycle" };
+  }
+  varWalkAncestors.add(value);
+  try {
+    const children: unknown[] = Array.isArray(value)
+      ? [...value]
+      : Object.keys(value).map((key) => value[key]);
+    for (const child of children) {
+      const result = walkVarIntegrity(child);
+      if ("rejected" in result) return result;
+    }
+    return { converted: value };
+  } finally {
+    varWalkAncestors.delete(value);
+  }
+}
+
+/** THE shared admission/conversion core (one voice, one table): the SAME
+ * pure function serves BOTH the validated write entry point (declared-name
+ * path) and the typed reads (stored-value path) — consistency by
+ * construction (what set admits, read converts). Type-preserving: the
+ * converted value equals the declared kind. Never throws; a fault resolves
+ * to the closed category the clause renderers turn into the pinned line. */
+function convertVarValue(value: unknown, kind: VarKind): VarConversion {
+  switch (kind) {
+    case "boolean": {
+      // Type-preserving admission: the four sanctioned forms ONLY (native
+      // booleans verbatim, the two exact textual tokens). Retires the
+      // legacy silent-false fallback AND the "1"/"yes"/"0"/"no" tokens and
+      // bare 0/1.
+      if (typeof value === "boolean") return { converted: value };
+      if (value === "true") return { converted: true };
+      if (value === "false") return { converted: false };
+      return {
+        rejected:
+          typeof value === "string" ? "boolean-token" : varScalarReason(value),
+      };
+    }
+    case "number": {
+      // Finite numbers verbatim; numeric strings trimmed-nonempty and
+      // finite-parse (so "42", " 42 ", "0x1A", "1e3" convert). Retires
+      // ""→0, null→0, true→1, [5]→5, NaN, ±Infinity.
+      if (typeof value === "number" && Number.isFinite(value)) {
+        return { converted: value };
+      }
+      if (typeof value === "string" && value.trim() !== "") {
+        const parsed = Number(value);
+        if (Number.isFinite(parsed)) return { converted: parsed };
+      }
+      return { rejected: varScalarReason(value) };
+    }
+    case "string": {
+      // Strings verbatim; finite numbers and booleans take the String()
+      // form. Retires the String() catch-all (arrays/objects/null reject;
+      // non-finite numbers take the finiteness clause).
+      if (typeof value === "string") return { converted: value };
+      if (typeof value === "number" && Number.isFinite(value)) {
+        return { converted: String(value) };
+      }
+      if (typeof value === "boolean") return { converted: String(value) };
+      return { rejected: varScalarReason(value) };
+    }
+    case "array": {
+      if (!Array.isArray(value)) return { rejected: varScalarReason(value) };
+      return walkVarIntegrity(value);
+    }
+    case "object": {
+      if (!isPlainVarObject(value)) {
+        return { rejected: varScalarReason(value) };
+      }
+      return walkVarIntegrity(value);
+    }
+    case "null": {
+      // Universal null rule: null converts ONLY to kind "null"; present-
+      // but null read/stored against any other kind is a conversion fault.
+      if (value === null) return { converted: null };
+      return { rejected: varScalarReason(value) };
+    }
+  }
+}
+
+/** Fault-category resolver for an UNCOERCIBLE top-level value: first-match
+ * over the closed taxonomy. Container shape mismatches (array/object vs a
+ * different demanded kind) resolve to the shape clauses BEFORE any
+ * structural walk — the walk runs only for array/object demands. The one
+ * kind-context exception (string INTO boolean takes the token clause) is
+ * applied at the boolean demand site, where the kind is known. */
+function varScalarReason(value: unknown): VarRejectReason {
+  if (value === undefined) return "value-undefined";
+  if (typeof value === "function") return "value-function";
+  if (typeof value === "symbol") return "value-symbol";
+  if (typeof value === "bigint") return "value-bigint";
+  if (typeof value === "number") {
+    if (Number.isNaN(value)) return "number-nan";
+    if (value === Number.POSITIVE_INFINITY) return "number-plus-infinity";
+    if (value === Number.NEGATIVE_INFINITY) return "number-minus-infinity";
+    return "does-not-coerce";
+  }
+  if (value === null) return "does-not-coerce";
+  if (Array.isArray(value)) return "shape-array";
+  if (typeof value === "object") {
+    return isPlainVarObject(value) ? "shape-object" : "class-instance";
+  }
+  // Remaining scalars (booleans and anything unexpected past erasure):
+  // the generic clause.
+  return "does-not-coerce";
+}
+
+/** TYPE SPELLING of a value for the pinned lines: typeof spelling with
+ * null spelled explicitly (JS typeof null misleads with "object"). */
+function varTypeSpelling(value: unknown): string {
+  if (value === null) return "null";
+  return typeof value;
+}
+
+/** THE CLAUSE half of a coercion-reject line, keyed on the closed fault
+ * taxonomy (SOLE byte owner alongside the line renderers below); the kind
+ * appears verbatim only in the does-not-coerce clause. */
+function varRejectClause(reason: VarRejectReason, kind: VarKind): string {
+  switch (reason) {
+    case "value-undefined":
+      return "value is undefined";
+    case "value-function":
+      return "value is a function";
+    case "value-symbol":
+      return "value is a symbol";
+    case "value-bigint":
+      return "value is a bigint";
+    case "number-nan":
+      return "number is not finite (NaN)";
+    case "number-plus-infinity":
+      return "number is not finite (+Infinity)";
+    case "number-minus-infinity":
+      return "number is not finite (-Infinity)";
+    case "class-instance":
+      return "value is a class instance";
+    case "reference-cycle":
+      return "value contains a reference cycle";
+    case "boolean-token":
+      return "token is not a recognized boolean form";
+    case "shape-array":
+      return "value is an array";
+    case "shape-object":
+      return "value is an object";
+    default:
+      return `value does not coerce to '${kind}'`;
+  }
+}
+
+/** ONE coercion-reject line (declared-name write path): names the
+ * VARIABLE, the incoming type spelling, the DECLARED KIND, and the
+ * category clause. The value is never echoed; LF discipline per the other
+ * renderers (lines stand alone; the family constructor joins them). */
+function renderVarCoercionRejectLine(
+  name: string,
+  kind: VarKind,
+  value: unknown,
+  reason: VarRejectReason,
+): string {
+  return `variable '${name}' cannot take a value of type '${varTypeSpelling(value)}' as declared kind '${kind}' \u2014 ${varRejectClause(reason, kind)}`;
+}
+
+/** ONE undeclared-write line (mandatory-type doctrine): names the variable
+ * and the ABSENCE of a kind ON PURPOSE — it names no incoming value or
+ * candidate kind (that would guess authoring data). */
+function renderVarUndeclaredWriteLine(name: string): string {
+  return `variable '${name}' has no declared base type \u2014 a base type must be declared before writing`;
+}
+
+/** ONE typed-read ABSENT line. */
+function renderVarReadAbsentLine(name: string, kind: VarKind): string {
+  return `read of variable '${name}' as '${kind}' failed \u2014 variable is absent`;
+}
+
+/** ONE typed-read CONVERSION-FAULT line with the STORED VALUE spelling: a
+ * stored null is spelled distinctly per the explicit ruling (overrides the
+ * legacy Number(null)→0 / String(null)→"null" leniency outright). */
+function renderVarReadConvertLine(
+  name: string,
+  kind: VarKind,
+  stored: unknown,
+): string {
+  const description =
+    stored === null
+      ? "stored value is null"
+      : `stored value of type '${varTypeSpelling(stored)}'`;
+  return `read of variable '${name}' as '${kind}' failed \u2014 ${description} cannot convert to '${kind}'`;
+}
+
+/** Malformed-kind guard (reachable only via runtime foreignness past type
+ * erasure — the union is exhaustive at compile time): the plain equality
+ * chain keeps the check cast-free. */
+function isDeclaredKind(kind: string): boolean {
+  return (
+    kind === "boolean" ||
+    kind === "number" ||
+    kind === "string" ||
+    kind === "array" ||
+    kind === "object" ||
+    kind === "null"
+  );
+}
+
+/**
+ * THE session variable store — settled validated-core design, extended IN
+ * PLACE on this very class (not replaced, not renamed — the wrap decision's
+ * landing form). One store per session instance: minted in the
+ * PioSession constructor, reached as the vars handle (PioSession.vars,
+ * IterationCtx.vars BY REFERENCE).
+ *
+ * MANDATORY-TYPE DOCTRINE: every variable carries a declared base kind —
+ * declare() is the SOLE registry writer (explicit authoring-side call;
+ * no inference, no engine-side minting), and set() is THE single
+ * validated entry point for ALL variable writes from EVERY origin — an
+ * unregistered name faults (the error home's VariableRejectionError)
+ * BEFORE any conversion attempt, and a registered name stores the
+ * CONVERSION RESULT of the shared table (never the raw input: what is
+ * stored is the declared type). Each concern is adjudicated exactly once
+ * in its own layer: set polices SHAPE only — who may write WHICH name
+ * belongs to the per-phase guard (a later landing), and bookkeeping
+ * corruption (registry faults) rides the module-local pure-ASCII
+ * VarRegistryError, never the model-visible family.
+ *
+ * READ SURFACE: get(name) stays the SAFE channel (stored value or
+ * undefined; never throws); the overloaded typed read get(name, kind)
+ * returns the CONCRETE kind type (VarValueOf) and throws the family on
+ * absent/unconvertible values — reads mutate nothing. DELTA-WINDOW CURSOR:
+ * resetVarsDelta marks the baseline (name to stored-value REFERENCE; empty
+ * initial baseline; re-mark advances) and getVarsDelta reports additions
+ * and reference-inequal modifications with final values (cursor idiom
+ * mirrored from the committed-path baseline; v1 has no delete API).
+ * Deliberately distinct from the root tree's richer same-named class
+ * (different package, different surface).
  */
 export class SessionVariableStore {
   #entries: Map<string, unknown> = new Map();
+  /** Base-kind registry (name to kind, insertion-ordered): written ONLY
+   * by declare — the mandatory-type sole-writer invariant. */
+  #kinds: Map<string, VarKind> = new Map();
+  /** Delta-window baseline (cursor idiom): name to stored-value REFERENCE
+   * frozen at the last mark; EMPTY until the first mark. */
+  #deltaBaseline: Map<string, unknown> = new Map();
 
-  /** Stored value, or undefined when the name is absent. */
-  get(name: string): unknown {
-    return this.#entries.get(name);
+  /** Safe channel: the stored value, or undefined when the name is
+   * absent. Never throws — the typed overload below is the faulting
+   * read surface. */
+  get(name: string): unknown;
+  /** Typed read: resolves the CONCRETE declared-kind type (compile-time
+   * guarantee) and THROWS the family — never undefined — when the
+   * variable is absent or the stored value cannot convert to kind (the
+   * shared conversion table governs read-conversion too). Mutates
+   * nothing. */
+  get<K extends VarKind>(name: string, kind: K): VarValueOf<K>;
+  get(name: string, kind?: VarKind): unknown {
+    const stored = this.#entries.get(name);
+    if (kind === undefined) return stored;
+    if (!this.#entries.has(name)) {
+      throw new VariableRejectionError([renderVarReadAbsentLine(name, kind)]);
+    }
+    const result = convertVarValue(stored, kind);
+    if ("rejected" in result) {
+      throw new VariableRejectionError([
+        renderVarReadConvertLine(name, kind, stored),
+      ]);
+    }
+    // The shared core returned the CONVERSION RESULT for this kind; the
+    // overload pair carries the concrete-typing promise and the table the
+    // runtime truth (zero-cast discipline: no assertion needed here).
+    return result.converted;
   }
 
-  /** Raw assignment — value-shape coercion belongs to the wrapping layer. */
+  /** THE base-type registry writer (mandatory-type doctrine): registers
+   * the base kind for a name, scoped to this session instance. Same name
+   * + SAME kind re-declaration is an IDEMPOTENT no-op (declaration order
+   * is first-registration order); a DIFFERENT kind over an already-
+   * declared name is a LOUD refusal in the developer-facing ASCII
+   * bookkeeping family. Registration touches the registry ONLY — an
+   * already-stored value is never retroactively revalidated (every stored
+   * value passed validation at ITS write moment; a stale-shaped value,
+   * should one ever exist, faults per the table on typed read and an
+   * overwrite replaces it). */
+  declare(name: string, kind: VarKind): void {
+    if (!isDeclaredKind(kind)) {
+      throw new VarRegistryError(
+        `var registry: invalid base kind '${kind}' for variable '${name}'`,
+      );
+    }
+    const existing = this.#kinds.get(name);
+    if (existing !== undefined && existing !== kind) {
+      throw new VarRegistryError(
+        `var registry: cannot declare '${name}' as '${kind}': already declared as '${existing}'`,
+      );
+    }
+    // Idempotent on same-kind re-declaration: the skipped re-insert keeps
+    // the declaration ORDER at first registration.
+    if (existing !== kind) {
+      this.#kinds.set(name, kind);
+    }
+  }
+
+  /** THE single validated entry point for ALL variable writes (polices
+   * SHAPE only — no name/permission adjudication; that is the guard's
+   * exclusive concern). A name WITHOUT a registered kind THROWS the
+   * family's undeclared-write line before any conversion attempt (there
+   * is NO admission lane for unregistered names); a registered name
+   * converts the incoming value against the declared kind via the shared
+   * table and stores the CONVERSION RESULT — a fault throws the family's
+   * pinned coercion-reject line and leaves the prior value intact. */
   set(name: string, value: unknown): void {
-    this.#entries.set(name, value);
+    const kind = this.#kinds.get(name);
+    if (kind === undefined) {
+      throw new VariableRejectionError([renderVarUndeclaredWriteLine(name)]);
+    }
+    const result = convertVarValue(value, kind);
+    if ("rejected" in result) {
+      throw new VariableRejectionError([
+        renderVarCoercionRejectLine(name, kind, value, result.rejected),
+      ]);
+    }
+    this.#entries.set(name, result.converted);
   }
 
-  /** Insertion-ordered, deduplicated key list. */
+  /** Insertion-ordered, deduplicated key list (stored names only; a
+   * declared-but-never-set name stays OUT). */
   list(): string[] {
     return [...this.#entries.keys()];
+  }
+
+  /** THE registry query surface: fresh plain object per call listing every
+   * declared name to kind in DECLARATION order (independent of stored
+   * values). Callers may retain freely (counters() doctrine); derive
+   * declared-or-not AND kind from this snapshot (the single registry
+   * introspection face). */
+  declarations(): Readonly<Record<string, VarKind>> {
+    const snapshot: Record<string, VarKind> = {};
+    for (const [name, kind] of this.#kinds) {
+      snapshot[name] = kind;
+    }
+    return snapshot;
+  }
+
+  /** Mark the delta-window baseline: freezes the current entries (name to
+   * stored-value REFERENCE) into the cursor. The initial baseline is
+   * EMPTY (pre-mark reads report everything currently stored); marking
+   * AGAIN advances past the current state (intermediate churn drops off).
+   * Taken once at phase arm by the phase engine. */
+  resetVarsDelta(): void {
+    this.#deltaBaseline = new Map(this.#entries);
+  }
+
+  /** Compute the delta window: fresh object per call (non-consuming, stable
+   * under repeated reads) reporting every variable ADDED OR MODIFIED since
+   * the baseline with FINAL values. Modification detection is REFERENCE
+   * inequality of stored values (primitives compare by value; in-place
+   * mutation of a retained reference is NOT a modification — writers
+   * routing through set are always observed). v1 has no delete API: no
+   * removals are reported. */
+  getVarsDelta(): Record<string, unknown> {
+    const delta: Record<string, unknown> = {};
+    for (const [name, value] of this.#entries) {
+      const baseline = this.#deltaBaseline.get(name);
+      if (baseline !== value) {
+        delta[name] = value;
+      }
+    }
+    return delta;
   }
 }
 
@@ -524,7 +967,9 @@ export class PioSession {
   readonly id: string;
   /** Constructed runtime by reference — reach path for runs and teardown. */
   readonly runtime: AgentSessionRuntime;
-  /** Fresh per-instance variable store (hooks consume it by reference). */
+  /** Fresh per-instance variable store — the single validated entry point
+   * for every variable write (declare-then-set; hooks and phases reach
+   * the LIVE values by reference). */
   readonly vars: SessionVariableStore;
 
   #observer: SessionObserver;

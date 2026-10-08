@@ -12,7 +12,8 @@
 // directly observable. Synthetic events flow through the single documented
 // cast seam asEvent — the sole `as` over synthetic event payloads (the
 // handle-typing seams asHandle / asRuntime below are the only other
-// assertions in this file).
+// assertions in this file, plus the marked foreign-kind seam
+// foreignVarKind feeding the malformed-kind registry-fault row).
 //
 // Physics-mirror harness (installed 0.85.1 dist): fake handles bookkeep
 // LIVE listeners — subscribe returns a functional per-listener unsubscribe
@@ -62,16 +63,17 @@ import {
   PioCapability,
 } from "./base.ts";
 import type { Contract } from "./contract.ts";
-import { ContractViolationError } from "./errors.ts";
+import { ContractViolationError, VariableRejectionError } from "./errors.ts";
 import type { CapabilitySources } from "./guards/guard-vocabulary.ts";
 import { decideWrite } from "./guards/write-gate.ts";
-import type { IterationCtx, PhaseResult } from "./pio-session.ts";
+import type { IterationCtx, PhaseResult, VarKind } from "./pio-session.ts";
 import {
   PioSession,
   renderCapabilityMarker,
   renderPhaseMarker,
   renderPhasePermissionDisclosure,
   SessionHandleRefusalError,
+  SessionVariableStore,
 } from "./pio-session.ts";
 import {
   captureError,
@@ -670,6 +672,9 @@ describe("PioSession — construction & scoping", () => {
     instance.counters();
     instance.getFilesWrittenDelta();
     const store = instance.vars;
+    // W2C mechanical preambles (mandatory-type ruling): declare before
+    // the first write; row intent unchanged.
+    store.declare("a", "number");
     store.set("a", 1);
     store.get("a");
     store.list();
@@ -1013,6 +1018,12 @@ describe("PioSession — vars store", () => {
   it("set/get round-trip; absent name is undefined; list preserves insertion order without duplicates", async () => {
     const { instance } = await host();
     const store = instance.vars;
+    // W2C mechanical preambles (mandatory-type ruling): every legacy raw
+    // write declares its base kind first; row intent and assertions
+    // unchanged.
+    store.declare("a", "number");
+    store.declare("b", "string");
+    store.declare("c", "array");
     store.set("a", 1);
     store.set("b", "two");
     store.set("c", [3, 4]);
@@ -1029,6 +1040,7 @@ describe("PioSession — vars store", () => {
   it("same-reference semantics: mutation through the retained reference is visible through the instance property", async () => {
     const { instance } = await host();
     const store = instance.vars;
+    store.declare("k", "string");
     store.set("k", "x");
     expect(instance.vars.get("k")).toBe("x");
   });
@@ -1036,10 +1048,867 @@ describe("PioSession — vars store", () => {
   it("cross-instance invisibility: one instance's entries stay out of another's view", async () => {
     const a = await PioSession.create(CWD);
     const b = await PioSession.create(CWD);
+    a.vars.declare("shared", "string");
     a.vars.set("shared", "mine");
     expect(b.vars.get("shared")).toBeUndefined();
     expect(b.vars.list()).toEqual([]);
     expect(a.vars.get("shared")).toBe("mine");
+  });
+});
+
+// ---------------------------------------------------------------------
+// Validated store core (goal session-variable-storage, landing): the
+// mandatory-type base-kind registry, the single validated write entry
+// point over the D4 admission/conversion table, the overloaded typed
+// reads, and the delta-window cursor idiom. Pure-store rows construct
+// the EXPORTED class directly (hermetic, zero harness); the cross-
+// instance legs extend BOTH the host()/create pair pattern AND the
+// fromRuntime H/H2 pattern over the same settled runtime. Golden lines
+// below are REPLICAS — sole owners are the module-private renderers in
+// ./pio-session.ts; the \u2014 escape is replicated identically (never a
+// literal em dash inside a string literal).
+// ---------------------------------------------------------------------
+
+const VAR_REJECTION_PREFIX = "Variable rejection: ";
+
+/** Replica of the pinned undeclared-write line (exact bytes). */
+const varUndeclaredWriteLine = (name: string): string =>
+  `variable '${name}' has no declared base type \u2014 a base type must be declared before writing`;
+
+/** Replica of the pinned coercion-reject line (declared-name write path). */
+const varCoercionRejectLine = (
+  name: string,
+  kind: string,
+  typeSpelling: string,
+  clause: string,
+): string =>
+  `variable '${name}' cannot take a value of type '${typeSpelling}' as declared kind '${kind}' \u2014 ${clause}`;
+
+/** Replica of the pinned typed-read ABSENT line. */
+const varReadAbsentLine = (name: string, kind: string): string =>
+  `read of variable '${name}' as '${kind}' failed \u2014 variable is absent`;
+
+/** Replica of the pinned typed-read CONVERSION-FAULT line (<description>
+ * is the stored-value slot: `stored value of type '<typeof>'` with stored-
+ * null spelled distinctly per the explicit ruling). */
+const varReadConvertLine = (
+  name: string,
+  kind: string,
+  description: string,
+): string =>
+  `read of variable '${name}' as '${kind}' failed \u2014 ${description} cannot convert to '${kind}'`;
+
+/** Replica of the pure-ASCII bookkeeping conflict line (NO em dashes). */
+const varRegistryConflictLine = (
+  name: string,
+  newKind: string,
+  existingKind: string,
+): string =>
+  `var registry: cannot declare '${name}' as '${newKind}': already declared as '${existingKind}'`;
+
+/** Replica of the pure-ASCII bookkeeping malformed-kind line. */
+const varRegistryMalformedLine = (kind: string, name: string): string =>
+  `var registry: invalid base kind '${kind}' for variable '${name}'`;
+
+// Pinned CLAUSE vocabulary (one constant per emitted clause — every
+// clause the shared conversion core can emit is goldened through these).
+const CLAUSE_UNDEFINED = "value is undefined";
+const CLAUSE_FUNCTION = "value is a function";
+const CLAUSE_SYMBOL = "value is a symbol";
+const CLAUSE_BIGINT = "value is a bigint";
+const CLAUSE_NAN = "number is not finite (NaN)";
+const CLAUSE_PLUS_INFINITY = "number is not finite (+Infinity)";
+const CLAUSE_MINUS_INFINITY = "number is not finite (-Infinity)";
+const CLAUSE_CLASS_INSTANCE = "value is a class instance";
+const CLAUSE_REFERENCE_CYCLE = "value contains a reference cycle";
+const CLAUSE_BOOLEAN_TOKEN = "token is not a recognized boolean form";
+const CLAUSE_SHAPE_ARRAY = "value is an array";
+const CLAUSE_SHAPE_OBJECT = "value is an object";
+const clauseGeneric = (kind: string): string =>
+  `value does not coerce to '${kind}'`;
+
+// MARKED CAST SEAM (test-side only, house pattern; the ONE non-handle
+// assertion in this file alongside asEvent / asHandle / asRuntime):
+// a runtime-foreign kind that type erasure admits — drives the
+// malformed-kind bookkeeping fault row (source never casts; the union
+// erases at runtime so only a foreign caller could supply this).
+const foreignVarKind = "bogus" as VarKind;
+
+/** Fault-capture helper for the UNEXPORTED bookkeeping class: asserts
+ * Error shape by NAME only (no instanceof — the class is module-local,
+ * à la ExecutionStateError; cf. the FAULT_NAME pattern in
+ * session-execution-state.test.ts). */
+function captureNamedFault(fn: () => void): { name: string; message: string } {
+  try {
+    fn();
+  } catch (err) {
+    if (err instanceof Error) return { name: err.name, message: err.message };
+    throw new Error(`expected an Error fault, got ${String(err)}`);
+  }
+  throw new Error("expected a fault, none thrown");
+}
+
+/** Assert a THROWN family member: identity, EXACTLY one violation line
+ * (the pinned bytes), the composed default message, and NO cause key. */
+function expectFamilyFault(fn: () => void, line: string): void {
+  let caught: unknown;
+  try {
+    fn();
+  } catch (err) {
+    caught = err;
+  }
+  if (!(caught instanceof VariableRejectionError)) {
+    throw new Error(`expected a VariableRejectionError, got ${String(caught)}`);
+  }
+  const err = caught;
+  expect(err.name).toBe("VariableRejectionError");
+  expect(err.violations).toEqual([line]);
+  expect(err.message).toBe(`${VAR_REJECTION_PREFIX}${line}`);
+  expect("cause" in err).toBe(false);
+}
+
+describe("SessionVariableStore — base-type registry (declare)", () => {
+  it("registers a base kind readable through declarations(): fresh object per call, declaration ORDER preserved, independent of stored values", () => {
+    const store = new SessionVariableStore();
+    store.declare("first", "boolean");
+    store.declare("second", "number");
+    store.set("second", 42);
+    const snapshot = store.declarations();
+    expect(Object.keys(snapshot)).toEqual(["first", "second"]);
+    expect(snapshot.first).toBe("boolean");
+    expect(snapshot.second).toBe("number");
+    // A declared-but-never-set name APPEARS (the registry is not the
+    // presence record; the entries list stays value-driven).
+    expect(store.list()).toEqual(["second"]);
+    // Fresh object per call: callers may retain freely (counters() doctrine).
+    expect(store.declarations()).not.toBe(snapshot);
+    expect(store.declarations()).toEqual(snapshot);
+  });
+
+  it("same-name SAME-kind re-declaration is an IDEMPOTENT no-op: no fault, declaration order untouched, writes stay valid", () => {
+    const store = new SessionVariableStore();
+    store.declare("flag", "boolean");
+    store.set("flag", true);
+    store.declare("later", "string");
+    store.declare("flag", "boolean"); // idempotent re-declaration
+    expect(store.declarations()).toEqual({ flag: "boolean", later: "string" });
+    expect(store.list()).toEqual(["flag"]);
+    expect(() => store.set("flag", "false")).not.toThrow();
+    expect(store.get("flag", "boolean")).toBe(false);
+  });
+
+  it("same-name DIFFERENT-kind re-declaration faults LOUDLY in the developer-facing ASCII bookkeeping family with the exact pinned bytes, never half-applied", () => {
+    const store = new SessionVariableStore();
+    store.declare("flag", "boolean");
+    store.set("flag", true);
+    const fault = captureNamedFault(() => store.declare("flag", "number"));
+    expect(fault.name).toBe("VarRegistryError");
+    expect(fault.message).toBe(
+      varRegistryConflictLine("flag", "number", "boolean"),
+    );
+    expect(/\u2014/.test(fault.message)).toBe(false); // pure ASCII — no em dashes
+    // Registry and entries survive the fault verbatim.
+    expect(store.declarations()).toEqual({ flag: "boolean" });
+    expect(store.get("flag", "boolean")).toBe(true);
+  });
+
+  it("a MALFORMED kind (runtime foreignness past type erasure) faults in the SAME bookkeeping family with the exact pinned bytes; nothing is minted and a legal declaration afterwards still works", () => {
+    const store = new SessionVariableStore();
+    const fault = captureNamedFault(() => store.declare("n", foreignVarKind));
+    expect(fault.name).toBe("VarRegistryError");
+    expect(fault.message).toBe(varRegistryMalformedLine("bogus", "n"));
+    // The malformed attempt mints NOTHING (explicit authoring-side
+    // declare() is the SOLE registry writer — inference is barred).
+    expect(store.declarations()).toEqual({});
+    store.declare("n", "number");
+    expect(store.declarations()).toEqual({ n: "number" });
+  });
+
+  it("declare NEVER revalidates or transforms existing stored values (no second adjudication site): an idempotent re-declaration over a populated name leaves the stored REFERENCE untouched", () => {
+    const store = new SessionVariableStore();
+    store.declare("obj", "object");
+    const seed: Record<string, unknown> = { nested: { deep: 1 } };
+    store.set("obj", seed);
+    const retained = store.get("obj");
+    store.declare("obj", "object"); // re-declare over the populated name
+    expect(store.get("obj")).toBe(retained); // same reference — untouched
+    expect(store.get("obj", "object")).toBe(seed); // typed read resolves verbatim
+  });
+});
+
+describe("SessionVariableStore — undeclared-write rejection (mandatory-type doctrine)", () => {
+  it("a write to a name WITHOUT a registered kind THROWS the family with the pinned undeclared-write line BEFORE any conversion, leaving the store empty and naming no incoming value or kind on purpose", () => {
+    const store = new SessionVariableStore();
+    expectFamilyFault(
+      () => store.set("fresh", "anything"),
+      varUndeclaredWriteLine("fresh"),
+    );
+    expect(store.list()).toEqual([]);
+    expect(store.declarations()).toEqual({});
+    // Same lane for EVERY incoming shape: the fault is the ABSENCE of a
+    // kind, adjudicated before any value inspection.
+    const cyclic: Record<string, unknown> = {};
+    cyclic.self = cyclic;
+    expectFamilyFault(
+      () => store.set("fresh2", cyclic),
+      varUndeclaredWriteLine("fresh2"),
+    );
+    expect(store.list()).toEqual([]);
+  });
+});
+
+describe("SessionVariableStore — D4 admission/conversion matrix (set, declared names)", () => {
+  it("'boolean': ADMITS exactly the four sanctioned forms (true, 'true', false, 'false') and retires every legacy token/quirk row (silent-fallback W2C defect, '1'/'yes'/'0'/'no' tokens, bare 0/1) with the exact pinned clause each", () => {
+    const store = new SessionVariableStore();
+    store.declare("b", "boolean");
+    const admits: readonly { input: unknown; stored: unknown }[] = [
+      { input: true, stored: true },
+      { input: "true", stored: true },
+      { input: false, stored: false },
+      { input: "false", stored: false },
+    ];
+    for (const row of admits) {
+      store.set("b", row.input);
+      expect(store.get("b")).toBe(row.stored);
+    }
+    const faults: readonly {
+      input: unknown;
+      spelling: string;
+      clause: string;
+    }[] = [
+      { input: "1", spelling: "string", clause: CLAUSE_BOOLEAN_TOKEN },
+      { input: "yes", spelling: "string", clause: CLAUSE_BOOLEAN_TOKEN },
+      { input: "0", spelling: "string", clause: CLAUSE_BOOLEAN_TOKEN },
+      { input: "no", spelling: "string", clause: CLAUSE_BOOLEAN_TOKEN },
+      { input: "maybe", spelling: "string", clause: CLAUSE_BOOLEAN_TOKEN },
+      { input: 1, spelling: "number", clause: clauseGeneric("boolean") },
+      { input: 0, spelling: "number", clause: clauseGeneric("boolean") },
+      { input: null, spelling: "null", clause: clauseGeneric("boolean") },
+      { input: undefined, spelling: "undefined", clause: CLAUSE_UNDEFINED },
+      { input: Number.NaN, spelling: "number", clause: CLAUSE_NAN },
+      {
+        input: Number.POSITIVE_INFINITY,
+        spelling: "number",
+        clause: CLAUSE_PLUS_INFINITY,
+      },
+      {
+        input: Number.NEGATIVE_INFINITY,
+        spelling: "number",
+        clause: CLAUSE_MINUS_INFINITY,
+      },
+      { input: [true], spelling: "object", clause: CLAUSE_SHAPE_ARRAY },
+      { input: { b: true }, spelling: "object", clause: CLAUSE_SHAPE_OBJECT },
+      { input: new Date(), spelling: "object", clause: CLAUSE_CLASS_INSTANCE },
+      { input: () => 1, spelling: "function", clause: CLAUSE_FUNCTION },
+      { input: Symbol("s"), spelling: "symbol", clause: CLAUSE_SYMBOL },
+      { input: 10n, spelling: "bigint", clause: CLAUSE_BIGINT },
+    ];
+    for (const row of faults) {
+      store.set("b", true); // park a known-good value first
+      expectFamilyFault(
+        () => store.set("b", row.input),
+        varCoercionRejectLine("b", "boolean", row.spelling, row.clause),
+      );
+      expect(store.get("b")).toBe(true); // rejected write leaves prior value intact
+    }
+  });
+
+  it("'number': ADMITS finite numbers and the numeric-string corners ('42', ' 42 ', '0x1A', '1e3', '-7') and retires every legacy quirk row (''→0, null→0, true→1, [5]→5, NaN, ±Infinity) with the exact pinned clause each", () => {
+    const store = new SessionVariableStore();
+    store.declare("n", "number");
+    const admits: readonly { input: unknown; stored: number }[] = [
+      { input: 42, stored: 42 },
+      { input: 0, stored: 0 },
+      { input: -0.5, stored: -0.5 },
+      { input: "42", stored: 42 },
+      { input: " 42 ", stored: 42 },
+      { input: "0x1A", stored: 26 },
+      { input: "1e3", stored: 1000 },
+      { input: "-7", stored: -7 },
+    ];
+    for (const row of admits) {
+      store.set("n", row.input);
+      expect(store.get("n")).toBe(row.stored);
+    }
+    const faults: readonly {
+      input: unknown;
+      spelling: string;
+      clause: string;
+    }[] = [
+      { input: "", spelling: "string", clause: clauseGeneric("number") },
+      { input: "banana", spelling: "string", clause: clauseGeneric("number") },
+      { input: null, spelling: "null", clause: clauseGeneric("number") },
+      { input: true, spelling: "boolean", clause: clauseGeneric("number") },
+      { input: false, spelling: "boolean", clause: clauseGeneric("number") },
+      { input: [5], spelling: "object", clause: CLAUSE_SHAPE_ARRAY },
+      { input: { n: 1 }, spelling: "object", clause: CLAUSE_SHAPE_OBJECT },
+      { input: undefined, spelling: "undefined", clause: CLAUSE_UNDEFINED },
+      { input: Number.NaN, spelling: "number", clause: CLAUSE_NAN },
+      {
+        input: Number.POSITIVE_INFINITY,
+        spelling: "number",
+        clause: CLAUSE_PLUS_INFINITY,
+      },
+      {
+        input: Number.NEGATIVE_INFINITY,
+        spelling: "number",
+        clause: CLAUSE_MINUS_INFINITY,
+      },
+      { input: new Date(), spelling: "object", clause: CLAUSE_CLASS_INSTANCE },
+      { input: () => 1, spelling: "function", clause: CLAUSE_FUNCTION },
+      { input: Symbol("s"), spelling: "symbol", clause: CLAUSE_SYMBOL },
+      { input: 10n, spelling: "bigint", clause: CLAUSE_BIGINT },
+    ];
+    for (const row of faults) {
+      store.set("n", 0);
+      expectFamilyFault(
+        () => store.set("n", row.input),
+        varCoercionRejectLine("n", "number", row.spelling, row.clause),
+      );
+      expect(store.get("n")).toBe(0);
+    }
+  });
+
+  it("'string': ADMITS strings verbatim plus finite-number and boolean String()-form conversions and retires the String() catch-all (arrays, objects, null) with the exact pinned clause each", () => {
+    const store = new SessionVariableStore();
+    store.declare("s", "string");
+    const admits: readonly { input: unknown; stored: string }[] = [
+      { input: "hello", stored: "hello" },
+      { input: "", stored: "" },
+      { input: 42, stored: "42" },
+      { input: -0.5, stored: "-0.5" },
+      { input: 0, stored: "0" },
+      { input: true, stored: "true" },
+      { input: false, stored: "false" },
+    ];
+    for (const row of admits) {
+      store.set("s", row.input);
+      expect(store.get("s")).toBe(row.stored);
+    }
+    const faults: readonly {
+      input: unknown;
+      spelling: string;
+      clause: string;
+    }[] = [
+      { input: ["x"], spelling: "object", clause: CLAUSE_SHAPE_ARRAY },
+      { input: { s: 1 }, spelling: "object", clause: CLAUSE_SHAPE_OBJECT },
+      { input: null, spelling: "null", clause: clauseGeneric("string") },
+      { input: undefined, spelling: "undefined", clause: CLAUSE_UNDEFINED },
+      { input: Number.NaN, spelling: "number", clause: CLAUSE_NAN },
+      {
+        input: Number.POSITIVE_INFINITY,
+        spelling: "number",
+        clause: CLAUSE_PLUS_INFINITY,
+      },
+      {
+        input: Number.NEGATIVE_INFINITY,
+        spelling: "number",
+        clause: CLAUSE_MINUS_INFINITY,
+      },
+      { input: new Date(), spelling: "object", clause: CLAUSE_CLASS_INSTANCE },
+      { input: () => "x", spelling: "function", clause: CLAUSE_FUNCTION },
+      { input: Symbol("s"), spelling: "symbol", clause: CLAUSE_SYMBOL },
+      { input: 10n, spelling: "bigint", clause: CLAUSE_BIGINT },
+    ];
+    for (const row of faults) {
+      store.set("s", "");
+      expectFamilyFault(
+        () => store.set("s", row.input),
+        varCoercionRejectLine("s", "string", row.spelling, row.clause),
+      );
+      expect(store.get("s")).toBe("");
+    }
+  });
+
+  it("'array': ADMITS arrays subject to the stored-by-reference integrity walk (plain prototypes everywhere, acyclic, no class instances at any depth; scalar leaves need no walk) storing the SAME reference, and rejects every non-array shape with the exact pinned clause", () => {
+    const store = new SessionVariableStore();
+    store.declare("a", "array");
+    const admits: readonly { input: unknown[]; label: string }[] = [
+      { input: [], label: "empty" },
+      { input: [1, "two", true, null], label: "mixed scalar leaves" },
+      { input: [[{ a: [] }], {}], label: "nested plain structures" },
+      { input: [Object.create(null)], label: "null-prototype element" },
+    ];
+    for (const row of admits) {
+      store.set("a", row.input);
+      expect(store.get("a", "array")).toBe(row.input); // SAME reference
+    }
+    const faults: readonly {
+      input: unknown;
+      spelling: string;
+      clause: string;
+    }[] = [
+      { input: "a", spelling: "string", clause: clauseGeneric("array") },
+      { input: 1, spelling: "number", clause: clauseGeneric("array") },
+      { input: { a: [] }, spelling: "object", clause: CLAUSE_SHAPE_OBJECT },
+      { input: new Date(), spelling: "object", clause: CLAUSE_CLASS_INSTANCE },
+      { input: undefined, spelling: "undefined", clause: CLAUSE_UNDEFINED },
+      { input: () => [], spelling: "function", clause: CLAUSE_FUNCTION },
+      { input: Symbol("s"), spelling: "symbol", clause: CLAUSE_SYMBOL },
+      { input: 10n, spelling: "bigint", clause: CLAUSE_BIGINT },
+    ];
+    for (const row of faults) {
+      store.set("a", []);
+      expectFamilyFault(
+        () => store.set("a", row.input),
+        varCoercionRejectLine("a", "array", row.spelling, row.clause),
+      );
+      expect(store.get("a")).toEqual([]);
+    }
+  });
+
+  it("'object': ADMITS plain acyclic objects (recursively) storing the SAME reference and rejects arrays, class instances, cycles, and scalars with the exact pinned clause each", () => {
+    const store = new SessionVariableStore();
+    store.declare("o", "object");
+    const admits: readonly { input: Record<string, unknown>; label: string }[] =
+      [
+        { input: {}, label: "empty" },
+        { input: { a: 1, b: { c: [2] } }, label: "nested plain" },
+        {
+          input: Object.assign(Object.create(null), { k: 1 }),
+          label: "null prototype top-level",
+        },
+        {
+          input: { inner: Object.create(null) },
+          label: "null prototype nested",
+        },
+      ];
+    for (const row of admits) {
+      store.set("o", row.input);
+      expect(store.get("o", "object")).toBe(row.input); // SAME reference
+    }
+    const faults: readonly {
+      input: unknown;
+      spelling: string;
+      clause: string;
+    }[] = [
+      { input: [], spelling: "object", clause: CLAUSE_SHAPE_ARRAY },
+      { input: new Date(), spelling: "object", clause: CLAUSE_CLASS_INSTANCE },
+      {
+        input: { d: new Date() },
+        spelling: "object",
+        clause: CLAUSE_CLASS_INSTANCE,
+      }, // NESTED instance
+      { input: "o", spelling: "string", clause: clauseGeneric("object") },
+      { input: 1, spelling: "number", clause: clauseGeneric("object") },
+      { input: null, spelling: "null", clause: clauseGeneric("object") },
+      { input: undefined, spelling: "undefined", clause: CLAUSE_UNDEFINED },
+      { input: () => ({}), spelling: "function", clause: CLAUSE_FUNCTION },
+      { input: Symbol("s"), spelling: "symbol", clause: CLAUSE_SYMBOL },
+      { input: 10n, spelling: "bigint", clause: CLAUSE_BIGINT },
+    ];
+    for (const row of faults) {
+      store.set("o", {});
+      expectFamilyFault(
+        () => store.set("o", row.input),
+        varCoercionRejectLine("o", "object", row.spelling, row.clause),
+      );
+      expect(store.get("o")).toEqual({});
+    }
+  });
+
+  it("'null': ADMITS null ONLY (universal null rule) and rejects everything else — including the string 'null' — with the exact pinned clause each", () => {
+    const store = new SessionVariableStore();
+    store.declare("z", "null");
+    store.set("z", null);
+    expect(store.get("z", "null")).toBeNull();
+    const faults: readonly {
+      input: unknown;
+      spelling: string;
+      clause: string;
+    }[] = [
+      { input: 0, spelling: "number", clause: clauseGeneric("null") },
+      { input: "null", spelling: "string", clause: clauseGeneric("null") },
+      { input: "", spelling: "string", clause: clauseGeneric("null") },
+      { input: true, spelling: "boolean", clause: clauseGeneric("null") },
+      { input: [null], spelling: "object", clause: CLAUSE_SHAPE_ARRAY },
+      { input: { z: null }, spelling: "object", clause: CLAUSE_SHAPE_OBJECT },
+      { input: undefined, spelling: "undefined", clause: CLAUSE_UNDEFINED },
+      { input: Number.NaN, spelling: "number", clause: CLAUSE_NAN },
+      {
+        input: Number.POSITIVE_INFINITY,
+        spelling: "number",
+        clause: CLAUSE_PLUS_INFINITY,
+      },
+      {
+        input: Number.NEGATIVE_INFINITY,
+        spelling: "number",
+        clause: CLAUSE_MINUS_INFINITY,
+      },
+      { input: new Date(), spelling: "object", clause: CLAUSE_CLASS_INSTANCE },
+      { input: () => null, spelling: "function", clause: CLAUSE_FUNCTION },
+      { input: Symbol("s"), spelling: "symbol", clause: CLAUSE_SYMBOL },
+      { input: 10n, spelling: "bigint", clause: CLAUSE_BIGINT },
+    ];
+    for (const row of faults) {
+      expectFamilyFault(
+        () => store.set("z", row.input),
+        varCoercionRejectLine("z", "null", row.spelling, row.clause),
+      );
+      expect(store.get("z", "null")).toBeNull(); // prior value intact
+    }
+  });
+});
+
+describe("SessionVariableStore — stored-by-reference integrity walk (deep structure)", () => {
+  it("top-level SELF-reference cycles reject under 'object' and 'array' kinds with the cycle clause (never rendered — clause grammar dodges the serialization hazard)", () => {
+    const store = new SessionVariableStore();
+    store.declare("o", "object");
+    store.declare("a", "array");
+    const selfObj: Record<string, unknown> = {};
+    selfObj.self = selfObj;
+    expectFamilyFault(
+      () => store.set("o", selfObj),
+      varCoercionRejectLine("o", "object", "object", CLAUSE_REFERENCE_CYCLE),
+    );
+    const selfArr: unknown[] = [];
+    selfArr.push(selfArr);
+    expectFamilyFault(
+      () => store.set("a", selfArr),
+      varCoercionRejectLine("a", "array", "object", CLAUSE_REFERENCE_CYCLE),
+    );
+    // Both stores stay clean: the faulted writes landed nothing.
+    expect(store.list()).toEqual([]);
+  });
+
+  it("NESTED cycles reject at ANY depth — including via array ELEMENTS — with the cycle clause", () => {
+    const store = new SessionVariableStore();
+    store.declare("o", "object");
+    const inner: unknown[] = [];
+    const wrapper: Record<string, unknown> = { inner };
+    inner.push(wrapper); // back-edge through an array element
+    expectFamilyFault(
+      () => store.set("o", wrapper),
+      varCoercionRejectLine("o", "object", "object", CLAUSE_REFERENCE_CYCLE),
+    );
+    const deepArray: unknown[] = [];
+    const deepInner: Record<string, unknown> = { b: deepArray };
+    const deepHolder: Record<string, unknown> = { a: deepInner };
+    deepArray.push(deepHolder); // back-edge two levels down
+    expectFamilyFault(
+      () => store.set("o", deepHolder),
+      varCoercionRejectLine("o", "object", "object", CLAUSE_REFERENCE_CYCLE),
+    );
+  });
+
+  it("class instances reject at ANY depth (element and property alike) with the instance clause; a CUSTOM-PROTOTYPE container is non-plain even when its own keys look fine", () => {
+    const store = new SessionVariableStore();
+    store.declare("a", "array");
+    store.declare("o", "object");
+    expectFamilyFault(
+      () => store.set("a", [new Date()]),
+      varCoercionRejectLine("a", "array", "object", CLAUSE_CLASS_INSTANCE),
+    );
+    expectFamilyFault(
+      () => store.set("o", { stamp: new Date() }),
+      varCoercionRejectLine("o", "object", "object", CLAUSE_CLASS_INSTANCE),
+    );
+    const exoticProto = { custom: true };
+    const exoticElement: unknown = Object.create(exoticProto);
+    expectFamilyFault(
+      () => store.set("a", [exoticElement]),
+      varCoercionRejectLine("a", "array", "object", CLAUSE_CLASS_INSTANCE),
+    );
+    expect(store.list()).toEqual([]);
+  });
+
+  it("SHARED substructures admit (path-based ancestor tracking: sharing is not a cycle) and deep plain nesting round-trips by reference", () => {
+    const store = new SessionVariableStore();
+    store.declare("o", "object");
+    const sharedLeaf: Record<string, unknown> = { x: 1 };
+    const dagRoot: Record<string, unknown> = {
+      left: sharedLeaf,
+      right: sharedLeaf,
+    };
+    store.set("o", dagRoot);
+    expect(store.get("o", "object")).toBe(dagRoot);
+    const deep: Record<string, unknown> = { l1: { l2: { l3: [{ l4: 4 }] } } };
+    store.set("o", deep);
+    expect(store.get("o", "object")).toBe(deep);
+  });
+});
+
+describe("SessionVariableStore — typed reads (overloaded surface)", () => {
+  it("an ABSENT name throws the pinned absent line (never undefined — the safe overload IS the undefined channel) and mutates nothing", () => {
+    const store = new SessionVariableStore();
+    expectFamilyFault(
+      () => store.get("missing", "number"),
+      varReadAbsentLine("missing", "number"),
+    );
+    expect(store.get("missing")).toBeUndefined(); // safe channel silent
+    expect(store.list()).toEqual([]);
+  });
+
+  it("converting reads resolve the CONCRETE value — the D4 table governs read-conversion too (worked examples): stored '42' as number → 42; stored 42 as string → '42'; stored true as string → 'true'; stored 'true' as boolean → true; stored null as null → null", () => {
+    const store = new SessionVariableStore();
+    store.declare("s42", "string");
+    store.set("s42", "42");
+    store.declare("n42", "number");
+    store.set("n42", 42);
+    store.declare("bt", "boolean");
+    store.set("bt", true);
+    store.declare("st", "string");
+    store.set("st", "true");
+    store.declare("nil", "null");
+    store.set("nil", null);
+    expect(store.get("s42", "number")).toBe(42);
+    expect(store.get("n42", "string")).toBe("42");
+    expect(store.get("bt", "string")).toBe("true");
+    expect(store.get("st", "boolean")).toBe(true);
+    expect(store.get("nil", "null")).toBeNull();
+  });
+
+  it("array/object typed reads return the SAME stored reference (no copy)", () => {
+    const store = new SessionVariableStore();
+    const arr: unknown[] = [1];
+    const obj: Record<string, unknown> = { a: 1 };
+    store.declare("a", "array");
+    store.set("a", arr);
+    store.declare("o", "object");
+    store.set("o", obj);
+    expect(store.get("a", "array")).toBe(arr);
+    expect(store.get("o", "object")).toBe(obj);
+  });
+
+  it("unconvertible stored values THROW the pinned convert line with the STORED TYPE spelling — and present-but-null read as ANY other kind is a conversion FAULT (stored-null spelled distinctly, per the explicit ruling, NOT legacy's null leniency)", () => {
+    const store = new SessionVariableStore();
+    store.declare("o", "object");
+    store.set("o", { a: 1 });
+    store.declare("word", "string");
+    store.set("word", "banana");
+    store.declare("nil", "null");
+    store.set("nil", null);
+    expectFamilyFault(
+      () => store.get("o", "string"),
+      varReadConvertLine("o", "string", "stored value of type 'object'"),
+    );
+    expectFamilyFault(
+      () => store.get("word", "number"),
+      varReadConvertLine("word", "number", "stored value of type 'string'"),
+    );
+    expectFamilyFault(
+      () => store.get("nil", "number"),
+      varReadConvertLine("nil", "number", "stored value is null"),
+    );
+    // Reads mutate NOTHING: the stored values survive every faulted read.
+    expect(store.get("nil", "null")).toBeNull();
+    expect(store.get("o", "object")).toEqual({ a: 1 });
+    expect(store.get("word", "string")).toBe("banana");
+  });
+
+  it("typed reads resolve the CONCRETE kind types at compile time (IDE guarantee — positive assignability rows checked by npm run check)", () => {
+    const store = new SessionVariableStore();
+    store.declare("n", "number");
+    store.set("n", 42);
+    store.declare("b", "boolean");
+    store.set("b", true);
+    store.declare("s", "string");
+    store.set("s", "hi");
+    store.declare("a", "array");
+    store.set("a", [1]);
+    store.declare("o", "object");
+    store.set("o", { k: 1 });
+    store.declare("z", "null");
+    store.set("z", null);
+    const num: number = store.get("n", "number");
+    const bool: boolean = store.get("b", "boolean");
+    const str: string = store.get("s", "string");
+    const arr: unknown[] = store.get("a", "array");
+    const obj: Record<string, unknown> = store.get("o", "object");
+    const nul: null = store.get("z", "null");
+    expect(num).toBe(42);
+    expect(bool).toBe(true);
+    expect(str).toBe("hi");
+    expect(arr).toEqual([1]);
+    expect(obj).toEqual({ k: 1 });
+    expect(nul).toBeNull();
+  });
+});
+
+describe("SessionVariableStore — delta-window primitive (cursor idiom)", () => {
+  it("initial baseline EMPTY: pre-mark reads report everything currently stored with final values", () => {
+    const store = new SessionVariableStore();
+    store.declare("x", "number");
+    store.set("x", 1);
+    store.declare("y", "string");
+    store.set("y", "a");
+    expect(store.getVarsDelta()).toEqual({ x: 1, y: "a" });
+  });
+
+  it("reports every variable ADDED OR MODIFIED since the mark with FINAL values; untouched names stay out", () => {
+    const store = new SessionVariableStore();
+    store.declare("p", "number");
+    store.set("p", 1);
+    store.declare("q", "string");
+    store.set("q", "keep");
+    store.resetVarsDelta();
+    store.declare("r", "number");
+    store.set("r", 3); // addition
+    store.set("p", 9); // modification (final value reported)
+    expect(store.getVarsDelta()).toEqual({ p: 9, r: 3 });
+    expect(store.getVarsDelta().q).toBeUndefined();
+  });
+
+  it("setting the SAME primitive twice reports NO modification (value equality); overwrites with distinct references report the FINAL value — and a flip back to the EXACT baseline reference is net-unmodified (reference-inequality semantics)", () => {
+    const store = new SessionVariableStore();
+    store.declare("n", "number");
+    store.set("n", 5);
+    store.declare("o", "object");
+    const v1: Record<string, unknown> = { a: 1 };
+    const v2: Record<string, unknown> = { a: 2 };
+    const v3: Record<string, unknown> = { a: 3 };
+    store.set("o", v1);
+    store.resetVarsDelta();
+    store.set("n", 5); // identical value — invisible
+    store.set("o", v2); // distinct reference — visible (final value v2)
+    expect(store.getVarsDelta()).toEqual({ o: v2 });
+    store.set("o", v1); // flip back to the BASELINE reference — net unchanged
+    expect(store.getVarsDelta()).toEqual({});
+    store.set("o", v3); // another distinct reference — visible again
+    expect(store.getVarsDelta()).toEqual({ o: v3 });
+  });
+
+  it("in-place mutation of a RETAINED object reference is NOT a modification (reference semantics; engine writers route through set)", () => {
+    const store = new SessionVariableStore();
+    store.declare("o", "object");
+    const obj: Record<string, unknown> = { a: 1 };
+    store.set("o", obj);
+    store.resetVarsDelta();
+    obj.a = 2; // mutated in place — invisible to the window
+    expect(store.getVarsDelta()).toEqual({});
+  });
+
+  it("re-marking ADVANCES past the current state: intermediate churn drops off, post-second-mark modifications remain", () => {
+    const store = new SessionVariableStore();
+    store.declare("x", "number");
+    store.set("x", 1);
+    store.resetVarsDelta();
+    store.set("x", 2); // churn between the marks
+    store.resetVarsDelta(); // advance past the churn
+    expect(store.getVarsDelta()).toEqual({});
+    store.set("x", 3);
+    expect(store.getVarsDelta()).toEqual({ x: 3 });
+  });
+
+  it("repeated reads are STABLE (deep-equal) but FRESH objects per call (non-consuming, never aliased)", () => {
+    const store = new SessionVariableStore();
+    store.declare("x", "number");
+    store.set("x", 1);
+    store.resetVarsDelta();
+    store.set("x", 2);
+    const first = store.getVarsDelta();
+    const second = store.getVarsDelta();
+    expect(second).toEqual(first);
+    expect(second).not.toBe(first);
+  });
+});
+
+describe("SessionVariableStore — cross-instance independence over the new surface", () => {
+  it("two created sessions carry DISJOINT registries and stores: same names AND crossing names over declare/set/typed-read/delta", async () => {
+    const a = await PioSession.create(CWD);
+    const b = await PioSession.create(CWD);
+    // SAME name, disjoint worlds: the registry never leaks across hosts.
+    a.vars.declare("k", "string");
+    a.vars.set("k", "a-val");
+    expect(b.vars.get("k")).toBeUndefined();
+    expect(b.vars.declarations()).toEqual({});
+    expectFamilyFault(
+      () => b.vars.get("k", "string"),
+      varReadAbsentLine("k", "string"),
+    );
+    expect(b.vars.getVarsDelta()).toEqual({});
+    // Crossing names: each side sees only its own world.
+    a.vars.declare("only-a", "number");
+    a.vars.set("only-a", 1);
+    b.vars.declare("only-b", "number");
+    b.vars.set("only-b", 2);
+    expect(a.vars.get("only-b")).toBeUndefined();
+    expect(b.vars.get("only-a")).toBeUndefined();
+    expect(a.vars.get("only-a", "number")).toBe(1);
+    expect(b.vars.get("only-b", "number")).toBe(2);
+    // Registry isolation: the SAME name may carry a DIFFERENT kind in the
+    // other instance (per-instance ownership carries over automatically).
+    b.vars.declare("k", "number");
+    b.vars.set("k", 7);
+    expect(a.vars.get("k", "string")).toBe("a-val");
+    expect(b.vars.get("k", "number")).toBe(7);
+    // Delta windows never leak across instances.
+    a.vars.resetVarsDelta();
+    b.vars.resetVarsDelta();
+    a.vars.set("k", "again");
+    expect(b.vars.getVarsDelta()).toEqual({});
+    expect(a.vars.getVarsDelta()).toEqual({ k: "again" });
+  });
+
+  it("two fromRuntime hosts over the SAME settled runtime carry disjoint stores and registries over the new surface", async () => {
+    const rawRuntime = await harness.createAgentSessionRuntime();
+    const round = lastRound();
+    const runtime = asRuntime(round.runtime);
+    const H = PioSession.fromRuntime(runtime);
+    const H2 = PioSession.fromRuntime(runtime);
+    H.vars.declare("k", "string");
+    H.vars.set("k", "H-val");
+    H2.vars.declare("k", "number"); // different KIND, same name — legal
+    H2.vars.set("k", 9);
+    expect(H.vars.get("k", "string")).toBe("H-val");
+    expect(H2.vars.get("k", "number")).toBe(9);
+    expect(H.vars.declarations()).toEqual({ k: "string" });
+    expect(H2.vars.declarations()).toEqual({ k: "number" });
+    H.vars.resetVarsDelta();
+    H2.vars.set("k", 10);
+    expect(H.vars.getVarsDelta()).toEqual({});
+    expect(H2.vars.getVarsDelta()).toEqual({ k: 10 });
+    // Both hosts wrap the SAME settled runtime by reference (disjoint
+    // stores ride the shared handle — D1 placement row-1 mechanics).
+    expect(H.runtime).toBe(rawRuntime);
+    expect(H2.runtime).toBe(rawRuntime);
+  });
+});
+
+describe("SessionVariableStore — W2C round-trips (restated binding: declare-then-write)", () => {
+  it("all six kinds round-trip declare-then-write with well-typed values (outcomes identical to legacy's corresponding writes) and list() insertion order is preserved under the new API", () => {
+    const store = new SessionVariableStore();
+    store.declare("f", "boolean");
+    store.set("f", "true"); // textual form converts to the declared kind
+    store.declare("num", "number");
+    store.set("num", "42"); // numeric string converts
+    store.declare("str", "string");
+    store.set("str", "hello");
+    store.declare("arr", "array");
+    store.set("arr", [1, { b: 2 }]); // stored by reference
+    store.declare("obj", "object");
+    store.set("obj", { c: [3] }); // stored by reference
+    store.declare("nil", "null");
+    store.set("nil", null);
+    expect(store.list()).toEqual(["f", "num", "str", "arr", "obj", "nil"]);
+    expect(store.get("f", "boolean")).toBe(true);
+    expect(store.get("num", "number")).toBe(42);
+    expect(store.get("str", "string")).toBe("hello");
+    expect(store.get("arr", "array")).toEqual([1, { b: 2 }]);
+    expect(store.get("obj", "object")).toEqual({ c: [3] });
+    expect(store.get("nil", "null")).toBeNull();
+    // Re-set with native well-typed values: stable outcomes (byte-
+    // behavior identical to legacy for these surviving lanes).
+    store.set("f", false);
+    store.set("num", -7.5);
+    expect(store.get("f", "boolean")).toBe(false);
+    expect(store.get("num", "number")).toBe(-7.5);
+  });
+});
+
+describe("SessionVariableStore — containment shape (bare identity)", () => {
+  it("a two-line family instance reduces through captureError to the BARE IDENTITY literal {type, message}: NO cause key, NO violations key, joined message bytes pinned", () => {
+    const lines = [
+      "variable 'a' has no declared base type \u2014 a base type must be declared before writing",
+      "variable 'b' cannot take a value of type 'string' as declared kind 'boolean' \u2014 token is not a recognized boolean form",
+    ];
+    const captured = captureError(new VariableRejectionError(lines));
+    expect(captured).toEqual({
+      type: "VariableRejectionError",
+      message: `${VAR_REJECTION_PREFIX}${lines.join("; ")}`,
+    });
+    // Exact key set: no adoption hook exists to ride (D3 pin).
+    expect(Object.keys(captured).sort()).toEqual(["message", "type"]);
   });
 });
 
@@ -1931,6 +2800,7 @@ describe("PioSession — composed-host surface (P-rows)", () => {
 
     // Fresh vars store: empty, set/get/list round-trips.
     expect(H.vars.list()).toEqual([]);
+    H.vars.declare("k", "string");
     H.vars.set("k", "v");
     expect(H.vars.get("k")).toBe("v");
     expect(H.vars.list()).toEqual(["k"]);

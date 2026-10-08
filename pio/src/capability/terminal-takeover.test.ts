@@ -1031,6 +1031,9 @@ describe("hop matrix (H rows — materializeFrame over the physics world)", () =
       idSeams: SEAMS_A,
       body: async (frame: PioSession): Promise<Record<string, unknown>> => {
         const outerStore = frame.vars;
+        // W2C mechanical preamble (mandatory-type ruling): declare before
+        // the first write; row intent unchanged.
+        outerStore.declare("ovar", "number");
         outerStore.set("ovar", 3);
         outerStoreRef = outerStore;
         expect(outerStore.get("ovar")).toBe(3);
@@ -1045,6 +1048,8 @@ describe("hop matrix (H rows — materializeFrame over the physics world)", () =
           idSeams: SEAMS_B,
           body: async (grand: PioSession): Promise<Record<string, unknown>> => {
             const innerStore = grand.vars;
+            // W2C mechanical preamble (mandatory-type ruling).
+            innerStore.declare("ivar", "number");
             innerStore.set("ivar", 99);
             innerStoreRef = innerStore;
             expect(innerStore.list()).toEqual(["ivar"]);
@@ -1371,6 +1376,9 @@ describe("hop matrix (H rows — materializeFrame over the physics world)", () =
       idSeams: SEAMS_A,
       body: async (frame: PioSession): Promise<Record<string, unknown>> => {
         const store = frame.vars;
+        // W2C mechanical preamble (mandatory-type ruling): declare before
+        // the first write; row intent unchanged.
+        store.declare("hopvar", "number");
         store.set("hopvar", 99);
         storeRef = store;
         expect(store.get("hopvar")).toBe(99);

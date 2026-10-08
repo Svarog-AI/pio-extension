@@ -63,8 +63,7 @@
 // the phase's normalized project-files scope flag, detached on every exit
 // cause): the session's execution-state phase record rides this single
 // retained list plus the normalized class flags and the verbatim
-// variable-name bag - the phase's FOUR declared permission
-// dimensions.
+// variable-name list - the four declared permission dimensions.
 //
 // Corrective-note channel: gate-triggered retries alone append ONE fresh
 // deterministic MARKED BLOCK (a flanked em-dash delimiter line labeled
@@ -83,19 +82,17 @@
 // SessionExecutionState over its two owned anchor channels (the
 // project-slot root recovered through the base's loud state-root channel
 // plus the launch cwd; the workspace cwd itself) and threads it into the
-// construction seam's guard install alongside the TWO tool-call handler
-// closures (the write row first, then the var row). Each closure consults
-// a FRESH snapshot through its stateless predicate per call, eager for
-// every tool name: a faulty channel faults every call verbatim (fail-safe
-// tail), and no containment hides it.
+// construction seam's guard install alongside both tool-call handler
+// closures (write row first, then var row). Each closure consults a fresh
+// snapshot through its stateless predicate per call: a faulty channel
+// faults every call verbatim (fail-safe tail), with no containment.
 // fromRuntime
 // discovers the state from the settled handle's symbol stamp via cast-free
 // instanceof narrowing; an unstamped foreign handle carries NO state and
-// every gate operation no-ops cleanly. execute_phase feeds its retained
-// resolved declarations, its normalized class flags, AND its verbatim
-// variable-name bag into the top span strictly at phase start (a phase
-// attaches when ANY dimension is declared; none declared attaches nothing)
-// and detaches on
+// every gate operation no-ops cleanly. execute_phase feeds its resolved
+// declarations, class flags, and verbatim variable-name list into the top
+// span strictly at phase start (attaches when any dimension is declared;
+// none declared attaches nothing) and detaches on
 // every exit cause. rebind leaves the execution state UNTOUCHED on every
 // path - span integrity belongs to the balanced enter/exit lifecycle, not
 // to the swap. The enterCapability / exitCapability pair is the
@@ -290,25 +287,21 @@ export interface PhaseOptions {
   /** The phase's project-files (workspace-cwd) SCOPE declaration:
    * CLAMPED at decision time against the running capability's contract
    * flag - an unbacked flag is INVISIBLE (never granted, never listed).
-   * With the `write` bag, the scratch flag, and the variable-name
-   * declaration it forms the phase's FOUR declared permission dimensions
-   * (all feed the session's execution state verbatim); absent means
-   * false. */
+   * With the other declarations it forms the phase's four permission
+   * dimensions (all feed the session's execution state verbatim); absent
+   * means false. */
   readonly allowProjectWrites?: boolean;
   /** The phase's SCRATCH (/tmp/) declaration: a SINGLE phase flag with NO
    * contract-side counterpart - judged only at decision time (there is no
-   * clamp to speak of - single-flag doctrine). With the `write` bag, the
-   * scope flag, and the variable-name declaration it forms the phase's
-   * FOUR declared permission dimensions (all feed the session's execution
-   * state verbatim); absent means false. */
+   * clamp to speak of - single-flag doctrine). With the other declarations
+   * it forms the phase's four permission dimensions (all feed the
+   * session's execution state verbatim); absent means false. */
   readonly tmpDirAllowed?: boolean;
-  /** The phase's VARIABLE-NAME declaration: while the phase is attached,
-   * the model's setVar writes are admitted EXACTLY against these names
-   * (judged at decision time by the var gate over the phase's stored
-   * listing, deduplicated to first occurrence). Stored VERBATIM beside
-   * the other three dimensions - no copy or transform at attach; an empty
-   * or absent declaration confers NO variable governance at all (the
-   * gate's universal verdict shape stands untouched). */
+  /** Declared variable names: while the phase is attached, the model's
+   * setVar writes are admitted exactly against these names (judged at
+   * decision time over the stored listing, deduplicated to first
+   * occurrence). Stored verbatim beside the other dimensions; absent or
+   * empty confers no variable governance. */
   readonly vars?: readonly string[];
 }
 
@@ -1014,8 +1007,7 @@ export class PioSession {
    * The only standalone construction path: mints the observer and its
    * single instance-scoped listener PLUS the one per-session execution
    * state over the owned anchor channels, threads the listener and the
-   * UNCONDITIONAL guard install (state + BOTH tool-call handler closures:
-   * the write row and the var row)
+   * UNCONDITIONAL guard install (state + both tool-call handler closures)
    * through the construction seam (exactly one live subscription at any
    * instant), and returns the ready instance. The composed-frame sibling
    * (fromRuntime) hosts an already-settled runtime instead.
@@ -1042,10 +1034,8 @@ export class PioSession {
     // survives rebind swaps and span churn; no containment anywhere.
     const writeToolCallHandler = (toolName: string, input: unknown) =>
       decideWrite(executionState.snapshot(), toolName, input);
-    // THE var tool-call handler closure: sibling row over the SAME fresh
-    // snapshot doctrine - every setVar verdict consults the executing
-    // phase's variable-name declaration through the stateless predicate;
-    // the two rows ride ONE guarded install (first refusal wins).
+    // Var tool-call handler: same fresh-snapshot-per-call doctrine as the
+    // write row; the two rows share one guarded install (first refusal wins).
     const varToolCallHandler = (toolName: string, input: unknown) =>
       decideVarWrite(executionState.snapshot(), toolName, input);
     // THE one fenced bash instance: built over the SAME execution state the
@@ -1204,19 +1194,16 @@ export class PioSession {
     // retained list: the phase's project-files scope declaration (judged
     // only at decision time - clamped there against the contract flag) and
     // its scratch declaration (judged only at decision time, never clamped
-    // - no contract-side counterpart exists); the variable-name bag joins
-    // them by reference (judged only at decision time as well - admission
-    // is plain inclusion over the stored, deduped listing).
+    // - no contract-side counterpart exists); the variable-name list joins
+    // them by reference (admission is plain inclusion over the stored,
+    // deduped listing).
     const allowProjectWrites = Boolean(opts?.allowProjectWrites);
     const tmpDirAllowed = Boolean(opts?.tmpDirAllowed);
-    // The variable-name declaration rides BY REFERENCE (verbatim carriage
-    // - no copy or transform): present-and-non-empty arms the phase's var
-    // governance over exactly these names.
+    // Rides by reference (verbatim carriage - no copy or transform):
+    // present-and-non-empty arms the phase's variable governance.
     const declaredVars = opts?.vars ?? [];
-    // The retained resolved entries, both normalized class flags, AND the
-    // variable-name bag feed the execution state VERBATIM when ANY
-    // dimension is declared (paths, the scope flag, the scratch flag, or
-    // the variable names): attach STRICTLY AT PHASE START
+    // Paths, both class flags, and the variable-name list feed the
+    // execution state when any dimension is declared: attach STRICTLY AT PHASE START
     // (outside the try block, so a loud bookkeeping fault escapes with no
     // finally-side bookkeeping to untangle); the attached flags keep the
     // closeout detach symmetric over every exit cause. No dimension

@@ -10,10 +10,9 @@
 // call (NO caching anywhere — the first fault escapes verbatim, half-
 // application impossible) and hands PLAIN VALUES downstream: nothing past this
 // module ever sees a closure. Stores PLAIN DATA only (sources by reference,
-// the phase's full raw record verbatim - raw resolved paths plus BOTH raw
-// flags plus the variable-name list, zero-copy trust boundary; caller
-// mutation is documented, not
-// defended against). Bookkeeping corruption is deterministic
+// the phase's full raw record verbatim - resolved paths, both flags, and
+// the variable-name list, zero-copy trust boundary; caller mutation is
+// documented, not defended against). Bookkeeping corruption is deterministic
 // and LOUD: the unexported ExecutionStateError carries the four fault forms;
 // silent tolerance is forbidden.
 //
@@ -32,9 +31,8 @@ import type {
  * session's invariant paths — the execution state's `snapshot()` output,
  * given as-is. Lives in ITS PRODUCER'S MODULE (any snapshot-consuming guard
  * depends on the state by construction — producer-side typing adds no consumer
- * edge). Shared by EVERY guard member (the write gate and the variable-
- * write gate today; a future command guard consumes the SAME record - no
- * per-guard snapshot fork, ever).
+ * edge). Shared by every guard member (the write and variable gates today;
+ * a future command guard consumes the same record).
  * SINGLE SOURCE OF TRUTH — `write-gate.ts` takes the plain type-only import. */
 export interface ExecutionSnapshot {
   /** NULL = no capability span active. A real sources object with empty
@@ -114,17 +112,11 @@ export class SessionExecutionState {
     this.layers.pop();
   }
 
-  /** Store the CURRENT phase AS A RECORD: { id, declared,
-   * allowProjectWrites, tmpDirAllowed, vars } VERBATIM in the top layer's
-   * SCALAR slot - the FULL RAW RECORD exactly as passed (raw resolved paths
-   * plus the raw scope flag plus the raw scratch flag plus the raw
-   * variable-name list: no filtering, validation,
-   * contract consultation, channel consult, or copy-transformation).
-   * Attaching while a phase is already attached OVERWRITES the slot
-   * (last-wins). An EMPTY declaration with BOTH flags FALSE and an EMPTY
-   * variable-name list is a valid no-op attachment (confers no governance -
-   * the predicates' phase branches fall through lazily; keeps detach
-   * symmetric). Sole fault: depth 0. */
+  /** Store the current phase as the record { id, declared,
+   * allowProjectWrites, tmpDirAllowed, vars } verbatim in the top layer's
+   * scalar slot - no filtering, validation, or copy-transformation.
+   * Attaching overwrites an attached slot (last-wins); an all-empty record
+   * is a valid no-op attachment. Sole fault: depth 0. */
   attachPhase(
     phaseId: string,
     declaredPaths: readonly string[],

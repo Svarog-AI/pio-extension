@@ -729,9 +729,13 @@ export class SessionVariableStore {
         `var registry: cannot declare '${name}' as '${type}': already declared as '${existing}'`,
       );
     }
-    // Idempotent on same-type re-declaration: the skipped re-insert keeps
-    // the declaration ORDER at first registration.
-    if (existing !== type) {
+    // Registration lands exactly once per name, at first declaration:
+    // the conflicting-type case has already thrown above, so what remains
+    // here is a fresh name (insert) or a same-type re-declaration (no-op).
+    // Map insertion order is first-registration order either way — even a
+    // redundant set would preserve it — so the guard expresses intent,
+    // not an ordering safeguard.
+    if (existing === undefined) {
       this.#types.set(name, type);
     }
   }

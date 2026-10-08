@@ -12,8 +12,13 @@
 // directly observable. Synthetic events flow through the single documented
 // cast seam asEvent — the sole `as` over synthetic event payloads (the
 // handle-typing seams asHandle / asRuntime below are the only other
-// assertions in this file, plus the marked foreign-type seam
-// foreignVarType feeding the malformed-type registry-fault row).
+// presentation seams in this file, plus the marked foreign-type seam
+// foreignVarType feeding the malformed-type registry-fault row, and the
+// trio-drive seam driveVarEntry in the vars-tool threading describe,
+// which presents the REAL var-tool definition behind the widened
+// threaded-tool view under the authored five-argument execute surface so
+// the composed-wiring rows drive the real bodies with an inert context
+// argument).
 //
 // Physics-mirror harness (installed 0.85.1 dist): fake handles bookkeep
 // LIVE listeners — subscribe returns a functional per-listener unsubscribe
@@ -3605,7 +3610,7 @@ describe("source guards (composed-host edge discipline over pio-session.ts)", ()
     expect(src.includes("isComposed")).toBe(false);
   });
 
-  it("the SDK root sits in EXACTLY ONE clause — the TYPE clause, normalized byte form pinned with AgentSession LEADING — and the VALUE clause set is exactly the pinned eleven-specifier gate-wiring set behind it", () => {
+  it("the SDK root sits in EXACTLY ONE clause — the TYPE clause, normalized byte form pinned with AgentSession LEADING — and the VALUE clause set is exactly the pinned twelve-specifier gate-wiring set behind it", () => {
     // EXACTLY ONE clause references the SDK root, and it is the TYPE
     // clause.
     expect(src.match(/from "@earendil-works\/pi-coding-agent"/g)?.length).toBe(
@@ -3638,6 +3643,7 @@ describe("source guards (composed-host edge discipline over pio-session.ts)", ()
       "../session.ts",
       "../session-execution-state.ts",
       "../tools/bash/landlock-bash.ts",
+      "../tools/vars/var-tools.ts",
       "./base.ts",
       "./errors.ts",
       "./guards/var-gate.ts",
@@ -3661,6 +3667,19 @@ describe("source guards (composed-host edge discipline over pio-session.ts)", ()
     // sites in the module.
     expect(normalized.match(/decideWrite\(/g)?.length).toBe(1);
     expect(normalized.match(/decideVarWrite\(/g)?.length).toBe(1);
+  });
+
+  it("the customTools slot threads the fenced bash entry FOLLOWED BY THE VARIABLE TRIO - whitespace-normalized module bytes pin the exact list, so a reordering or a fifth entry slips this mechanical pin", () => {
+    const normalized = src.replace(/\s+/g, " ");
+    expect(
+      normalized.includes("customTools: [landlockBash, ...varTools]"),
+    ).toBe(true);
+    // The trio is constructed ONCE over create's minted store - the
+    // factory callsite binds the SAME store instance the constructor
+    // receives (one identity at every hop; composed frames take the
+    // constructor's fresh-mint default).
+    expect(normalized.match(/createVarTools\(vars\)/g)?.length).toBe(1);
+    expect(normalized.match(/new SessionVariableStore\(\)/g)?.length).toBe(2);
   });
 
   it("fragment occurrences over the disclosure channel: the module-private disclosure static appears EXACTLY TWICE (declaration + the renderer's single destructure read) and the renderer itself is declared EXACTLY ONCE beside its SINGLE invocation — the injection site consults one optional-chained snapshot reading, never more", () => {
@@ -4751,15 +4770,21 @@ describe("mechanical discipline over the gate-wiring bytes", () => {
 const DEFAULT_ACTIVE_TOOL_NAMES = ["read", "bash", "edit", "write"];
 
 describe("PioSession \u2014 Landlock-bash customTools threading", () => {
-  it("unconditional single-entry identity (both construction forms): the from-services arg carries EXACTLY ONE customTools entry naming bash, the factory ledger shows ONE instantiation at the launched cwd, the entry's ops bag is REFERENCE-IDENTICAL to the ledger bag, and the guard wiring stays undisturbed", async () => {
+  it("unconditional four-entry identity (both construction forms): the from-services arg carries EXACTLY FOUR customTools entries with the pinned name sequence (bash leading), the factory ledger shows ONE instantiation at the launched cwd, the leading entry's ops bag is REFERENCE-IDENTICAL to the ledger bag, and the guard wiring stays undisturbed", async () => {
     for (const sessionsRoot of [undefined, SESSIONS_ROOT]) {
       harness.reset();
       await PioSession.create(CWD, sessionsRoot);
       const { servicesArg } = await driveStoredClosure();
       const tools = lastFromServicesArg().customTools;
       expect(tools).toBeDefined();
-      expect(tools?.length).toBe(1);
+      expect(tools?.length).toBe(4);
       if (!tools) throw new Error("expected the threaded entry set");
+      expect(tools.map((entry) => entry.name)).toEqual([
+        "bash",
+        "setVar",
+        "getVar",
+        "listVars",
+      ]);
       const entry = tools[0];
       expect(entry.name).toBe("bash");
       // Single-source chain: the factory ledger holds EXACTLY ONE
@@ -4780,12 +4805,12 @@ describe("PioSession \u2014 Landlock-bash customTools threading", () => {
     }
   });
 
-  it("registry-replacement harmlessness: under the measured default active-tool roster, the SINGLE bash entry shadows EXACTLY ONE base definition and STAYS ACTIVE (override-by-name physics: the custom set lands over the builtin map)", async () => {
+  it("registry-replacement harmlessness: under the measured default active-tool roster, the LEADING bash entry shadows EXACTLY ONE base definition and STAYS ACTIVE (override-by-name physics: the custom set lands over the builtin map)", async () => {
     await PioSession.create(CWD);
     await driveStoredClosure();
     const tools = lastFromServicesArg().customTools;
-    if (tools?.length !== 1) {
-      throw new Error("expected the single threaded bash entry");
+    if (tools?.length !== 4) {
+      throw new Error("expected the four threaded entries");
     }
     const entry = tools[0];
     // The roster line binds the MEASURED constant; it does not re-prove the
@@ -4794,15 +4819,15 @@ describe("PioSession \u2014 Landlock-bash customTools threading", () => {
     // bash entry replaces the base entry and stays in the active roster.
     expect(DEFAULT_ACTIVE_TOOL_NAMES).toContain(entry.name);
     expect(entry.name).toBe("bash");
-    expect(tools.length).toBe(1);
+    expect(tools.length).toBe(4);
   });
 
   it("routed execution: awaiting the threaded entry's execute settles through EXACTLY ONE receipt whose bound bag is REFERENCE-IDENTICAL to the entry's ops bag AND the factory-ledger bag (the wiring chain is single-source at every hop), resolving the neutral settlement", async () => {
     await PioSession.create(CWD);
     await driveStoredClosure();
     const tools = lastFromServicesArg().customTools;
-    if (tools?.length !== 1) {
-      throw new Error("expected the single threaded bash entry");
+    if (tools?.length !== 4) {
+      throw new Error("expected the four threaded entries");
     }
     const entry = tools[0];
     // RIDES (measured elsewhere, cited): the real factory's execute routes
@@ -4837,13 +4862,13 @@ describe("PioSession \u2014 Landlock-bash customTools threading", () => {
     await PioSession.create(CWD);
     const firstDrive = await driveStoredClosure();
     const toolsFirst = lastFromServicesArg().customTools;
-    if (toolsFirst?.length !== 1) {
-      throw new Error("expected the single threaded bash entry");
+    if (toolsFirst?.length !== 4) {
+      throw new Error("expected the four threaded entries");
     }
     const secondDrive = await driveStoredClosure();
     const toolsSecond = lastFromServicesArg().customTools;
-    if (toolsSecond?.length !== 1) {
-      throw new Error("expected the single threaded bash entry");
+    if (toolsSecond?.length !== 4) {
+      throw new Error("expected the four threaded entries");
     }
     expect(toolsSecond).toBe(toolsFirst);
     expect(toolsSecond[0].operations).toBe(toolsFirst[0].operations);
@@ -4914,5 +4939,158 @@ describe("PioSession \u2014 Landlock-bash customTools threading", () => {
         gate.toolCallHandler(toolCall("write", deniedInput)),
       ).toBeDefined();
     });
+  });
+});
+
+// ---------------------------------------------------------------------
+// Vars-tool customTools threading: the grown UNCONDITIONAL four-entry
+// world - the fenced bash entry followed by the model-facing variable
+// trio over create's minted store. The rows drive the REAL
+// PioSession.create and observe the threaded entries cast-free off the
+// recorded from-services arg; the composed-wiring rows additionally drive
+// the REAL var-tool execute bodies through the single marked seam
+// driveVarEntry (header seam inventory) with an inert context argument -
+// no body ever reads it. Construction is storage-only and the mocks
+// absorb session building, so every row here stays env-free.
+// ---------------------------------------------------------------------
+
+/** MARKED cast seam (documented in the header seam inventory): presents
+ * ONE real threaded definition behind the widened FakeThreadedTool view
+ * under the authored five-argument execute surface. */
+interface DrivenSettlement {
+  content: Array<{ type: string; text: string }>;
+  details: unknown;
+}
+function driveVarEntry(
+  entry: unknown,
+  params: unknown,
+): Promise<DrivenSettlement> {
+  const execute = (
+    entry as {
+      execute: (
+        id: string,
+        p: unknown,
+        s: unknown,
+        u: unknown,
+        c: unknown,
+      ) => Promise<DrivenSettlement>;
+    }
+  ).execute;
+  return execute("tc-vars-host", params, undefined, undefined, {});
+}
+
+describe("PioSession \u2014 vars-tool customTools threading", () => {
+  it("unconditional four-entry identity across BOTH construction forms: the pinned name sequence lands on the customTools slot with bash keeping its index-0 position (additive roster over the unchanged leading entry)", async () => {
+    for (const sessionsRoot of [undefined, SESSIONS_ROOT]) {
+      harness.reset();
+      await PioSession.create(CWD, sessionsRoot);
+      await driveStoredClosure();
+      const tools = lastFromServicesArg().customTools;
+      if (tools?.length !== 4) {
+        throw new Error("expected the four threaded entries");
+      }
+      expect(tools.map((tool) => tool.name)).toEqual([
+        "bash",
+        "setVar",
+        "getVar",
+        "listVars",
+      ]);
+      // Bash keeps its stable leading position; its single-instantiation
+      // + ops-bag identity chain stays owned by the sibling suite's rows
+      // over the SAME world.
+      expect(harness.state.bashFactoryCalls).toHaveLength(1);
+    }
+  });
+
+  it("wiring-chain identity: driving the THREADED setVar entry's execute settles the success result and instance.vars holds the settled value - the create()-mint is the constructor vars handle AND the tool-captured store (one identity at every hop)", async () => {
+    const instance = await PioSession.create(CWD);
+    instance.vars.declare("note", "string");
+    await driveStoredClosure();
+    const tools = lastFromServicesArg().customTools;
+    if (tools?.length !== 4 || tools[1]?.name !== "setVar") {
+      throw new Error("expected the threaded setVar entry at index 1");
+    }
+    const settlement = await driveVarEntry(tools[1], {
+      name: "note",
+      type: "string",
+      value: "wired",
+    });
+    expect(settlement.details).toEqual({});
+    expect(settlement.content).toEqual([
+      {
+        type: "text",
+        text: `variable 'note' set to ${JSON.stringify("wired")}.`,
+      },
+    ]);
+    // One identity at every hop: the hosted vars handle IS the store the
+    // tool closures write into (create()'s mint reaches both).
+    expect(instance.vars.get("note")).toBe("wired");
+  });
+
+  it("re-spread persistence: two stored-closure drives yield the SAME array carrying the SAME four entries BY REFERENCE (unconditional-slot doctrine over the whole set)", async () => {
+    await PioSession.create(CWD);
+    await driveStoredClosure();
+    const toolsFirst = lastFromServicesArg().customTools;
+    if (toolsFirst?.length !== 4) {
+      throw new Error("expected the four threaded entries");
+    }
+    await driveStoredClosure();
+    const toolsSecond = lastFromServicesArg().customTools;
+    if (toolsSecond?.length !== 4) {
+      throw new Error("expected the four threaded entries");
+    }
+    expect(toolsSecond).toBe(toolsFirst);
+    for (let i = 0; i < 4; i += 1) {
+      expect(toolsSecond[i]).toBe(toolsFirst[i]);
+    }
+  });
+
+  it("per-session isolation: two create() hosts carry DISJOINT stores behind disjoint tool closures - driving host A's setVar leaves host B's store untouched, and symmetrically", async () => {
+    const hostA = await PioSession.create(CWD);
+    hostA.vars.declare("alpha", "string");
+    await driveStoredClosure();
+    const toolsA = lastFromServicesArg().customTools;
+    const hostB = await PioSession.create(CWD);
+    hostB.vars.declare("beta", "string");
+    await driveStoredClosure();
+    const toolsB = lastFromServicesArg().customTools;
+    if (toolsA?.length !== 4 || toolsB?.length !== 4) {
+      throw new Error("expected the four threaded entries per host");
+    }
+    // Disjoint sets: separate constructions mint separate arrays, stores,
+    // and tool instances (no cross-host reference anywhere).
+    expect(toolsB).not.toBe(toolsA);
+    expect(toolsB[1]).not.toBe(toolsA[1]);
+    expect(hostB.vars).not.toBe(hostA.vars);
+    // Host A's driven write lands ONLY in host A's store.
+    await driveVarEntry(toolsA[1], {
+      name: "alpha",
+      type: "string",
+      value: "a-val",
+    });
+    expect(hostA.vars.get("alpha")).toBe("a-val");
+    expect(hostB.vars.get("alpha")).toBeUndefined();
+    expect("alpha" in hostB.vars.declarations()).toBe(false);
+    // Symmetric: host B's driven write lands ONLY in host B's store.
+    await driveVarEntry(toolsB[1], {
+      name: "beta",
+      type: "string",
+      value: "b-val",
+    });
+    expect(hostB.vars.get("beta")).toBe("b-val");
+    expect(hostA.vars.get("beta")).toBeUndefined();
+    expect("beta" in hostA.vars.declarations()).toBe(false);
+  });
+
+  it("roster-extension sanity: none of the three var-lane names appears in the measured default active-tool roster (purely additive - the bash row's single-shadow physics stays untouched)", async () => {
+    await PioSession.create(CWD);
+    await driveStoredClosure();
+    const tools = lastFromServicesArg().customTools;
+    if (tools?.length !== 4) {
+      throw new Error("expected the four threaded entries");
+    }
+    for (const name of ["setVar", "getVar", "listVars"]) {
+      expect(DEFAULT_ACTIVE_TOOL_NAMES).not.toContain(name);
+    }
   });
 });

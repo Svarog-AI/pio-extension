@@ -103,15 +103,16 @@
 // Landlock-bash instance over the SAME execution state the guard install
 // stamps - BY REFERENCE, so the instance's per-invocation fresh snapshot
 // consult tracks span and phase churn identically to the write-handler
-// closure and late binding survives handle swaps. The entry rides the
-// UNCONDITIONAL customTools slot: the stored-factory closure re-spreads
-// the very same instance on every session re-creation (composed frames
-// share it within one runtime; a separate process mints its own through
-// its own create), so no placement adds wiring. session.ts stays the
-// generic channel and is unchanged; the guard-handler list gains NO
-// member, because the kernel adjudicates command writes and the tool
-// renders only: a single refusal site, rendered from the pre-spawn
-// consult.
+// closure and late binding survives handle swaps. The entries ride the
+// UNCONDITIONAL customTools slot - the fenced bash entry plus the
+// variable trio constructed ONCE over create's OWN minted variable store:
+// the stored-factory closure re-spreads the very same instances on every
+// session re-creation (composed frames share them within one runtime;
+// a separate process mints its own through its own create), so no
+// placement adds wiring. session.ts stays the generic channel and is
+// unchanged; the guard-handler list gains NO member, because the kernel
+// adjudicates command writes and the tool renders only: a single refusal
+// site, rendered from the pre-spawn consult.
 //
 // Phase-permission disclosure (the transcript-visible carrier): every
 // execute_phase consults the execution state FRESH - ONCE, strictly AFTER
@@ -148,6 +149,7 @@ import { createPioSession, EXECUTION_STATE_STAMP } from "../session.ts";
 import type { ExecutionSnapshot } from "../session-execution-state.ts";
 import { SessionExecutionState } from "../session-execution-state.ts";
 import { createLandlockBash } from "../tools/bash/landlock-bash.ts";
+import { createVarTools } from "../tools/vars/var-tools.ts";
 import { deriveStateRootFromAgentDir } from "./base.ts";
 import { ContractViolationError, VariableRejectionError } from "./errors.ts";
 import type { CapabilitySources } from "./guards/guard-vocabulary.ts";
@@ -301,7 +303,9 @@ export interface PhaseOptions {
    * setVar writes are admitted exactly against these names (judged at
    * decision time over the stored listing, deduplicated to first
    * occurrence). Stored verbatim beside the other dimensions; absent or
-   * empty confers no variable governance. */
+   * empty confers no variable governance. The governed tool is the
+   * registered setVar definition - the model-side write channel; the
+   * read lanes are unrestricted. */
   readonly vars?: readonly string[];
 }
 
@@ -977,9 +981,12 @@ export class PioSession {
   readonly id: string;
   /** Constructed runtime by reference — reach path for runs and teardown. */
   readonly runtime: AgentSessionRuntime;
-  /** Fresh per-instance variable store — the single validated entry point
-   * for every variable write (declare-then-set; hooks and phases reach
-   * the LIVE values by reference). */
+  /** The per-instance variable store - minted in create() and shared BY
+   * REFERENCE with the registered model-tool trio (one identity at every
+   * hop; the single validated entry point for every variable write,
+   * declare-then-set; hooks and phases reach the LIVE values by
+   * reference). Composed hosts from fromRuntime mint their OWN stores
+   * through the constructor default (disjoint by design). */
   readonly vars: SessionVariableStore;
 
   #observer: SessionObserver;
@@ -990,15 +997,21 @@ export class PioSession {
    * gate operation on such an instance no-ops cleanly. */
   #executionState: SessionExecutionState | undefined;
 
+  /** Private by design: the two public factories (create / fromRuntime)
+   * are the only construction paths. The OPTIONAL fourth parameter binds
+   * a PRE-MINTED variable store (create passes its own mint); the
+   * DEFAULT is a fresh mint, so composed frames stay disjoint-store by
+   * construction (no placement branch, no flag). */
   private constructor(
     runtime: AgentSessionRuntime,
     observer: SessionObserver,
     executionState: SessionExecutionState | undefined = undefined,
+    vars: SessionVariableStore = new SessionVariableStore(),
   ) {
     this.id = runtime.session.sessionId;
     this.#lastBound = runtime.session;
     this.runtime = runtime;
-    this.vars = new SessionVariableStore();
+    this.vars = vars;
     this.#observer = observer;
     this.#executionState = executionState;
   }
@@ -1006,11 +1019,14 @@ export class PioSession {
   /**
    * The only standalone construction path: mints the observer and its
    * single instance-scoped listener PLUS the one per-session execution
-   * state over the owned anchor channels, threads the listener and the
-   * UNCONDITIONAL guard install (state + both tool-call handler closures)
-   * through the construction seam (exactly one live subscription at any
-   * instant), and returns the ready instance. The composed-frame sibling
-   * (fromRuntime) hosts an already-settled runtime instead.
+   * state over the owned anchor channels PLUS the ONE variable store and
+   * the model-facing variable trio built over it (threaded onto the
+   * UNCONDITIONAL customTools slot behind the fenced bash entry), threads
+   * the listener and the UNCONDITIONAL guard install (state + both
+   * tool-call handler closures) through the construction seam (exactly
+   * one live subscription at any instant), and returns the ready instance.
+   * The composed-frame sibling (fromRuntime) hosts an already-settled
+   * runtime instead.
    */
   static async create(cwd: string, sessionsRoot?: string): Promise<PioSession> {
     const observer = new SessionObserver();
@@ -1044,15 +1060,24 @@ export class PioSession {
     // closure above); the instance may persist while the frames it consults
     // churn.
     const landlockBash = createLandlockBash(cwd, executionState);
+    // THE one variable store: minted HERE strictly pre-construction so
+    // the trio can bind it before the session exists - the SAME instance
+    // the finished host exposes as its vars handle (one identity at every
+    // hop; composed frames take the constructor's fresh-mint default).
+    const vars = new SessionVariableStore();
+    // THE model-facing variable trio: constructed ONCE over the minted
+    // store and appended to the customTools slot behind the fenced bash
+    // entry (set -> get -> list; bash keeps its stable leading position).
+    const varTools = createVarTools(vars);
     const runtime = await createPioSession(cwd, sessionsRoot, {
       sessionListener: listener,
-      customTools: [landlockBash],
+      customTools: [landlockBash, ...varTools],
       guardInstall: {
         executionState,
         handlers: [writeToolCallHandler, varToolCallHandler],
       },
     });
-    return new PioSession(runtime, observer, executionState);
+    return new PioSession(runtime, observer, executionState, vars);
   }
 
   /**

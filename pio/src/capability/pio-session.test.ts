@@ -1066,8 +1066,8 @@ describe("PioSession — vars store", () => {
 // ---------------------------------------------------------------------
 // Validated store core (goal session-variable-storage, landing): the
 // mandatory-type base-type registry, the single validated write entry
-// point over the D4 admission/conversion table, the overloaded typed
-// reads, and the delta-window cursor idiom. Pure-store rows construct
+// point over the D4 admission/conversion table, and the overloaded typed
+// reads. Pure-store rows construct
 // the EXPORTED class directly (hermetic, zero harness); the cross-
 // instance legs extend BOTH the host()/create pair pattern AND the
 // fromRuntime H/H2 pattern over the same settled runtime. Golden lines

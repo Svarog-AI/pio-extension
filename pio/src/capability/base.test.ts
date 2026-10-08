@@ -124,6 +124,23 @@ const harness = vi.hoisted(() => {
     return round.runtime;
   });
 
+  // Construction floor for the unconditional customTools threading: the
+  // real PioSession.create builds the Landlock-bash instance eagerly at the
+  // construction seam; these fakes absorb the construction-time SDK value
+  // reaches (this island's rows never inspect the threaded entry - the bare
+  // static shape suffices; the full four-symbol floor lives solely in
+  // pio-session.test.ts where observation resides).
+  const createBashToolDefinition = vi.fn(
+    (_cwd: string, options: { operations: unknown }) => ({
+      name: "bash",
+      operations: options.operations,
+    }),
+  );
+  const defineTool = vi.fn((tool: unknown) => tool);
+  // Eager at construction (seams.localOps ?? createLocalBashOperations()):
+  // structural stub - the island never drives the delegate bag.
+  const createLocalBashOperations = vi.fn(() => ({}));
+
   const reset = () => {
     state.rounds = [];
     state.mints = 0;
@@ -132,6 +149,9 @@ const harness = vi.hoisted(() => {
     createAgentSessionServices.mockClear();
     createAgentSessionFromServices.mockClear();
     createAgentSessionRuntime.mockClear();
+    createBashToolDefinition.mockClear();
+    defineTool.mockClear();
+    createLocalBashOperations.mockClear();
   };
 
   return {
@@ -141,6 +161,9 @@ const harness = vi.hoisted(() => {
     createAgentSessionServices,
     createAgentSessionFromServices,
     createAgentSessionRuntime,
+    createBashToolDefinition,
+    defineTool,
+    createLocalBashOperations,
     reset,
   };
 });
@@ -151,6 +174,9 @@ vi.mock("@earendil-works/pi-coding-agent", () => ({
   createAgentSessionServices: harness.createAgentSessionServices,
   createAgentSessionFromServices: harness.createAgentSessionFromServices,
   createAgentSessionRuntime: harness.createAgentSessionRuntime,
+  createBashToolDefinition: harness.createBashToolDefinition,
+  defineTool: harness.defineTool,
+  createLocalBashOperations: harness.createLocalBashOperations,
 }));
 
 // Row-2 dispatch probe (see header note): delegation keeps the REAL
@@ -211,7 +237,11 @@ beforeEach(() => {
   // B-block isolation: no holder state leaks across rows.
   takenOver?.teardownFrameEnvironment();
   originalEnv = process.env.PI_CODING_AGENT_DIR;
-  delete process.env.PI_CODING_AGENT_DIR; // start UNSET — settle rows opt in
+  // Suite-wide channel baseline: every execute_phase disclosure consult
+  // resolves the anchor channels fresh, so hermetic runs need a SET
+  // literal agent dir (rows wanting UNSET or malformed values pick those
+  // explicitly).
+  process.env.PI_CODING_AGENT_DIR = "/lit/state/.pi/agent";
 });
 
 afterEach(() => {
@@ -907,6 +937,11 @@ describe("PioCapability — prompt framing passes through untouched", () => {
   const PHASE_A_MARKER = "\u2014\u2014 phase-a \u2014\u2014";
   const PHASE_B_MARKER = "\u2014\u2014 phase-b \u2014\u2014";
   const CAP_MARKER = "\u2014\u2014 fixture-cap \u2014\u2014";
+  // The unattached fixture phases ride the EMPTY-FORM disclosure block
+  // (stateless window: no attached phase, so the shared core is never
+  // consulted - the plain header line plus the capital-N None line,
+  // re-typed locally per the suite's pattern).
+  const DISCLOSURE_EMPTY_FORM_REPLICA = "Phase Permissions:\nNone";
 
   class TwoPhaseCap extends PioCapability {
     readonly contract: Contract = FIXTURE_CONTRACT;
@@ -927,15 +962,16 @@ describe("PioCapability — prompt framing passes through untouched", () => {
     const result = await cap.run();
     expect(result.ok).toBe(true);
     expect(round.session.prompt).toHaveBeenCalledTimes(2);
-    // The wrapper forwards the option bag verbatim: only the engine-composed
-    // phase marker plus the authored instructions reach the prompt channel.
+    // The wrapper forwards the option bag verbatim: the engine-composed
+    // phase marker plus the authored instructions reach the prompt channel,
+    // with the disclosure empty-form block TRAILING.
     expect(round.session.prompt).toHaveBeenNthCalledWith(
       1,
-      `${PHASE_A_MARKER}\ndo A`,
+      `${PHASE_A_MARKER}\ndo A\n\n${DISCLOSURE_EMPTY_FORM_REPLICA}`,
     );
     expect(round.session.prompt).toHaveBeenNthCalledWith(
       2,
-      `${PHASE_B_MARKER}\ndo B`,
+      `${PHASE_B_MARKER}\ndo B\n\n${DISCLOSURE_EMPTY_FORM_REPLICA}`,
     );
   });
 
@@ -960,7 +996,7 @@ describe("PioCapability — prompt framing passes through untouched", () => {
     const result = await cap.run();
     expect(result.ok).toBe(true);
     expect(round.session.prompt).toHaveBeenCalledTimes(2);
-    const framed = `${PHASE_A_MARKER}\ndo A`;
+    const framed = `${PHASE_A_MARKER}\ndo A\n\n${DISCLOSURE_EMPTY_FORM_REPLICA}`;
     expect(round.session.prompt).toHaveBeenNthCalledWith(1, framed);
     expect(round.session.prompt).toHaveBeenNthCalledWith(2, framed);
   });
@@ -983,7 +1019,9 @@ describe("PioCapability — prompt framing passes through untouched", () => {
     const result = await cap.run();
     expect(result.ok).toBe(true);
     expect(round.session.prompt).toHaveBeenCalledTimes(1);
-    expect(round.session.prompt).toHaveBeenCalledWith(PHASE_A_MARKER);
+    expect(round.session.prompt).toHaveBeenCalledWith(
+      `${PHASE_A_MARKER}\n\n${DISCLOSURE_EMPTY_FORM_REPLICA}`,
+    );
     const sent = round.session.prompt.mock.calls[0][0];
     expect(sent.endsWith("\n")).toBe(false);
     expect(sent.includes(CAP_MARKER)).toBe(false);
@@ -1337,9 +1375,10 @@ describe("PioCapability — engine integration through the base", () => {
     scriptRuns(round, quietRun());
     const result = await cap.run();
     expect(round.session.prompt).toHaveBeenCalledTimes(1);
-    // The wrapper forwards options verbatim: the bare marker line stands alone.
+    // The wrapper forwards options verbatim: the bare marker line stands
+    // alone, the disclosure empty-form block trails.
     expect(round.session.prompt).toHaveBeenCalledWith(
-      "\u2014\u2014 hooked \u2014\u2014",
+      `\u2014\u2014 hooked \u2014\u2014\n\nPhase Permissions:\nNone`,
     );
     expect(result.ok).toBe(true);
     expect(result.outputs).toEqual({
@@ -1354,7 +1393,7 @@ describe("PioCapability — engine integration through the base", () => {
 // the hop's body — one payload serves the child record and the caller's
 // await). Pure-helper rows inject a fixed placement provider (no env/cwd
 // reach); seam rows drive the REAL derivation over a controlled
-// PI_CODING_AGENT_DIR (every row starts UNSET; the lifecycle restores).
+// PI_CODING_AGENT_DIR (rows pick their own value over the suite baseline).
 // Em dashes are U+2014 (escaped).
 
 describe("settleFileModeOutputs (pure)", () => {

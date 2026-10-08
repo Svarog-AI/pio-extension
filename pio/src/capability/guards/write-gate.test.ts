@@ -41,13 +41,15 @@ const RESEARCH: CapabilitySources = {
 };
 
 // ---------------------------------------------------------------------------
-// Suite-side replicas of the module's denial line shapes - SOLE OWNER of
-// every byte shape is guards/write-gate.ts (the module-private phase
-// renderer plus the module-private universal no-permission constant); these
-// constructions exist only to assert lockstep byte-equality on
-// decideWrite()'s `reason`. The capability-named and no-span tail renderers
-// RETIRED with the strict-confirmation ruling - ONE parameter-free universal
-// byte stands for every non-governing window (no /tmp/ clause anywhere).
+// Suite-side replicas of the denial line shapes - SOLE OWNER of every byte
+// shape is ../../denial-vocabulary.ts (the shared phase-line renderer plus
+// the universal no-permission constant); the effective-set construction is
+// owned by ../../permission-mechanics.ts (each core's own outputs are bound
+// directly in its colocated suite); these witnesses bind decideWrite()'s
+// `reason` to the pinned bytes. The capability-named and no-span tail
+// renderers RETIRED with the strict-confirmation ruling - ONE parameter-
+// free universal byte stands for every non-governing window (no /tmp/
+// clause anywhere).
 // ---------------------------------------------------------------------------
 
 const replicaPhaseDenial = (
@@ -1085,14 +1087,14 @@ describe("matchesAnchoredGlob - the documented fsview dialect in permission dire
 // ---------------------------------------------------------------------------
 // (f) GOLDENS - lockstep byte-equality on EVERY refusal shape. Each replica
 // constant asserts LOCKSTEP byte-equality between decideWrite()'s `reason`
-// and the suite-side construction above; the module's renderers are the
-// SOLE OWNER of each template.
+// and the suite-side construction above; the shared byte leaf
+// (../../denial-vocabulary.ts) is the SOLE OWNER of each template.
 // ---------------------------------------------------------------------------
 
 describe("goldens - lockstep byte-equality on every refusal shape", () => {
   it("phase-named denial with non-empty survivors", () => {
     const KEPT = `${SLOT_ROOT}/research/a.md`;
-    // SOLE OWNER: renderPhaseDenial in guards/write-gate.ts.
+    // SOLE OWNER: renderPhaseDenial in ../../denial-vocabulary.ts.
     const GOLDEN_PHASE_NAMED = replicaPhaseDenial(
       "guard-probe",
       [KEPT],
@@ -1117,7 +1119,8 @@ describe("goldens - lockstep byte-equality on every refusal shape", () => {
   });
 
   it("phase-named denial with the SCOPE CLASS ACTIVE ALONE (flag-only shape): the class element stands in the listing alone - new class-active full-line golden", () => {
-    // SOLE OWNER: renderPhaseDenial (class-active form) in write-gate.ts.
+    // SOLE OWNER: renderPhaseDenial (class-active form) in
+    // ../../denial-vocabulary.ts.
     const BACKED: CapabilitySources = {
       name: "research",
       writes: ["research/*.md"],
@@ -1148,7 +1151,8 @@ describe("goldens - lockstep byte-equality on every refusal shape", () => {
   });
 
   it("phase-named denial with the SCRATCH CLASS ACTIVE ALONE (tmp-flag-only shape): the scratch element stands in the listing alone - new scratch-element full-line golden", () => {
-    // SOLE OWNER: renderPhaseDenial (scratch-active form) in write-gate.ts.
+    // SOLE OWNER: renderPhaseDenial (scratch-active form) in
+    // ../../denial-vocabulary.ts.
     const GOLDEN_SCRATCH_ONLY = replicaPhaseDenial(
       "scratch-only",
       [],
@@ -1174,7 +1178,8 @@ describe("goldens - lockstep byte-equality on every refusal shape", () => {
   });
 
   it("phase-named denial with BOTH the scope and scratch classes active: the scratch element appended AFTER the scope element (pinned order) - new both-elements full-line golden", () => {
-    // SOLE OWNER: renderPhaseDenial (both-elements form) in write-gate.ts.
+    // SOLE OWNER: renderPhaseDenial (both-elements form) in
+    // ../../denial-vocabulary.ts.
     const BACKED: CapabilitySources = {
       name: "research",
       writes: ["research/*.md"],
@@ -1212,7 +1217,7 @@ describe("goldens - lockstep byte-equality on every refusal shape", () => {
 
   it("phase-named denial with SURVIVORS AND the scope class active: the class element appended AFTER the surviving paths - new class-active full-line golden", () => {
     // SOLE OWNER: renderPhaseDenial (survivors-plus-class form) in
-    // write-gate.ts.
+    // ../../denial-vocabulary.ts.
     const BACKED: CapabilitySources = {
       name: "research",
       writes: ["research/*.md"],
@@ -1250,7 +1255,8 @@ describe("goldens - lockstep byte-equality on every refusal shape", () => {
   });
 
   it("the UNIVERSAL NO-PERMISSION BYTE is the SOLE tail shape: span-present/span-absent, flag-on/off, and named-vs-unnamed fixtures ALL refuse with IDENTICAL bytes (strongest-form identity companions)", () => {
-    // SOLE OWNER: the module-private universal constant in write-gate.ts.
+    // SOLE OWNER: the universal no-permission constant in
+    // ../../denial-vocabulary.ts.
     const GOLDEN_UNIVERSAL = replicaUniversalDenial();
     const APW_RESEARCH: CapabilitySources = {
       name: "research",
@@ -1608,18 +1614,24 @@ describe("mechanical source guards - all swept files", () => {
     }
   });
 
-  it("write-gate.ts: value imports are EXACTLY [node:path, ../../sandbox/string-match-helpers.ts] - zero node:fs, zero value sibling imports", () => {
+  it("write-gate.ts: value imports are EXACTLY [node:path, ../../denial-vocabulary.ts, ../../permission-mechanics.ts, ../../sandbox/string-match-helpers.ts] - zero node:fs, zero value sibling imports", () => {
     expect(GATE_SOURCE.includes("node:fs")).toBe(false);
-    const valueSpecifiers = GATE_SOURCE.split("\n")
-      .filter(
-        (line) =>
-          line.startsWith("import ") && !line.startsWith("import type "),
-      )
-      .flatMap((line) =>
-        [...line.matchAll(/from "([^"]+)"/g)].map((match) => match[1]),
-      );
+    // Statement-aware, ORDER-PRESERVING extraction over the whitespace-
+    // normalized source (house precedent: the state suite's edge-pin scan) -
+    // long named-import lists wrap across lines, so a line-prefix filter
+    // would miss them.
+    const normalizedGate = GATE_SOURCE.replace(/\s+/g, " ");
+    const valueSpecifiers = [
+      ...normalizedGate.matchAll(
+        /import\s+(type\s+)?\{[^}]*\}\s+from\s*"([^"]+)"/g,
+      ),
+    ]
+      .filter((match) => match[1] === undefined)
+      .map((match) => match[2]);
     expect(valueSpecifiers).toEqual([
       "node:path",
+      "../../denial-vocabulary.ts",
+      "../../permission-mechanics.ts",
       "../../sandbox/string-match-helpers.ts",
     ]);
   });
@@ -1649,12 +1661,6 @@ describe("mechanical source guards - all swept files", () => {
 
   it("write-gate.ts: NO class declarations - statelessness asserted mechanically", () => {
     expect(partitionSource(GATE_SOURCE).code.match(/\bclass\b/g)).toBeNull();
-  });
-
-  it("write-gate.ts: the single coverage rule is defined ONCE and called EXACTLY ONCE (one definition + one call site - the span-site consult retires with the strict-confirmation ruling)", () => {
-    const occurrences =
-      partitionSource(GATE_SOURCE).code.match(/\badmittedBy\b/g);
-    expect(occurrences?.length ?? 0).toBe(2);
   });
 
   it("guard-vocabulary.ts: ZERO import lines; EXACTLY three `export interface` members, name-set pinned", () => {
@@ -1725,37 +1731,6 @@ describe("mechanical source guards - all swept files", () => {
       if (hits !== null) offenders.push(`${label}: ${hits.length}`);
     }
     expect(offenders).toEqual([]);
-  });
-
-  it("\\u2014 discipline: the universal byte's leading fragment is retained escaped; NO raw U+2014 inside ANY string LITERAL of any swept file", () => {
-    expect(
-      GATE_SOURCE.includes("Writing is refused \\u2014 no write permission"),
-    ).toBe(true);
-    const rawGlyph = String.fromCharCode(0x2014);
-    // Sound sweep: partitionSource extracts every literal payload
-    // escape-aware and elides comments in the SAME pass — the former
-    // two-regex pipeline opened phantom block comments from block-opener
-    // sequences inside glob strings and paired quotes blindly across
-    // lines, passing vacuously over live violations in this very file.
-    // Violations are COLLECTED first so one failure surfaces the full
-    // finding list (self-match-proofing: this suite sweeps ITSELF too).
-    const violations: string[] = [];
-    for (const [label, source] of [
-      ["write-gate.ts", GATE_SOURCE],
-      ["write-gate.test.ts", SUITE_SOURCE],
-      ["guard-vocabulary.ts", VOCAB_SOURCE],
-      ["session-execution-state.ts", STATE_SOURCE],
-      ["string-match-helpers.ts", HELPER_SOURCE],
-    ]) {
-      const { code, payloads } = partitionSource(source);
-      for (const payload of payloads) {
-        if (payload.includes(rawGlyph)) violations.push(label);
-      }
-      // A glyph outside every literal (in plain code) would be equally
-      // wrong — none may exist.
-      if (code.includes(rawGlyph)) violations.push(`${label} (non-literal)`);
-    }
-    expect(violations).toEqual([]);
   });
 
   it("retired identifiers are absent from BOTH rewritten files (fragments assembled at runtime prevent self-match) - INCLUDING the two retired tail renderers and the retired clause constant", () => {

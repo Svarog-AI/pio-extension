@@ -4,7 +4,7 @@
 // world in this file.
 //
 // SCRIPTED-EVENT TOP WORLD (research/compose-suite idiom): a fake SDK root
-// mocking EXACTLY the five faked value symbols drives PioSession.create(cwd)
+// mocking EXACTLY the eight faked value symbols drives PioSession.create(cwd)
 // — fake manager/services/runtime/session with subscribe/prompt/
 // sendCustomMessage/sessionId/dispose plus the RECORDING sendCustomMessage
 // mock (the session-present span stamps land on it); scripted prompt
@@ -42,7 +42,7 @@
 // shaped consults may ride real-tree targets. The standing
 // real-/tmp exception: the pinned scratch name is unique, the capability's
 // error-swallowed pre-phase sweep self-heals across runs, and the
-// end-of-run scratch state is ABSENT BY DESIGN (the sixth probe's
+// end-of-run scratch state is ABSENT BY DESIGN (the last probe's
 // pre-phase sweep removes the admitted residue WITHIN the run); every
 // full-trajectory row still carries its OWN hygiene sweep at row end as
 // IDEMPOTENT LEGACY HYGIENE (writes, not checks - nothing asserts against
@@ -82,9 +82,15 @@ import {
 import { deriveProjectKey } from "../sandbox/layout.ts";
 import { EXECUTION_STATE_STAMP } from "../session.ts";
 import { SessionExecutionState } from "../session-execution-state.ts";
+import { composeSpawnPlan } from "../tools/bash/landlock-ruleset.ts";
 import GuardsDemoCapability, {
   GUARDS_DEMO_ALLOW_ARTIFACT,
   GUARDS_DEMO_ARTIFACT,
+  GUARDS_DEMO_BASH_ALLOW_FILE,
+  GUARDS_DEMO_BASH_FILE_LEAF,
+  GUARDS_DEMO_BASH_SIBLING_IN_PAT,
+  GUARDS_DEMO_BASH_SIBLING_LEAF,
+  GUARDS_DEMO_BASH_SIBLING_OUT_PAT,
   GUARDS_DEMO_DENY_ARTIFACT,
   GUARDS_DEMO_DENY_STRAY,
   GUARDS_DEMO_PROJECT_PROBE_FILE,
@@ -101,6 +107,20 @@ interface FakeSession {
   sendCustomMessage: ReturnType<typeof vi.fn>;
   sessionId: string;
   dispose: ReturnType<typeof vi.fn>;
+}
+
+/** THE plan-based kernel-vector projection - the SAME expression the
+ * flipped bash spawn site evaluates: composeSpawnPlan's ready-arm
+ * kernelVector (the ready-guard mirrors the spawn-site branch; the pure
+ * files-only planner reads no disk, so the projection is a function of
+ * the declared tokens ALONE). Four of the five consulted windows below
+ * are NON-ENGAGED (no strictly-concrete survivor survives coverage -
+ * silent, class-flag-only, or coverage-filtered); the bash-allow window
+ * ENGAGES over its declared token's envelope, which takes the survivor
+ * position BY CONSTRUCTION. */
+function planBasedProjection(state: SessionExecutionState): string[] {
+  const plan = composeSpawnPlan(state.snapshot());
+  return plan.kind === "ready" ? [...plan.kernelVector] : [];
 }
 
 /** One observed event on the shared handle, in ISSUE ORDER: a prompt send
@@ -204,6 +224,22 @@ const sdkKit = vi.hoisted(() => {
     state.rounds.push(round);
     return round.runtime;
   });
+  // Construction floor for the unconditional customTools threading: the
+  // real PioSession.create builds the Landlock-bash instance eagerly at the
+  // construction seam; these fakes absorb the construction-time SDK value
+  // reaches (this island's rows never inspect the threaded entry - the bare
+  // static shape suffices; the full four-symbol floor lives solely in
+  // pio-session.test.ts where observation resides).
+  const createBashToolDefinition = vi.fn(
+    (_cwd: string, options: { operations: unknown }) => ({
+      name: "bash",
+      operations: options.operations,
+    }),
+  );
+  const defineTool = vi.fn((tool: unknown) => tool);
+  // Eager at construction (seams.localOps ?? createLocalBashOperations()):
+  // structural stub - the island never drives the delegate bag.
+  const createLocalBashOperations = vi.fn(() => ({}));
   const reset = (): void => {
     state.rounds = [];
     state.storedFactories = [];
@@ -213,6 +249,9 @@ const sdkKit = vi.hoisted(() => {
     createAgentSessionServices.mockClear();
     createAgentSessionFromServices.mockClear();
     createAgentSessionRuntime.mockClear();
+    createBashToolDefinition.mockClear();
+    defineTool.mockClear();
+    createLocalBashOperations.mockClear();
   };
   return {
     state,
@@ -221,6 +260,9 @@ const sdkKit = vi.hoisted(() => {
     createAgentSessionServices,
     createAgentSessionFromServices,
     createAgentSessionRuntime,
+    createBashToolDefinition,
+    defineTool,
+    createLocalBashOperations,
     reset,
   };
 });
@@ -231,6 +273,9 @@ vi.mock("@earendil-works/pi-coding-agent", () => ({
   createAgentSessionServices: sdkKit.createAgentSessionServices,
   createAgentSessionFromServices: sdkKit.createAgentSessionFromServices,
   createAgentSessionRuntime: sdkKit.createAgentSessionRuntime,
+  createBashToolDefinition: sdkKit.createBashToolDefinition,
+  defineTool: sdkKit.defineTool,
+  createLocalBashOperations: sdkKit.createLocalBashOperations,
 }));
 
 // ─── Sole-owner replicas (byte-pinned; \u2014 escaped identically) ─────
@@ -301,6 +346,99 @@ const tmpParityReplica = (absoluteScratchFile: string): string =>
 const tmpNegativeReplica = (absoluteScratchFile: string): string =>
   `Attempt to write a file ${absoluteScratchFile}. The expectation is that the write comes back REFUSED \u2014 this phase declares NOTHING (no paths, no scope flag, no scratch flag), and the running capability's own contract flag being TRUE changes nothing, while the SAME target was admitted moments earlier by the adjacent probe's OWN declared scratch flag (the grant is phase-declared, not ambient); do not retry the target. Describe in one sentence if it's satisfied.`;
 
+/** Pinned bash-deny instruction template replica (SOLE OWNER: the
+ * bashDenyInstructions owner in ./guards-demo.ts - the DUAL-SHAPE SILENT
+ * fenced-command refusal over the SHARED stray target the write-tool deny
+ * probe refused earlier; ONE parameter - the stray absolute path - SHAPE 1
+ * the BARE redirection AS THE WHOLE COMMAND (FULL VOICE: non-zero exit, the
+ * diagnostic, the trailing note listing NONE) and SHAPE 2 the SAME
+ * redirection SEMICOLON-JOINED with a trailing successful statement (the
+ * exit-0 compound: diagnostic visible, note correctly silent by the shipped
+ * corner, the file NEVER LANDS)). Three beats: attempt-imperative /
+ * expectation / one-sentence verdict; no em dash occurs in the body. */
+const bashDenyReplica = (absoluteStrayArtifact: string): string =>
+  `Use the bash tool ONLY (never the write or edit tools) to attempt a shell write of a file ${absoluteStrayArtifact} in TWO shapes, each attempted exactly once: first the redirection AS THE WHOLE COMMAND (a bare invocation such as echo x > ${absoluteStrayArtifact}), then the SAME redirection followed by a semicolon and a trailing successful statement (such as echo x > ${absoluteStrayArtifact}; echo ok - the failed redirection fails only its own statement, so the compound exits zero). The expectation is that BOTH commands come back REFUSED - the phase-permissions context of this run names NO writable targets (this phase declares NOTHING), and the kernel fence denies the write at attempt time: the first exits non-zero with a permission error in its own output and ends with a standing restriction note whose allowed-targets listing is NONE, while the second shows the same permission error but exits zero with no trailing restriction note, and the file never exists after either attempt. Do not attempt the target beyond these two shapes. Describe in one sentence if it's satisfied.`;
+
+/** Pinned bash-allow instruction template replica (SOLE OWNER: the
+ * bashAllowInstructions owner in ./guards-demo.ts - the canonical concrete-
+ * file shape over the DECLARED file itself: ONE parameter, the fenced
+ * command creates the declared file ITSELF in the SAME TWO mandated shapes
+ * (dual-shape discipline carried verbatim from the retired device era);
+ * identity admission of the declared path - clean transcript). No em dash
+ * occurs in the body. The multi-parameter claim belongs to
+ * bashFileSiblingInstructions alone. */
+const bashAllowReplica = (absoluteFile: string): string =>
+  `Use the bash tool ONLY (never the write or edit tools) to create a file ${absoluteFile} AT THE EXACT path in TWO shapes: first a plain shell redirection AS THE WHOLE COMMAND (such as echo '<short line>' > ${absoluteFile}), then a program that opens the path for write (a standard utility such as touch, cp, or dd - avoid scripting-language interpreters). The expectation is that BOTH writes are ADMITTED - the phase declares the very path the file lands on, so the kernel fence admits that path by identity and neither command produces a standing restriction note or a discard line: the file EXISTS after the run and the transcript stays clean. Describe in one sentence if it's satisfied.`;
+
+/** Pinned bash-project-file instruction template replica (SOLE OWNER: the
+ * bashProjectFileInstructions owner in ./guards-demo.ts - the DECLARED
+ * project-files SCOPE leg over the SHARED workspace-cwd target). No em dash
+ * occurs in the body. */
+const bashProjectFileReplica = (absoluteCwdFile: string): string =>
+  `Use the bash tool ONLY (never the write or edit tools) to write a file ${absoluteCwdFile} with a shell command. The expectation is that it LANDS - the phase declares the project-files SCOPE, so the kernel fence admits the workspace directory the file sits in. Describe in one sentence if it's satisfied.`;
+
+/** Pinned bash-project-file-not-allowed instruction template replica (SOLE
+ * OWNER: the bashProjectFileNotAllowedInstructions owner in ./guards-demo.ts -
+ * the SILENT window over the SAME shared cwd target; the do-not-retry mandate
+ * rides the template, and the ADDED bare-invocation prescription clause
+ * between the imperative and the expectation GUARANTEES the note-bearing
+ * tail). No em dash occurs in the body. */
+const bashProjectFileNotAllowedReplica = (
+  absoluteSharedCwdFile: string,
+): string =>
+  `Use the bash tool ONLY (never the write or edit tools) to attempt a shell write of a file ${absoluteSharedCwdFile}. Issue the redirection AS THE WHOLE COMMAND (a bare invocation). The expectation is that the command comes back REFUSED - this phase declares NOTHING (no paths, no scope flag), so the kernel fence grants nothing beyond the machine allowance and the output ends with a standing restriction note whose allowed-targets listing is NONE, while the SAME target was admitted earlier by the adjacent probe's OWN declared scope. Do not retry the target. Describe in one sentence if it's satisfied.`;
+
+/** Pinned bash-tmp-parity instruction template replica (SOLE OWNER: the
+ * bashTmpParityInstructions owner in ./guards-demo.ts - the DECLARED-scratch
+ * fenced-command form: the grant rides the phase's OWN scratch flag). No em
+ * dash occurs in the body. */
+const bashTmpParityReplica = (absoluteScratchFile: string): string =>
+  `Use the bash tool ONLY (never the write or edit tools) to write a file ${absoluteScratchFile} with a shell command. The expectation is that the scratch write is ADMITTED - the phase declares the scratch flag, so the kernel fence grants the /tmp/ prefix class (the grant is phase-declared, not ambient). Describe in one sentence if it's satisfied.`;
+
+/** Pinned bash-tmp-negative instruction template replica (SOLE OWNER: the
+ * bashTmpNegativeInstructions owner in ./guards-demo.ts - the SILENT
+ * scratch-refusal window over the SAME pinned scratch target the adjacent
+ * probe admitted moments earlier; the ADDED bare-invocation prescription
+ * clause between the imperative and the expectation GUARANTEES the
+ * note-bearing tail). No em dash occurs in the body. */
+const bashTmpNegativeReplica = (absoluteSharedScratchFile: string): string =>
+  `Use the bash tool ONLY (never the write or edit tools) to attempt a shell write of a file ${absoluteSharedScratchFile}. Issue the redirection AS THE WHOLE COMMAND (a bare invocation). The expectation is that the command comes back REFUSED - this phase declares NOTHING (no paths, no scope flag, no scratch flag), so the kernel fence grants nothing beyond the machine allowance and the output ends with a standing restriction note whose allowed-targets listing is NONE, while the SAME target was admitted moments earlier by the adjacent probe's OWN declared scratch flag. Do not retry the target. Describe in one sentence if it's satisfied.`;
+
+/** Pinned bash-file-create instruction template replica (SOLE OWNER: the
+ * bashFileCreateInstructions owner in ./guards-demo.ts - the engaged-path
+ * create state over the SHARED genuine file token: the phase declares the
+ * ABSOLUTE leaf alone, and the fenced command creates it with a PLAIN
+ * shell redirection (the clean on-list completion appends NOTHING)). No
+ * em dash occurs in the body. */
+const bashFileCreateReplica = (absoluteLeaf: string): string =>
+  `Use the bash tool ONLY (never the write or edit tools) to create a file ${absoluteLeaf} AT THE EXACT path with a PLAIN shell redirection (such as echo '<short line>' > ${absoluteLeaf}) writing one minimal short line of content and nothing else in the command. The expectation is that the write is ADMITTED because THIS PHASE DECLARED EXACTLY THIS FILE (the phase's writable set names it): the command completes without error and appends NOTHING - no standing restriction note, no discard line (the clean on-list completion). Describe in one sentence if it's satisfied.`;
+
+/** Pinned bash-file-append instruction template replica (SOLE OWNER: the
+ * bashFileAppendInstructions owner in ./guards-demo.ts - the PRE-EXISTING
+ * existence state over the SAME leaf: fixed-order seed dependency, no
+ * restart between frames; the fenced command APPENDS one pinned short
+ * line and reads the WHOLE file back in the same settled run - the FINAL
+ * CONTENT is the previous content PLUS the appended line). No em dash
+ * occurs in the body. */
+const bashFileAppendReplica = (absoluteLeaf: string): string =>
+  `The file ${absoluteLeaf} EXISTS from the immediately preceding probe (same session, fixed phase order - no restart between frames). Use the bash tool ONLY (never the write or edit tools) to APPEND one pinned short line to the file with a standard utility (such as printf '<one line>'\\n >> ${absoluteLeaf} or cat >> ${absoluteLeaf}), then read the WHOLE file back (such as cat ${absoluteLeaf}) within the same settled run. The expectation is that the read-back shows BOTH the earlier created content AND the appended line - the FINAL CONTENT is the previous content PLUS the appended line: the read sees the real content while the write lands via the capture-then-commit path, and nothing restriction-shaped is appended. Your verdict must STATE that the file now contains the previously written content plus the appended line. Describe in one sentence if it's satisfied.`;
+
+/** Pinned bash-file-sibling instruction template replica (SOLE OWNER: the
+ * bashFileSiblingInstructions owner in ./guards-demo.ts - the
+ * FILE-EXACTNESS leg: the declared leaf COMMITS with no appended note,
+ * while BOTH undeclared siblings - the out-pattern basename and the
+ * pattern-matching one - are attempted bare-invocation exactly once each
+ * and DISCARDED by the post-run check with the machine-appended named
+ * lines; admission tracks EXACTLY the write/edit judgment, so even the
+ * pattern-matching sibling is outside it). THREE parameters (declared
+ * leaf FIRST, then the two siblings). No em dash occurs in the body. */
+const bashFileSiblingReplica = (
+  absoluteLeaf: string,
+  absoluteOutPattern: string,
+  absoluteInPattern: string,
+): string =>
+  `Use the bash tool ONLY (never the write or edit tools). Beat 1: create the declared leaf ${absoluteLeaf} with a plain shell redirection (such as echo '<short line>' > ${absoluteLeaf}) writing one minimal short line - it is ADMITTED (this phase declared it) and must land with no appended note. Beat 2: then ATTEMPT the out-pattern sibling ${absoluteOutPattern} exactly once: Issue the redirection AS THE WHOLE COMMAND (a bare invocation). Beat 3: then ATTEMPT the in-pattern sibling ${absoluteInPattern} exactly once: Issue the redirection AS THE WHOLE COMMAND (a bare invocation). Prescribed order: the declared leaf first, then the out-pattern sibling, then the in-pattern sibling; DO NOT RETRY either target, and do not attempt any other file. The expectation is that BOTH sibling attempts may APPEAR TO SUCCEED (no permission error in their own output - the command's view accepts them; the exit is not the verdict), yet NEITHER sibling file EXISTS afterward (after the run, the fence checks what the command wrote against the phase's writable set and DISCARDS everything the frame did not admit); admission follows EXACTLY the same judgment the write and edit tools receive: ONLY the declared file itself is admitted (this phase declares no workspace- or scratch-scope grants, so no class scope admits anything here), and EVEN the sibling matching the frame's own file pattern is OUTSIDE the admission (matching the pattern is not declaring); EACH sibling's run ends with a MACHINE-APPENDED LINE naming exactly the discarded entry and rendering the allowed set (that line, not the command's own output, is the readable refusal). Describe in one sentence if it's satisfied.`;
+
 /** Pinned summary template replica (SOLE OWNER: the summaryInstructions
  * owner in ./guards-demo.ts): variant A (iterations >= 2) names the observed
  * run count; variant B (=== 1) is the armed-but-not-triggered wording. No
@@ -318,7 +456,7 @@ const summaryReplica = (
   return `${outcome}
 The deliverable is placed at (absolute path):
 ${absoluteArtifact}
-1. State in one short sentence what was demonstrated, naming the six gate probes: deny, allow, project-file, project-file-not-allowed, tmp-parity, tmp-negative.
+1. State in one short sentence what was demonstrated, naming the fifteen gate probes: deny, allow, project-file, project-file-not-allowed, tmp-parity, tmp-negative, and the nine bash-command probes: bash-deny, bash-allow, bash-project-file, bash-project-file-not-allowed, bash-tmp-parity, bash-tmp-negative, bash-file-create, bash-file-append, bash-file-sibling.
 2. Do nothing else \u2014 no further tools, no questions, no writes. End your turn right after that statement.`;
 };
 
@@ -403,25 +541,80 @@ const replicaPhaseDenial = (
 const replicaUniversalDenial = (): string =>
   `Writing is refused \u2014 no write permission is declared by any active phase. Allowed targets: none.`;
 
-/** Engine-composed prompt texts (marker line + instructions, verbatim the
- * phase engine's composition; corrective notes sit strictly AFTER the
- * baseline). */
+/** Replica of the phase-permission disclosure block (SOLE OWNER: the
+ * renderPhasePermissionDisclosure export in ../capability/pio-session.ts;
+ * re-typed locally per the suite's established pattern - plain header
+ * line, comma joiner, and the owner-worded class elements).
+ *
+ * Shape args mirror the shared-core consult outcome for the window each
+ * phase arms: surviving declared paths (verbatim), the clamped
+ * project-class proposition (workspace cwd), the single scratch flag. A
+ * window with NO qualifying body line gains the empty-form None line
+ * (mirroring the renderer's own condition). */
+function disclosureReplica(
+  files?: readonly string[],
+  projectCwd?: string,
+  scratch?: boolean,
+): string {
+  const parts: string[] = ["Phase Permissions:"];
+  if (files !== undefined && files.length > 0) parts.push(files.join(", "));
+  if (projectCwd !== undefined) parts.push(`project files at ${projectCwd}`);
+  if (scratch === true) parts.push("scratch files at /tmp");
+  if (parts.length === 1) parts.push("None");
+  return parts.join("\n");
+}
+
+/** Engine-composed prompt texts (marker line + instructions, then the
+ * trailing disclosure block - verbatim the phase engine's composition;
+ * corrective notes sit strictly AFTER the baseline). */
 const greetingPromptText = (): string =>
-  `${renderPhaseMarker("greeting")}\n${GREETING_REPLICA}`;
+  `${renderPhaseMarker("greeting")}\n${GREETING_REPLICA}\n\n${disclosureReplica()}`;
 const guardProbePromptText = (absoluteArtifact: string): string =>
-  `${renderPhaseMarker("guard-probe")}\n${guardProbeReplica(absoluteArtifact)}`;
+  `${renderPhaseMarker("guard-probe")}\n${guardProbeReplica(absoluteArtifact)}\n\n${disclosureReplica([absoluteArtifact])}`;
 const denyPromptText = (absoluteStrayArtifact: string): string =>
-  `${renderPhaseMarker("deny")}\n${denyReplica(absoluteStrayArtifact)}`;
+  `${renderPhaseMarker("deny")}\n${denyReplica(absoluteStrayArtifact)}\n\n${disclosureReplica()}`;
 const allowPromptText = (absoluteArtifact: string): string =>
-  `${renderPhaseMarker("allow")}\n${allowReplica(absoluteArtifact)}`;
+  `${renderPhaseMarker("allow")}\n${allowReplica(absoluteArtifact)}\n\n${disclosureReplica([absoluteArtifact])}`;
 const projectFilePromptText = (absoluteCwdFile: string): string =>
-  `${renderPhaseMarker("project-file")}\n${projectFileReplica(absoluteCwdFile)}`;
+  `${renderPhaseMarker("project-file")}\n${projectFileReplica(absoluteCwdFile)}\n\n${disclosureReplica(undefined, process.cwd())}`;
 const notAllowedPromptText = (absoluteSharedCwdFile: string): string =>
-  `${renderPhaseMarker("project-file-not-allowed")}\n${notAllowedReplica(absoluteSharedCwdFile)}`;
+  `${renderPhaseMarker("project-file-not-allowed")}\n${notAllowedReplica(absoluteSharedCwdFile)}\n\n${disclosureReplica()}`;
 const tmpParityPromptText = (absoluteScratchFile: string): string =>
-  `${renderPhaseMarker("tmp-parity")}\n${tmpParityReplica(absoluteScratchFile)}`;
+  `${renderPhaseMarker("tmp-parity")}\n${tmpParityReplica(absoluteScratchFile)}\n\n${disclosureReplica(undefined, undefined, true)}`;
 const tmpNegativePromptText = (absoluteScratchFile: string): string =>
-  `${renderPhaseMarker("tmp-negative")}\n${tmpNegativeReplica(absoluteScratchFile)}`;
+  `${renderPhaseMarker("tmp-negative")}\n${tmpNegativeReplica(absoluteScratchFile)}\n\n${disclosureReplica()}`;
+const bashDenyPromptText = (absoluteStrayArtifact: string): string =>
+  `${renderPhaseMarker("bash-deny")}\n${bashDenyReplica(absoluteStrayArtifact)}\n\n${disclosureReplica()}`;
+const bashAllowPromptText = (absoluteFile: string): string =>
+  `${renderPhaseMarker("bash-allow")}\n${bashAllowReplica(absoluteFile)}\n\n${disclosureReplica([absoluteFile])}`;
+const bashProjectFilePromptText = (absoluteCwdFile: string): string =>
+  `${renderPhaseMarker("bash-project-file")}\n${bashProjectFileReplica(absoluteCwdFile)}\n\n${disclosureReplica(undefined, process.cwd())}`;
+const bashProjectFileNotAllowedPromptText = (
+  absoluteSharedCwdFile: string,
+): string =>
+  `${renderPhaseMarker("bash-project-file-not-allowed")}\n${bashProjectFileNotAllowedReplica(absoluteSharedCwdFile)}\n\n${disclosureReplica()}`;
+const bashTmpParityPromptText = (absoluteScratchFile: string): string =>
+  `${renderPhaseMarker("bash-tmp-parity")}\n${bashTmpParityReplica(absoluteScratchFile)}\n\n${disclosureReplica(undefined, undefined, true)}`;
+const bashTmpNegativePromptText = (absoluteScratchFile: string): string =>
+  `${renderPhaseMarker("bash-tmp-negative")}\n${bashTmpNegativeReplica(absoluteScratchFile)}\n\n${disclosureReplica()}`;
+const bashFileCreatePromptText = (absoluteLeaf: string): string =>
+  `${renderPhaseMarker("bash-file-create")}\n${bashFileCreateReplica(
+    absoluteLeaf,
+  )}\n\n${disclosureReplica([absoluteLeaf])}`;
+const bashFileAppendPromptText = (absoluteLeaf: string): string =>
+  `${renderPhaseMarker("bash-file-append")}\n${bashFileAppendReplica(
+    absoluteLeaf,
+  )}\n\n${disclosureReplica([absoluteLeaf])}`;
+const bashFileSiblingPromptText = (
+  absoluteLeaf: string,
+  absoluteOutPattern: string,
+  absoluteInPattern: string,
+): string =>
+  `${renderPhaseMarker("bash-file-sibling")}\n${bashFileSiblingReplica(
+    absoluteLeaf,
+    absoluteOutPattern,
+    absoluteInPattern,
+  )}\n\n${disclosureReplica([absoluteLeaf])}`;
 const summaryPromptText = (
   absoluteArtifact: string,
   iterations: number,
@@ -429,7 +622,7 @@ const summaryPromptText = (
   `${renderPhaseMarker("summary")}\n${summaryReplica(
     absoluteArtifact,
     iterations,
-  )}`;
+  )}\n\n${disclosureReplica()}`;
 
 /** The span-stamp payload exactly as the base seam records it (contents
  * checked against the RENDERER owner directly — reference, not
@@ -596,8 +789,8 @@ function artifactPlacement(): {
   };
 }
 
-/** Self-consistent placement derivation for the SIX live gate probes, via
- * the SAME public channels (slot-relative tokens resolved under the
+/** Self-consistent placement derivation for the FIFTEEN live gate probes,
+ * via the SAME public channels (slot-relative tokens resolved under the
  * project slot; the cwd basename and the pinned /tmp/ basename resolved
  * against their own anchors). Computed after the row-scoped chdir — the
  * controlled workspace cwd binds the anchor. */
@@ -607,6 +800,11 @@ function probePlacements(): {
   absAllowArtifact: string;
   absCwdFile: string;
   absTmpScratch: string;
+  absBashAllowFile: string;
+  absBashFileLeaf: string;
+  absBashSiblingLeaf: string;
+  absBashSiblingOutPattern: string;
+  absBashSiblingInPattern: string;
   cwd: string;
 } {
   const { projectSlot } = artifactPlacement();
@@ -616,6 +814,14 @@ function probePlacements(): {
     absAllowArtifact: join(projectSlot, GUARDS_DEMO_ALLOW_ARTIFACT),
     absCwdFile: join(process.cwd(), GUARDS_DEMO_PROJECT_PROBE_FILE),
     absTmpScratch: join("/tmp", GUARDS_DEMO_TMP_PARITY_FILE),
+    absBashAllowFile: join(projectSlot, GUARDS_DEMO_BASH_ALLOW_FILE),
+    absBashFileLeaf: join(projectSlot, GUARDS_DEMO_BASH_FILE_LEAF),
+    absBashSiblingLeaf: join(projectSlot, GUARDS_DEMO_BASH_SIBLING_LEAF),
+    absBashSiblingOutPattern: join(
+      projectSlot,
+      GUARDS_DEMO_BASH_SIBLING_OUT_PAT,
+    ),
+    absBashSiblingInPattern: join(projectSlot, GUARDS_DEMO_BASH_SIBLING_IN_PAT),
     cwd: process.cwd(),
   };
 }
@@ -639,10 +845,14 @@ async function seedArtifact(
 // ─── C rows: the expectation-guard demonstration flow ───────────────────
 
 describe("expectation-guard demonstration flow (C rows)", () => {
-  it("C1 full happy chain (BINDING leg): pass one skips the write => the engine denies settlement and the pass-two prompt carries the IDENTICAL baseline PLUS the pinned DELIMITED corrective block (delimiter line above the unchanged body; run count 1, naming the tmpdir-ABSOLUTE path) => pass two commits the REAL fs write and settles at iterations === 2, then the SIX PLAIN-PHASE gate probes run in pinned order under ONE span (deny REFUSAL-ONLY, allow, project-file, the SILENT flag-less project-file-not-allowed phase, declared-scratch tmp-parity, the SILENT scratch-refusal tmp-negative LAST) with their MID-PASS real-predicate consults (stray + scratch REFUSED on the UNIVERSAL byte in the declare-nothing deny window, admission undefined, exclusive scope-element-only listing, the silent-phase FULL-LINE refusal on the UNIVERSAL byte with the phase observed NULL, scratch ADMITTED in the declared-flag window, the SAME scratch target REFUSED on the UNIVERSAL byte in the silent tmp-negative window with the phase observed NULL, /tmp/ healing vantage) => ok:true with the ABSOLUTE settled outputs.report, the end-of-run scratch state ABSENT BY DESIGN, the terminal record carries version 0.4.0 and exit 0, EXACTLY 10 prompts + EXACTLY ONE span stamp strictly before the first prompt = 11 unified-timeline entries", async () => {
+  it("C1 full happy chain (BINDING leg): pass one skips the write => the engine denies settlement and the pass-two prompt carries the IDENTICAL baseline PLUS the pinned DELIMITED corrective block (delimiter line above the unchanged body; run count 1, naming the tmpdir-ABSOLUTE path) => pass two commits the REAL fs write and settles at iterations === 2, then the FIFTEEN PLAIN-PHASE gate probes run in pinned order under ONE span (write-tool family: deny REFUSAL-ONLY, allow, project-file, the SILENT flag-less project-file-not-allowed phase, declared-scratch tmp-parity, the SILENT scratch-refusal tmp-negative; bash-command family: bash-deny over the SHARED stray target, bash-allow over the CANONICALLY DECLARED FILE (identity admission, clean transcript), bash-project-file under the DECLARED scope class, the SILENT bash-project-file-not-allowed over the SAME cwd target, bash-tmp-parity under the phase's OWN scratch flag, the SILENT bash-tmp-negative, and the engaged-path file-leaf family: bash-file-create the create state over the GENUINE file token, bash-file-append the pre-existing state over the SAME leaf with no restart between frames, and bash-file-sibling the file-exactness leg over the declared leaf with BOTH undeclared siblings discarded (the pattern-matching one among them) LAST) with their MID-PASS consults (real-predicate verdicts: stray + scratch REFUSED on the UNIVERSAL byte in the declare-nothing deny window, admission undefined, exclusive scope-element-only listing, the silent-phase FULL-LINE refusal on the UNIVERSAL byte with the phase observed NULL, scratch ADMITTED in the declared-flag window, the SAME scratch target REFUSED on the UNIVERSAL byte in the silent tmp-negative window with the phase observed NULL, /tmp/ healing vantage; kernel-vector consults: the MINIMUM fence over the SILENT bash-deny window, the declared token's ENVELOPE first beside the machine allowance over bash-allow (files-only reading), the workspace-cwd class appended over bash-project-file, back to the MINIMUM fence over the SILENT bash-project-file-not-allowed window - the late-binding flip over the SAME stamped state - and the /tmp/ class appended over bash-tmp-parity; the leaf's ENVELOPE engages in each of the THREE new windows (equal by construction over the shared envelope value, asserted independently per window) and the sibling-window VERDICT consults refuse BOTH sibling targets with the phase named and the survivor-only listing (the in-pattern reading byte-identical to the out-pattern reading)) => ok:true with the ABSOLUTE settled outputs.report, the end-of-run scratch state ABSENT BY DESIGN, the ADMITTED artifacts LEFT BEHIND with the leaf's FINAL content byte-exact, the terminal record carries version 0.7.0 and exit 0, EXACTLY 19 prompts + EXACTLY ONE span stamp strictly before the first prompt = 20 unified-timeline entries", async () => {
     const placement = artifactPlacement();
     const probes = probePlacements();
     const { instance, round, state } = await host();
+    // Row-chosen SEED/APPENDED bytes over the new file-leaf trajectory
+    // (disk-truth constants the end-of-row byte-exact assert rides).
+    const fileSeedBytes = "# Created by the fenced command.\n";
+    const fileAppendBytes = "appended line\n";
     // Cross-run healing row: a stale real-/tmp scratch seeded BEFORE the
     // run simulates a crashed prior run; the capability's error-swallowed
     // pre-phase sweep must leave it ABSENT by the time the pass seeds.
@@ -657,6 +867,16 @@ describe("expectation-guard demonstration flow (C rows)", () => {
     let tmpAbsentBeforeSeed = false;
     let tmpNegativeRefusal: WriteGateVerdict | undefined;
     let tmpNegativePhaseObservedNull = false;
+    let bashDenyVector: string[] | undefined;
+    let bashAllowVector: string[] | undefined;
+    let bashProjectFileVector: string[] | undefined;
+    let bashSilentVector: string[] | undefined;
+    let bashTmpParityVector: string[] | undefined;
+    let bashFileCreateVector: string[] | undefined;
+    let bashFileAppendVector: string[] | undefined;
+    let bashFileSiblingVector: string[] | undefined;
+    let siblingOutPatternRefusal: WriteGateVerdict | undefined;
+    let siblingInPatternRefusal: WriteGateVerdict | undefined;
     // Trajectory: greeting quiet; probe pass ONE quiet (no events, no fs);
     // probe pass TWO commits the REAL fs write + the synthetic settle pair;
     // the deny pass goes QUIET (REFUSAL-ONLY: neither target is seeded -
@@ -665,7 +885,16 @@ describe("expectation-guard demonstration flow (C rows)", () => {
     // pass writes NOTHING (the refusal held - disk-truth duty); tmp-parity
     // commits the REAL fs seed under its DECLARED scratch flag; the SILENT
     // tmp-negative pass writes NOTHING (the refusal held - disk-truth
-    // duty; its consult lands during it); summary quiet.
+    // duty; its consult lands during it); the six BASH passes follow the
+    // same discipline - bash-deny performs its TWO prescribed refused
+    // attempts (the bare full-voice leg and the exit-0 compound - nothing
+    // lands) and the two SILENT windows write NOTHING (their refusals held;
+    // the kernel-vector consults land during them) while bash-allow,
+    // bash-project-file, and bash-tmp-parity commit
+    // their REAL fs writes to the declared/shared targets; the THREE NEW
+    // engaged-path passes commit the leaf's REAL fs writes (create seeds,
+    // append rewrites to seed+appended, sibling commits the declared leaf
+    // ONLY - both strays NEVER LAND); summary quiet.
     scriptRuns(round, quietSettle());
     scriptRuns(round, quietSettle());
     round.passes.push(async (): Promise<void> => {
@@ -763,14 +992,123 @@ describe("expectation-guard demonstration flow (C rows)", () => {
         path: probes.absTmpScratch,
       });
     });
+    round.passes.push(async (): Promise<void> => {
+      // BASH-DENY pass goes QUIET (the kernel fence denied BOTH prescribed
+      // attempts at attempt time - the model's acts are the bare refusal
+      // and the exit-0 compound; nothing lands - disk-truth duty).
+      emit(round, ...quietSettle());
+      // MID-PASS KERNEL-VECTOR consult (fresh snapshot over the SAME
+      // stamped state): the SILENT window attaches NOTHING, so the fence
+      // settles on its MINIMUM form - the machine allowance alone.
+      bashDenyVector = planBasedProjection(state);
+    });
+    round.passes.push(async (): Promise<void> => {
+      // Disk-truth duty: the pass commits the REAL fs write of the
+      // DECLARED FILE itself (parent dirs included via the seed idiom).
+      await seedArtifact(probes.absBashAllowFile, "# Bash allow\n");
+      emit(round, ...writeSettle(probes.absBashAllowFile, "w-bash-allow"));
+      // MID-PASS KERNEL-VECTOR consult: the surviving strictly-concrete
+      // file ENGAGES over its ENVELOPE directory (files-only reading - the
+      // kernel fence admits the declared path BY IDENTITY, clean
+      // completion); the vector value is IDENTICAL to the pre-respec
+      // reading (same absolute string under either interpretation).
+      bashAllowVector = planBasedProjection(state);
+    });
+    round.passes.push(async (): Promise<void> => {
+      // Disk-truth duty: the SHARED workspace-cwd target LANDS over the
+      // SCOPE class (REAL fs write inside the scripted pass).
+      await writeFile(probes.absCwdFile, "# Bash project file\n");
+      emit(round, ...writeSettle(probes.absCwdFile, "w-bash-project"));
+      // MID-PASS KERNEL-VECTOR consult: the dual project flags agree, so
+      // the workspace-cwd class joins AFTER the machine allowance.
+      bashProjectFileVector = planBasedProjection(state);
+    });
+    round.passes.push(async (): Promise<void> => {
+      // The model honored the refusal: NO disk write in this pass (the
+      // SAME cwd target the bash-project-file probe admitted moments
+      // earlier is refused again - disk-truth duty).
+      emit(round, ...quietSettle());
+      // LATE-BINDING PROOF: over the SAME stamped state the consulted
+      // snapshot flips with the active phase - the SILENT window (attach
+      // abstention despite the contract's own flag-TRUE) degenerates to
+      // the MINIMUM fence again.
+      bashSilentVector = planBasedProjection(state);
+    });
+    round.passes.push(async (): Promise<void> => {
+      // Disk-truth duty: the SHARED scratch target LANDS over the phase's
+      // OWN scratch flag (REAL fs write inside the scripted pass).
+      await writeFile(probes.absTmpScratch, "# Bash tmp parity\n");
+      emit(round, ...writeSettle(probes.absTmpScratch, "w-bash-tmp"));
+      // MID-PASS KERNEL-VECTOR consult: the effective scratch proposition
+      // admits the /tmp/ prefix class AFTER the machine allowance.
+      bashTmpParityVector = planBasedProjection(state);
+    });
+    round.passes.push(async (): Promise<void> => {
+      // The model honored the refusal: NO disk write in this pass (the
+      // SAME scratch target the bash-tmp-parity probe admitted moments
+      // earlier is refused again - disk-truth duty; its pre-phase sweep
+      // removed the parity residue WITHIN the run).
+      emit(round, ...quietSettle());
+    });
+    round.passes.push(async (): Promise<void> => {
+      // BASH-FILE-CREATE pass: disk-truth duty over the SHARED genuine file
+      // token (engaged create state) - the REAL fs write of the leaf
+      // (parent dir included) precedes the settle pair, so the settlement
+      // gate finds it present at break.
+      await mkdir(dirname(probes.absBashFileLeaf), { recursive: true });
+      await writeFile(probes.absBashFileLeaf, fileSeedBytes);
+      emit(round, ...writeSettle(probes.absBashFileLeaf, "w-bash-file-create"));
+      // MID-PASS KERNEL-VECTOR consult: the surviving strictly-concrete
+      // leaf ENGAGES over its ENVELOPE directory (files-only reading) -
+      // the SAME envelope value the bash-allow window produces, asserted
+      // independently over this window.
+      bashFileCreateVector = planBasedProjection(state);
+    });
+    round.passes.push(async (): Promise<void> => {
+      // BASH-FILE-APPEND pass: disk-truth duty over the PRE-EXISTING state
+      // (SAME leaf, no sweep between the two - the fixed-order seed
+      // dependency is the point): the pass rewrites the leaf so the FINAL
+      // content equals seed + appended.
+      await writeFile(probes.absBashFileLeaf, fileSeedBytes + fileAppendBytes);
+      emit(round, ...writeSettle(probes.absBashFileLeaf, "w-bash-file-append"));
+      // MID-PASS KERNEL-VECTOR consult: the SAME leaf engages again - equal
+      // by construction over the unchanged declaration, asserted
+      // independently.
+      bashFileAppendVector = planBasedProjection(state);
+    });
+    round.passes.push(async (): Promise<void> => {
+      // BASH-FILE-SIBLING pass: disk-truth duty - ONLY the declared leaf is
+      // committed (REAL fs write); the two sibling strays NEVER LAND
+      // (discarded by construction - nothing is ever seeded for them).
+      await writeFile(probes.absBashSiblingLeaf, "# Sibling leaf\n");
+      emit(
+        round,
+        ...writeSettle(probes.absBashSiblingLeaf, "w-bash-file-sibling"),
+      );
+      // MID-PASS KERNEL-VECTOR consult: the sibling leaf's envelope engages
+      // (the SAME shared guards-demo directory value - third independent
+      // reading).
+      bashFileSiblingVector = planBasedProjection(state);
+      // MID-PASS VERDICT consults (fresh snapshots over the SAME stamped
+      // state - the write-side parity the shipped-form semantics rest on):
+      // BOTH sibling targets refuse with the phase named and the
+      // survivor-only listing; the readings CONVERGE byte-identically over
+      // the differing target slots.
+      siblingOutPatternRefusal = decideWrite(state.snapshot(), "write", {
+        path: probes.absBashSiblingOutPattern,
+      });
+      siblingInPatternRefusal = decideWrite(state.snapshot(), "write", {
+        path: probes.absBashSiblingInPattern,
+      });
+    });
     scriptRuns(round, quietSettle());
     const cap = new GuardsDemoCapability({ session: instance });
     const result = await cap.run();
 
-    // Prompt-total arithmetic: 1 + 2 + 6 + 1 = 10 - a wrong total
+    // Prompt-total arithmetic: 1 + 2 + 15 + 1 = 19 - a wrong total
     // reveals a corrective block attributed to the wrong phase or a stray
     // prompt.
-    expect(round.session.prompt).toHaveBeenCalledTimes(10);
+    expect(round.session.prompt).toHaveBeenCalledTimes(19);
     expect(sentAt(round, 0)).toBe(greetingPromptText());
     expect(sentAt(round, 1)).toBe(
       guardProbePromptText(placement.absoluteArtifact),
@@ -789,7 +1127,40 @@ describe("expectation-guard demonstration flow (C rows)", () => {
     expect(sentAt(round, 6)).toBe(notAllowedPromptText(probes.absCwdFile));
     expect(sentAt(round, 7)).toBe(tmpParityPromptText(probes.absTmpScratch));
     expect(sentAt(round, 8)).toBe(tmpNegativePromptText(probes.absTmpScratch));
-    expect(sentAt(round, 9)).toBe(
+    // The six BASH-command probes in pinned order, all-baseline (no
+    // corrective blocks reach them on the happy trajectory).
+    expect(sentAt(round, 9)).toBe(bashDenyPromptText(probes.absDenyStray));
+    expect(sentAt(round, 10)).toBe(
+      bashAllowPromptText(probes.absBashAllowFile),
+    );
+    expect(sentAt(round, 11)).toBe(
+      bashProjectFilePromptText(probes.absCwdFile),
+    );
+    expect(sentAt(round, 12)).toBe(
+      bashProjectFileNotAllowedPromptText(probes.absCwdFile),
+    );
+    expect(sentAt(round, 13)).toBe(
+      bashTmpParityPromptText(probes.absTmpScratch),
+    );
+    expect(sentAt(round, 14)).toBe(
+      bashTmpNegativePromptText(probes.absTmpScratch),
+    );
+    // The three engaged-path file-leaf probes in pinned order, all-baseline
+    // (no corrective blocks reach them on the happy trajectory).
+    expect(sentAt(round, 15)).toBe(
+      bashFileCreatePromptText(probes.absBashFileLeaf),
+    );
+    expect(sentAt(round, 16)).toBe(
+      bashFileAppendPromptText(probes.absBashFileLeaf),
+    );
+    expect(sentAt(round, 17)).toBe(
+      bashFileSiblingPromptText(
+        probes.absBashSiblingLeaf,
+        probes.absBashSiblingOutPattern,
+        probes.absBashSiblingInPattern,
+      ),
+    );
+    expect(sentAt(round, 18)).toBe(
       summaryPromptText(placement.absoluteArtifact, 2),
     );
 
@@ -805,7 +1176,7 @@ describe("expectation-guard demonstration flow (C rows)", () => {
       round.session.sendCustomMessage.mock.invocationCallOrder[0],
     ).toBeLessThan(round.session.prompt.mock.invocationCallOrder[0]);
     // The unified timeline confirms the same ordering end to end:
-    // EXACTLY 11 entries.
+    // EXACTLY 20 entries.
     expect(round.timeline).toEqual([
       { kind: "custom", payload: markerPayload("guards-demo") },
       { kind: "prompt", text: greetingPromptText() },
@@ -829,6 +1200,37 @@ describe("expectation-guard demonstration flow (C rows)", () => {
       },
       { kind: "prompt", text: tmpParityPromptText(probes.absTmpScratch) },
       { kind: "prompt", text: tmpNegativePromptText(probes.absTmpScratch) },
+      { kind: "prompt", text: bashDenyPromptText(probes.absDenyStray) },
+      { kind: "prompt", text: bashAllowPromptText(probes.absBashAllowFile) },
+      {
+        kind: "prompt",
+        text: bashProjectFilePromptText(probes.absCwdFile),
+      },
+      {
+        kind: "prompt",
+        text: bashProjectFileNotAllowedPromptText(probes.absCwdFile),
+      },
+      { kind: "prompt", text: bashTmpParityPromptText(probes.absTmpScratch) },
+      {
+        kind: "prompt",
+        text: bashTmpNegativePromptText(probes.absTmpScratch),
+      },
+      {
+        kind: "prompt",
+        text: bashFileCreatePromptText(probes.absBashFileLeaf),
+      },
+      {
+        kind: "prompt",
+        text: bashFileAppendPromptText(probes.absBashFileLeaf),
+      },
+      {
+        kind: "prompt",
+        text: bashFileSiblingPromptText(
+          probes.absBashSiblingLeaf,
+          probes.absBashSiblingOutPattern,
+          probes.absBashSiblingInPattern,
+        ),
+      },
       {
         kind: "prompt",
         text: summaryPromptText(placement.absoluteArtifact, 2),
@@ -886,6 +1288,56 @@ describe("expectation-guard demonstration flow (C rows)", () => {
       block: true,
       reason: replicaUniversalDenial(),
     });
+    // Kernel-vector consults (captured DURING the bash passes over the
+    // SAME stamped state - the fence tracks the frame, late-bound; the
+    // MINIMUM fence over ANY non-engaged window is exactly ["/dev"]; assembly
+    // order keeps the surviving envelopes FIRST):
+    expect(bashDenyVector).toEqual(["/dev"]);
+    expect(bashAllowVector).toEqual([dirname(probes.absBashAllowFile), "/dev"]);
+    expect(bashProjectFileVector).toEqual(["/dev", probes.cwd]);
+    expect(bashSilentVector).toEqual(["/dev"]);
+    expect(bashTmpParityVector).toEqual(["/dev", "/tmp"]);
+    // The THREE engaged windows over the new file-leaf family: the
+    // surviving strictly-concrete leaf engages over its ENVELOPE directory
+    // (files-only reading) - the SAME shared envelope value the bash-allow
+    // window produces (equal by construction, asserted independently per
+    // window).
+    expect(bashFileCreateVector).toEqual([
+      dirname(probes.absBashFileLeaf),
+      "/dev",
+    ]);
+    expect(bashFileAppendVector).toEqual([
+      dirname(probes.absBashFileLeaf),
+      "/dev",
+    ]);
+    expect(bashFileSiblingVector).toEqual([
+      dirname(probes.absBashSiblingLeaf),
+      "/dev",
+    ]);
+    // Sibling-window VERDICT consults (write-side parity): BOTH sibling
+    // targets refuse with the phase named and the survivor-only listing;
+    // the in-pattern and out-pattern readings CONVERGE byte-identically
+    // over the differing target slots (matching the pattern is not
+    // declaring).
+    expect(siblingOutPatternRefusal).toStrictEqual({
+      block: true,
+      reason: replicaPhaseDenial(
+        "bash-file-sibling",
+        [probes.absBashSiblingLeaf],
+        null,
+        false,
+      ),
+    });
+    expect(siblingInPatternRefusal).toStrictEqual({
+      block: true,
+      reason: replicaPhaseDenial(
+        "bash-file-sibling",
+        [probes.absBashSiblingLeaf],
+        null,
+        false,
+      ),
+    });
+    expect(siblingInPatternRefusal).toStrictEqual(siblingOutPatternRefusal);
 
     // Real emitter chain: terminal record + exit map (no unit stubs).
     const sessionsRoot = join(tmp, ".sessions");
@@ -910,7 +1362,7 @@ describe("expectation-guard demonstration flow (C rows)", () => {
     expect(record.ok).toBe(true);
     expect(record.capability).toEqual({
       name: "guards-demo",
-      version: "0.4.0",
+      version: "0.7.0",
       source: "builtin",
     });
     expect(record.outputs).toEqual({
@@ -918,25 +1370,43 @@ describe("expectation-guard demonstration flow (C rows)", () => {
     });
     expect(record.errors).toBeUndefined();
     // Disk truth (post-run): the committed guard-probe content; the deny
-    // stray ABSENT (refused - nothing written; neither deny target is
-    // seeded); the allow artifact PRESENT; the project-file probe file
-    // GONE (self-clean removed it and the silent phase's refusal held);
-    // the /tmp/ scratch ABSENT BY DESIGN (the tmp-negative probe's
-    // pre-phase sweep removed the admitted residue WITHIN the run).
+    // stray ABSENT (refused by the write gate AND by the kernel - nothing
+    // written; neither deny target is seeded); the allow artifact PRESENT;
+    // the bash-allow file LEFT BEHIND (the admission showcase - no post-rm;
+    // the plain sweep self-heals across runs);
+    // the project-file probe file GONE (the SELF-CLEANING post-rm removed
+    // it and both silent-window refusals held); the /tmp/ scratch ABSENT
+    // BY DESIGN (the last probe's pre-phase sweep removed the admitted
+    // parity residue WITHIN the run).
     expect(readFileSync(placement.absoluteArtifact, "utf8")).toBe(
       "# Guard Demo\n\nThis run was forced by the expectation guard.\n",
     );
     expect(existsSync(probes.absDenyStray)).toBe(false);
     expect(existsSync(probes.absAllowArtifact)).toBe(true);
+    expect(existsSync(probes.absBashAllowFile)).toBe(true);
+    expect(readFileSync(probes.absBashAllowFile, "utf8")).toBe(
+      "# Bash allow\n",
+    );
     expect(existsSync(probes.absCwdFile)).toBe(false);
     expect(existsSync(probes.absTmpScratch)).toBe(false);
+    // End-of-run ADMITTED artifacts LEFT BEHIND (the admission showcase -
+    // cross-run self-healing stands via the NEXT run's pre-phase sweeps):
+    // the appended leaf carries its FINAL content byte-exact (seed +
+    // appended), the sibling leaf PRESENT, BOTH sibling strays ABSENT
+    // (discarded by construction - no pass ever seeded them).
+    expect(readFileSync(probes.absBashFileLeaf, "utf8")).toBe(
+      fileSeedBytes + fileAppendBytes,
+    );
+    expect(existsSync(probes.absBashSiblingLeaf)).toBe(true);
+    expect(existsSync(probes.absBashSiblingOutPattern)).toBe(false);
+    expect(existsSync(probes.absBashSiblingInPattern)).toBe(false);
     // Row-end hygiene sweep stands as IDEMPOTENT LEGACY HYGIENE (a write,
     // not a check - the in-run sweep already cleared the residue).
     await rm(probes.absTmpScratch, { force: true }).catch(() => {});
     expect(stderrText()).toBe("");
   });
 
-  it("C2 disobedient-compliance: the model commits the file on PASS ONE (real fs write inside the scripted pass) => the gate passes on the FIRST break, all-baseline prompt texts, ZERO corrective blocks, iterations === 1, the SIX PLAIN-PHASE gate probes ride along all-baseline under ONE span (the SILENT tmp-negative pass writes NOTHING - the refusal held), and the SUMMARY observes the graceful ARMED-BUT-NOT-TRIGGERED variant (variant B) over the shrunk signature - ok:true, EXACTLY 9 prompts + 1 stamp (1 + 1 + 6 + 1)", async () => {
+  it("C2 disobedient-compliance: the model commits the file on PASS ONE (real fs write inside the scripted pass) => the gate passes on the FIRST break, all-baseline prompt texts, ZERO corrective blocks, iterations === 1, the FIFTEEN PLAIN-PHASE gate probes ride along all-baseline under ONE span (the two SILENT bash windows write NOTHING - their refusals held; the new engaged-path passes carry the disk-truth duty - leaf produced, siblings absent), and the SUMMARY observes the graceful ARMED-BUT-NOT-TRIGGERED variant (variant B) over the shrunk signature - ok:true, EXACTLY 18 prompts + 1 stamp (1 + 1 + 15 + 1)", async () => {
     const placement = artifactPlacement();
     const probes = probePlacements();
     const { instance, round } = await host();
@@ -971,12 +1441,74 @@ describe("expectation-guard demonstration flow (C rows)", () => {
     // The SILENT tmp-negative pass writes NOTHING (the refusal held -
     // disk-truth duty: the model honored the refusal).
     scriptRuns(round, quietSettle());
+    // BASH-DENY: QUIET (the kernel denied BOTH prescribed attempts - the
+    // model's acts are the bare and the exit-0 compound; nothing lands).
+    round.passes.push(async (): Promise<void> => {
+      emit(round, ...quietSettle());
+    });
+    // BASH-ALLOW: commits the REAL fs write of the DECLARED FILE itself
+    // (disk-truth duty - parent dirs included via the seed idiom).
+    round.passes.push(async (): Promise<void> => {
+      await seedArtifact(probes.absBashAllowFile, "# Bash allow\n");
+      emit(round, ...writeSettle(probes.absBashAllowFile, "w-bash-allow"));
+    });
+    // BASH-PROJECT-FILE: commits the REAL fs write of the SHARED cwd target
+    // (SELF-CLEANING post-rm after the phase).
+    round.passes.push(async (): Promise<void> => {
+      await writeFile(probes.absCwdFile, "# Bash project file\n");
+      emit(round, ...writeSettle(probes.absCwdFile, "w-bash-project"));
+    });
+    // The SILENT bash-project-file-not-allowed pass writes NOTHING (the
+    // refusal held - disk-truth duty).
+    round.passes.push(async (): Promise<void> => {
+      emit(round, ...quietSettle());
+    });
+    // BASH-TMP-PARITY: commits the REAL fs write of the SHARED scratch
+    // target under the phase's OWN scratch flag.
+    round.passes.push(async (): Promise<void> => {
+      await writeFile(probes.absTmpScratch, "# Bash tmp parity\n");
+      emit(round, ...writeSettle(probes.absTmpScratch, "w-bash-tmp"));
+    });
+    // The SILENT bash-tmp-negative pass writes NOTHING (the refusal held -
+    // disk-truth duty; its pre-sweep removed the parity residue WITHIN the
+    // run).
+    round.passes.push(async (): Promise<void> => {
+      emit(round, ...quietSettle());
+    });
+    // BASH-FILE-CREATE: disk-truth duty (the leaf seeded REAL before
+    // settle - the settlement gate finds it present at break).
+    round.passes.push(async (): Promise<void> => {
+      await mkdir(dirname(probes.absBashFileLeaf), { recursive: true });
+      await writeFile(
+        probes.absBashFileLeaf,
+        "# Created by the fenced command.\n",
+      );
+      emit(round, ...writeSettle(probes.absBashFileLeaf, "w-bash-file-create"));
+    });
+    // BASH-FILE-APPEND: disk-truth duty (the SAME leaf rewritten so the
+    // FINAL content is seed plus appended - no sweep between the two).
+    round.passes.push(async (): Promise<void> => {
+      await writeFile(
+        probes.absBashFileLeaf,
+        "# Created by the fenced command.\nappended line\n",
+      );
+      emit(round, ...writeSettle(probes.absBashFileLeaf, "w-bash-file-append"));
+    });
+    // BASH-FILE-SIBLING: disk-truth duty (ONLY the declared leaf committed
+    // - both strays NEVER LAND).
+    round.passes.push(async (): Promise<void> => {
+      await writeFile(probes.absBashSiblingLeaf, "# Sibling leaf\n");
+      emit(
+        round,
+        ...writeSettle(probes.absBashSiblingLeaf, "w-bash-file-sibling"),
+      );
+    });
     const cap = new GuardsDemoCapability({ session: instance });
     const result = await cap.run();
 
-    // 1 + 1 + 6 + 1 = 9 - a wrong total reveals a corrective block or a
-    // stray prompt anywhere in the six-probe shape.
-    expect(round.session.prompt).toHaveBeenCalledTimes(9);
+    // 1 + 1 + 15 + 1 = 18 - a wrong total reveals a corrective block or a
+    // stray prompt anywhere in the fifteen-probe shape.
+    expect(round.session.prompt).toHaveBeenCalledTimes(18);
     expect(sentAt(round, 0)).toBe(greetingPromptText());
     // All-baseline: strict equality PROVES zero corrective blocks.
     expect(sentAt(round, 1)).toBe(
@@ -988,9 +1520,37 @@ describe("expectation-guard demonstration flow (C rows)", () => {
     expect(sentAt(round, 5)).toBe(notAllowedPromptText(probes.absCwdFile));
     expect(sentAt(round, 6)).toBe(tmpParityPromptText(probes.absTmpScratch));
     expect(sentAt(round, 7)).toBe(tmpNegativePromptText(probes.absTmpScratch));
+    expect(sentAt(round, 8)).toBe(bashDenyPromptText(probes.absDenyStray));
+    expect(sentAt(round, 9)).toBe(bashAllowPromptText(probes.absBashAllowFile));
+    expect(sentAt(round, 10)).toBe(
+      bashProjectFilePromptText(probes.absCwdFile),
+    );
+    expect(sentAt(round, 11)).toBe(
+      bashProjectFileNotAllowedPromptText(probes.absCwdFile),
+    );
+    expect(sentAt(round, 12)).toBe(
+      bashTmpParityPromptText(probes.absTmpScratch),
+    );
+    expect(sentAt(round, 13)).toBe(
+      bashTmpNegativePromptText(probes.absTmpScratch),
+    );
+    // The three engaged-path file-leaf probes ride along all-baseline.
+    expect(sentAt(round, 14)).toBe(
+      bashFileCreatePromptText(probes.absBashFileLeaf),
+    );
+    expect(sentAt(round, 15)).toBe(
+      bashFileAppendPromptText(probes.absBashFileLeaf),
+    );
+    expect(sentAt(round, 16)).toBe(
+      bashFileSiblingPromptText(
+        probes.absBashSiblingLeaf,
+        probes.absBashSiblingOutPattern,
+        probes.absBashSiblingInPattern,
+      ),
+    );
     // Graceful-path assertion: the variant-B statement (armed but not
     // triggered), concrete count 1, over the SHRUNK signature.
-    expect(sentAt(round, 8)).toBe(
+    expect(sentAt(round, 17)).toBe(
       summaryPromptText(placement.absoluteArtifact, 1),
     );
 
@@ -1015,6 +1575,11 @@ describe("expectation-guard demonstration flow (C rows)", () => {
     expect(emission.status.ok).toBe(true);
     expect(emission.exitCode).toBe(0);
     expect(exitCodeFor(emission.status)).toBe(0);
+    // Disk-truth duty over the new passes: the leaf PRESENT (committed),
+    // BOTH sibling strays ABSENT (discarded by construction).
+    expect(existsSync(probes.absBashFileLeaf)).toBe(true);
+    expect(existsSync(probes.absBashSiblingOutPattern)).toBe(false);
+    expect(existsSync(probes.absBashSiblingInPattern)).toBe(false);
     // Row-local hygiene sweep of the standing real-/tmp exception.
     await rm(probes.absTmpScratch, { force: true }).catch(() => {});
     expect(stderrText()).toBe("");
@@ -1117,9 +1682,11 @@ describe("expectation-guard demonstration flow (C rows)", () => {
     expect(stderrText()).toBe("");
   });
 
-  it("C4 repeatability: a pre-existing artifact (REAL fs seed BEFORE call()) is REMOVED by the repeatable reset before the guarded phase — observable: during the first guard-probe run a sync fs read reports ABSENT — and the first-pass gate fires IDENTICALLY (same corrective block, same trajectory as the unseeded happy chain over the full six-probe shape), ok:true, EXACTLY 10 prompts", async () => {
+  it("C4 repeatability: a pre-existing artifact (REAL fs seed BEFORE call()) is REMOVED by the repeatable reset before the guarded phase — observable: during the first guard-probe run a sync fs read reports ABSENT — and the first-pass gate fires IDENTICALLY (same corrective block, same trajectory as the unseeded happy chain over the full fifteen-probe shape), ok:true, EXACTLY 19 prompts", async () => {
     const placement = artifactPlacement();
     const probes = probePlacements();
+    const fileSeedBytes = "# Created by the fenced command.\n";
+    const fileAppendBytes = "appended line\n";
     await seedArtifact(placement.absoluteArtifact, "stale artifact\n");
     const { instance, round } = await host();
     scriptRuns(round, quietSettle());
@@ -1156,14 +1723,70 @@ describe("expectation-guard demonstration flow (C rows)", () => {
     // The SILENT tmp-negative pass writes NOTHING (the refusal held -
     // disk-truth duty: the model honored the refusal).
     scriptRuns(round, quietSettle());
+    // BASH-DENY: QUIET (the kernel denied BOTH prescribed attempts - the
+    // model's acts are the bare and the exit-0 compound; nothing lands).
+    round.passes.push(async (): Promise<void> => {
+      emit(round, ...quietSettle());
+    });
+    // BASH-ALLOW: commits the REAL fs write of the DECLARED FILE itself
+    // (disk-truth duty - parent dirs included via the seed idiom).
+    round.passes.push(async (): Promise<void> => {
+      await seedArtifact(probes.absBashAllowFile, "# Bash allow\n");
+      emit(round, ...writeSettle(probes.absBashAllowFile, "w-bash-allow"));
+    });
+    // BASH-PROJECT-FILE: commits the REAL fs write of the SHARED cwd target
+    // (SELF-CLEANING post-rm after the phase).
+    round.passes.push(async (): Promise<void> => {
+      await writeFile(probes.absCwdFile, "# Bash project file\n");
+      emit(round, ...writeSettle(probes.absCwdFile, "w-bash-project"));
+    });
+    // The SILENT bash-project-file-not-allowed pass writes NOTHING (the
+    // refusal held - disk-truth duty).
+    round.passes.push(async (): Promise<void> => {
+      emit(round, ...quietSettle());
+    });
+    // BASH-TMP-PARITY: commits the REAL fs write of the SHARED scratch
+    // target under the phase's OWN scratch flag.
+    round.passes.push(async (): Promise<void> => {
+      await writeFile(probes.absTmpScratch, "# Bash tmp parity\n");
+      emit(round, ...writeSettle(probes.absTmpScratch, "w-bash-tmp"));
+    });
+    // The SILENT bash-tmp-negative pass writes NOTHING (the refusal held -
+    // disk-truth duty; its pre-sweep removed the parity residue WITHIN the
+    // run).
+    round.passes.push(async (): Promise<void> => {
+      emit(round, ...quietSettle());
+    });
+    // BASH-FILE-CREATE: disk-truth duty (the leaf seeded REAL before
+    // settle - the settlement gate finds it present at break).
+    round.passes.push(async (): Promise<void> => {
+      await mkdir(dirname(probes.absBashFileLeaf), { recursive: true });
+      await writeFile(probes.absBashFileLeaf, fileSeedBytes);
+      emit(round, ...writeSettle(probes.absBashFileLeaf, "w-bash-file-create"));
+    });
+    // BASH-FILE-APPEND: disk-truth duty (the SAME leaf rewritten so the
+    // FINAL content is seed plus appended - no sweep between the two).
+    round.passes.push(async (): Promise<void> => {
+      await writeFile(probes.absBashFileLeaf, fileSeedBytes + fileAppendBytes);
+      emit(round, ...writeSettle(probes.absBashFileLeaf, "w-bash-file-append"));
+    });
+    // BASH-FILE-SIBLING: disk-truth duty (ONLY the declared leaf committed
+    // - both strays NEVER LAND).
+    round.passes.push(async (): Promise<void> => {
+      await writeFile(probes.absBashSiblingLeaf, "# Sibling leaf\n");
+      emit(
+        round,
+        ...writeSettle(probes.absBashSiblingLeaf, "w-bash-file-sibling"),
+      );
+    });
     const cap = new GuardsDemoCapability({ session: instance });
     const result = await cap.run();
 
     expect(observedAbsentDuringPassOne).toBe(true);
-    expect(round.session.prompt).toHaveBeenCalledTimes(10);
+    expect(round.session.prompt).toHaveBeenCalledTimes(19);
     // Identical trajectory to the unseeded happy chain: the same
-    // baseline/corrective framing over the same absolute path, the five
-    // probes riding along all-baseline.
+    // baseline/corrective framing over the same absolute path, the eleven
+    // remaining probe prompts riding along all-baseline.
     expect(sentAt(round, 1)).toBe(
       guardProbePromptText(placement.absoluteArtifact),
     );
@@ -1182,9 +1805,18 @@ describe("expectation-guard demonstration flow (C rows)", () => {
     expect(readFileSync(placement.absoluteArtifact, "utf8")).toBe(
       "# Guard Demo\n\nThis run was forced by the expectation guard.\n",
     );
-    // End-of-run scratch ABSENT BY DESIGN (the tmp-negative probe's
-    // pre-phase sweep removed the admitted residue WITHIN the run).
+    // End-of-run scratch ABSENT BY DESIGN (the last probe's pre-phase
+    // sweep removed the admitted parity residue WITHIN the run).
     expect(existsSync(probes.absTmpScratch)).toBe(false);
+    // New-pass disk-truth duty as the happy chain: the appended leaf
+    // carries its FINAL content byte-exact (seed + appended), the sibling
+    // leaf PRESENT, BOTH sibling strays ABSENT (discarded by construction).
+    expect(readFileSync(probes.absBashFileLeaf, "utf8")).toBe(
+      fileSeedBytes + fileAppendBytes,
+    );
+    expect(existsSync(probes.absBashSiblingLeaf)).toBe(true);
+    expect(existsSync(probes.absBashSiblingOutPattern)).toBe(false);
+    expect(existsSync(probes.absBashSiblingInPattern)).toBe(false);
     // Row-end hygiene sweep stands as IDEMPOTENT LEGACY HYGIENE (a write,
     // not a check - the in-run sweep already cleared the residue).
     await rm(probes.absTmpScratch, { force: true }).catch(() => {});
@@ -1195,7 +1827,7 @@ describe("expectation-guard demonstration flow (C rows)", () => {
 // ─── F rows: instruction framing (byte replicas) ──────────────────────
 
 describe("instruction framing (F rows)", () => {
-  it("F1 pinned BYTE REPLICA of the first-pass guard-probe instructions (marker-leading baseline = renderPhaseMarker('guard-probe') + '\\n' + template), the SIX new probe templates pinned against their replicas, and the MARKER-LEADING INVARIANT holds for EVERY run's text in ALL TEN runs (happy-chain trajectory)", async () => {
+  it("F1 pinned BYTE REPLICA of the first-pass guard-probe instructions (marker-leading baseline = renderPhaseMarker('guard-probe') + '\\n' + template with the disclosure block TRAILING), the SIX write-probe and the SIX bash-command probe templates pinned against their replicas, and the MARKER-LEADING PLUS DISCLOSURE-TRAILING INVARIANTS hold for EVERY run's text in ALL NINETEEN runs (happy-chain trajectory)", async () => {
     const placement = artifactPlacement();
     const probes = probePlacements();
     const { instance, round } = await host();
@@ -1226,27 +1858,142 @@ describe("instruction framing (F rows)", () => {
     // The SILENT tmp-negative pass writes NOTHING (the refusal held -
     // disk-truth duty: the model honored the refusal).
     scriptRuns(round, quietSettle());
+    // BASH-DENY: QUIET (the kernel denied BOTH prescribed attempts - the
+    // model's acts are the bare and the exit-0 compound; nothing lands).
+    round.passes.push(async (): Promise<void> => {
+      emit(round, ...quietSettle());
+    });
+    // BASH-ALLOW: commits the REAL fs write of the DECLARED FILE itself
+    // (disk-truth duty - parent dirs included via the seed idiom).
+    round.passes.push(async (): Promise<void> => {
+      await seedArtifact(probes.absBashAllowFile, "# Bash allow\n");
+      emit(round, ...writeSettle(probes.absBashAllowFile, "w-bash-allow"));
+    });
+    // BASH-PROJECT-FILE: commits the REAL fs write of the SHARED cwd target
+    // (SELF-CLEANING post-rm after the phase).
+    round.passes.push(async (): Promise<void> => {
+      await writeFile(probes.absCwdFile, "# Bash project file\n");
+      emit(round, ...writeSettle(probes.absCwdFile, "w-bash-project"));
+    });
+    // The SILENT bash-project-file-not-allowed pass writes NOTHING (the
+    // refusal held - disk-truth duty).
+    round.passes.push(async (): Promise<void> => {
+      emit(round, ...quietSettle());
+    });
+    // BASH-TMP-PARITY: commits the REAL fs write of the SHARED scratch
+    // target under the phase's OWN scratch flag.
+    round.passes.push(async (): Promise<void> => {
+      await writeFile(probes.absTmpScratch, "# Bash tmp parity\n");
+      emit(round, ...writeSettle(probes.absTmpScratch, "w-bash-tmp"));
+    });
+    // The SILENT bash-tmp-negative pass writes NOTHING (the refusal held -
+    // disk-truth duty; its pre-sweep removed the parity residue WITHIN the
+    // run).
+    round.passes.push(async (): Promise<void> => {
+      emit(round, ...quietSettle());
+    });
+    // BASH-FILE-CREATE: disk-truth duty (the leaf seeded REAL before
+    // settle - the settlement gate finds it present at break).
+    round.passes.push(async (): Promise<void> => {
+      await mkdir(dirname(probes.absBashFileLeaf), { recursive: true });
+      await writeFile(probes.absBashFileLeaf, "# Created\n");
+      emit(round, ...writeSettle(probes.absBashFileLeaf, "w-bash-file-create"));
+    });
+    // BASH-FILE-APPEND: disk-truth duty (the SAME leaf rewritten to its
+    // FINAL content - seed plus appended).
+    round.passes.push(async (): Promise<void> => {
+      await writeFile(probes.absBashFileLeaf, "# Created\nappended\n");
+      emit(round, ...writeSettle(probes.absBashFileLeaf, "w-bash-file-append"));
+    });
+    // BASH-FILE-SIBLING: disk-truth duty (ONLY the declared leaf committed
+    // - both strays NEVER LAND).
+    round.passes.push(async (): Promise<void> => {
+      await writeFile(probes.absBashSiblingLeaf, "# Sibling leaf\n");
+      emit(
+        round,
+        ...writeSettle(probes.absBashSiblingLeaf, "w-bash-file-sibling"),
+      );
+    });
     const cap = new GuardsDemoCapability({ session: instance });
     const result = await cap.run();
     expect(result.ok).toBe(true);
 
-    // Byte replica of the FIRST-PASS guard-probe prompt: the marker-leading
-    // baseline is exactly renderer + "\\n" + the pinned template (no
-    // corrective block yet on run one).
+    // Byte replica of the FIRST-PASS guard-probe prompt: the
+    // marker-leading baseline is exactly marker + the pinned template,
+    // the disclosure block trailing (no corrective block yet on run one).
     expect(sentAt(round, 0)).toBe(greetingPromptText());
     expect(sentAt(round, 1)).toBe(
-      `${renderPhaseMarker("guard-probe")}\n${guardProbeReplica(placement.absoluteArtifact)}`,
+      guardProbePromptText(placement.absoluteArtifact),
     );
-    // The six new probe templates pinned against their replicas (byte
-    // parity; \u2014 escaped identically on both sides).
+    // The fifteen probe templates pinned against their replicas (byte
+    // parity; the bash templates are EM-DASH-FREE by design; the existing
+    // rows escape U+2014 identically on both sides).
     expect(sentAt(round, 3)).toBe(denyPromptText(probes.absDenyStray));
     expect(sentAt(round, 4)).toBe(allowPromptText(probes.absAllowArtifact));
     expect(sentAt(round, 5)).toBe(projectFilePromptText(probes.absCwdFile));
     expect(sentAt(round, 6)).toBe(notAllowedPromptText(probes.absCwdFile));
     expect(sentAt(round, 7)).toBe(tmpParityPromptText(probes.absTmpScratch));
     expect(sentAt(round, 8)).toBe(tmpNegativePromptText(probes.absTmpScratch));
-    // Marker-leading invariant over EVERY run's text in all ten runs:
-    // first physical line === renderPhaseMarker(<phase id>).
+    expect(sentAt(round, 9)).toBe(bashDenyPromptText(probes.absDenyStray));
+    expect(sentAt(round, 10)).toBe(
+      bashAllowPromptText(probes.absBashAllowFile),
+    );
+    expect(sentAt(round, 11)).toBe(
+      bashProjectFilePromptText(probes.absCwdFile),
+    );
+    expect(sentAt(round, 12)).toBe(
+      bashProjectFileNotAllowedPromptText(probes.absCwdFile),
+    );
+    expect(sentAt(round, 13)).toBe(
+      bashTmpParityPromptText(probes.absTmpScratch),
+    );
+    expect(sentAt(round, 14)).toBe(
+      bashTmpNegativePromptText(probes.absTmpScratch),
+    );
+    // The three engaged-path file-leaf replicas pinned (nine bash-command
+    // probe owners in total now).
+    expect(sentAt(round, 15)).toBe(
+      bashFileCreatePromptText(probes.absBashFileLeaf),
+    );
+    expect(sentAt(round, 16)).toBe(
+      bashFileAppendPromptText(probes.absBashFileLeaf),
+    );
+    expect(sentAt(round, 17)).toBe(
+      bashFileSiblingPromptText(
+        probes.absBashSiblingLeaf,
+        probes.absBashSiblingOutPattern,
+        probes.absBashSiblingInPattern,
+      ),
+    );
+    // Marker-leading plus disclosure-trailing invariant over EVERY run's
+    // text in all nineteen runs: the marker line leads, the shape-true
+    // block trails.
+    type RunShape = {
+      files?: readonly string[];
+      projectCwd?: string;
+      scratch?: boolean;
+    };
+    const runShapes: RunShape[] = [
+      {},
+      { files: [placement.absoluteArtifact] },
+      { files: [placement.absoluteArtifact] },
+      {},
+      { files: [probes.absAllowArtifact] },
+      { projectCwd: process.cwd() },
+      {},
+      { scratch: true },
+      {},
+      {},
+      { files: [probes.absBashAllowFile] },
+      { projectCwd: process.cwd() },
+      {},
+      { scratch: true },
+      {},
+      { files: [probes.absBashFileLeaf] },
+      { files: [probes.absBashFileLeaf] },
+      { files: [probes.absBashSiblingLeaf] },
+      {},
+    ];
     const phaseIds = [
       "greeting",
       "guard-probe",
@@ -1257,12 +2004,29 @@ describe("instruction framing (F rows)", () => {
       "project-file-not-allowed",
       "tmp-parity",
       "tmp-negative",
+      "bash-deny",
+      "bash-allow",
+      "bash-project-file",
+      "bash-project-file-not-allowed",
+      "bash-tmp-parity",
+      "bash-tmp-negative",
+      "bash-file-create",
+      "bash-file-append",
+      "bash-file-sibling",
       "summary",
     ];
-    for (let i = 0; i < 10; i++) {
+    for (let i = 0; i < 19; i++) {
       const text = sentAt(round, i);
+      const shape = runShapes[i] ?? {};
       const firstLine = text.split("\n", 1)[0] ?? "";
       expect(firstLine).toBe(renderPhaseMarker(phaseIds[i] ?? ""));
+      // The sole corrective retry (guard-probe pass two) rides its pinned
+      // note strictly AFTER the trailing block.
+      const tail =
+        i === 2
+          ? `${disclosureReplica(shape.files, shape.projectCwd, shape.scratch)}\n${correctiveLine(1, [placement.absoluteArtifact])}`
+          : disclosureReplica(shape.files, shape.projectCwd, shape.scratch);
+      expect(text.endsWith(tail)).toBe(true);
     }
     // Row-local hygiene sweep of the standing real-/tmp exception.
     await rm(probes.absTmpScratch, { force: true }).catch(() => {});
@@ -1301,11 +2065,67 @@ describe("instruction framing (F rows)", () => {
     // The SILENT tmp-negative pass writes NOTHING (the refusal held -
     // disk-truth duty: the model honored the refusal).
     scriptRuns(round, quietSettle());
+    // BASH-DENY: QUIET (the kernel denied BOTH prescribed attempts - the
+    // model's acts are the bare and the exit-0 compound; nothing lands).
+    round.passes.push(async (): Promise<void> => {
+      emit(round, ...quietSettle());
+    });
+    // BASH-ALLOW: commits the REAL fs write of the DECLARED FILE itself
+    // (disk-truth duty - parent dirs included via the seed idiom).
+    round.passes.push(async (): Promise<void> => {
+      await seedArtifact(probes.absBashAllowFile, "# Bash allow\n");
+      emit(round, ...writeSettle(probes.absBashAllowFile, "w-bash-allow"));
+    });
+    // BASH-PROJECT-FILE: commits the REAL fs write of the SHARED cwd target
+    // (SELF-CLEANING post-rm after the phase).
+    round.passes.push(async (): Promise<void> => {
+      await writeFile(probes.absCwdFile, "# Bash project file\n");
+      emit(round, ...writeSettle(probes.absCwdFile, "w-bash-project"));
+    });
+    // The SILENT bash-project-file-not-allowed pass writes NOTHING (the
+    // refusal held - disk-truth duty).
+    round.passes.push(async (): Promise<void> => {
+      emit(round, ...quietSettle());
+    });
+    // BASH-TMP-PARITY: commits the REAL fs write of the SHARED scratch
+    // target under the phase's OWN scratch flag.
+    round.passes.push(async (): Promise<void> => {
+      await writeFile(probes.absTmpScratch, "# Bash tmp parity\n");
+      emit(round, ...writeSettle(probes.absTmpScratch, "w-bash-tmp"));
+    });
+    // The SILENT bash-tmp-negative pass writes NOTHING (the refusal held -
+    // disk-truth duty; its pre-sweep removed the parity residue WITHIN the
+    // run).
+    round.passes.push(async (): Promise<void> => {
+      emit(round, ...quietSettle());
+    });
+    // BASH-FILE-CREATE: disk-truth duty (the leaf seeded REAL before
+    // settle - the settlement gate finds it present at break).
+    round.passes.push(async (): Promise<void> => {
+      await mkdir(dirname(probes.absBashFileLeaf), { recursive: true });
+      await writeFile(probes.absBashFileLeaf, "# Created\n");
+      emit(round, ...writeSettle(probes.absBashFileLeaf, "w-bash-file-create"));
+    });
+    // BASH-FILE-APPEND: disk-truth duty (the SAME leaf rewritten to its
+    // FINAL content - seed plus appended).
+    round.passes.push(async (): Promise<void> => {
+      await writeFile(probes.absBashFileLeaf, "# Created\nappended\n");
+      emit(round, ...writeSettle(probes.absBashFileLeaf, "w-bash-file-append"));
+    });
+    // BASH-FILE-SIBLING: disk-truth duty (ONLY the declared leaf committed
+    // - both strays NEVER LAND).
+    round.passes.push(async (): Promise<void> => {
+      await writeFile(probes.absBashSiblingLeaf, "# Sibling leaf\n");
+      emit(
+        round,
+        ...writeSettle(probes.absBashSiblingLeaf, "w-bash-file-sibling"),
+      );
+    });
     const cap = new GuardsDemoCapability({ session: instance });
     const result = await cap.run();
     expect(result.ok).toBe(true);
-    expect(sentAt(round, 9)).toBe(
-      `${renderPhaseMarker("summary")}\n${summaryReplica(placement.absoluteArtifact, 2)}`,
+    expect(sentAt(round, 18)).toBe(
+      `${renderPhaseMarker("summary")}\n${summaryReplica(placement.absoluteArtifact, 2)}\n\n${disclosureReplica()}`,
     );
 
     // Variant B (iterations === 1): the disobedient-compliant chain on a
@@ -1342,15 +2162,86 @@ describe("instruction framing (F rows)", () => {
     // The SILENT tmp-negative pass writes NOTHING (the refusal held -
     // disk-truth duty: the model honored the refusal).
     scriptRuns(second.round, quietSettle());
+    // BASH-DENY: QUIET (the kernel denied BOTH prescribed attempts - the
+    // model's acts are the bare and the exit-0 compound; nothing lands).
+    second.round.passes.push(async (): Promise<void> => {
+      emit(second.round, ...quietSettle());
+    });
+    // BASH-ALLOW: commits the REAL fs write of the DECLARED FILE itself
+    // (disk-truth duty - parent dirs included via the seed idiom).
+    second.round.passes.push(async (): Promise<void> => {
+      await seedArtifact(secondProbes.absBashAllowFile, "# Bash allow\n");
+      emit(
+        second.round,
+        ...writeSettle(secondProbes.absBashAllowFile, "w-bash-allow"),
+      );
+    });
+    // BASH-PROJECT-FILE: commits the REAL fs write of the SHARED cwd target
+    // (SELF-CLEANING post-rm after the phase).
+    second.round.passes.push(async (): Promise<void> => {
+      await writeFile(secondProbes.absCwdFile, "# Bash project file\n");
+      emit(
+        second.round,
+        ...writeSettle(secondProbes.absCwdFile, "w-bash-project"),
+      );
+    });
+    // The SILENT bash-project-file-not-allowed pass writes NOTHING (the
+    // refusal held - disk-truth duty).
+    second.round.passes.push(async (): Promise<void> => {
+      emit(second.round, ...quietSettle());
+    });
+    // BASH-TMP-PARITY: commits the REAL fs write of the SHARED scratch
+    // target under the phase's OWN scratch flag.
+    second.round.passes.push(async (): Promise<void> => {
+      await writeFile(secondProbes.absTmpScratch, "# Bash tmp parity\n");
+      emit(
+        second.round,
+        ...writeSettle(secondProbes.absTmpScratch, "w-bash-tmp"),
+      );
+    });
+    // The SILENT bash-tmp-negative pass writes NOTHING (the refusal held -
+    // disk-truth duty; its pre-sweep removed the parity residue WITHIN the
+    // run).
+    second.round.passes.push(async (): Promise<void> => {
+      emit(second.round, ...quietSettle());
+    });
+    // BASH-FILE-CREATE: disk-truth duty (the leaf seeded REAL before
+    // settle - the settlement gate finds it present at break).
+    second.round.passes.push(async (): Promise<void> => {
+      await mkdir(dirname(secondProbes.absBashFileLeaf), { recursive: true });
+      await writeFile(secondProbes.absBashFileLeaf, "# Created\n");
+      emit(
+        second.round,
+        ...writeSettle(secondProbes.absBashFileLeaf, "w-bash-file-create"),
+      );
+    });
+    // BASH-FILE-APPEND: disk-truth duty (the SAME leaf rewritten to its
+    // FINAL content - seed plus appended).
+    second.round.passes.push(async (): Promise<void> => {
+      await writeFile(secondProbes.absBashFileLeaf, "# Created\nappended\n");
+      emit(
+        second.round,
+        ...writeSettle(secondProbes.absBashFileLeaf, "w-bash-file-append"),
+      );
+    });
+    // BASH-FILE-SIBLING: disk-truth duty (ONLY the declared leaf committed
+    // - both strays NEVER LAND).
+    second.round.passes.push(async (): Promise<void> => {
+      await writeFile(secondProbes.absBashSiblingLeaf, "# Sibling leaf\n");
+      emit(
+        second.round,
+        ...writeSettle(secondProbes.absBashSiblingLeaf, "w-bash-file-sibling"),
+      );
+    });
     const secondCap = new GuardsDemoCapability({ session: second.instance });
     const secondResult = await secondCap.run();
     expect(secondResult.ok).toBe(true);
     if (!secondResult.ok) throw new Error("unreachable");
-    expect(sentAt(second.round, 8)).toBe(
-      `${renderPhaseMarker("summary")}\n${summaryReplica(placement.absoluteArtifact, 1)}`,
+    expect(sentAt(second.round, 17)).toBe(
+      `${renderPhaseMarker("summary")}\n${summaryReplica(placement.absoluteArtifact, 1)}\n\n${disclosureReplica()}`,
     );
     // The graceful wording IS present (variant-B signature phrase).
-    expect(sentAt(second.round, 8)).toContain("ARMED but NOT triggered");
+    expect(sentAt(second.round, 17)).toContain("ARMED but NOT triggered");
     expect(sdkKit.state.rounds).toHaveLength(2);
     // Row-local hygiene sweep of the standing real-/tmp exception (both
     // legs seeded the same pinned scratch name).
@@ -1612,7 +2503,7 @@ describe("module surface and mechanical guards", () => {
     // pin meaningful.
     expect(instance.contract).toStrictEqual({
       name: "guards-demo",
-      version: "0.4.0",
+      version: "0.7.0",
       inputs: [],
       outputs: [{ name: "report", paramKey: "report" }],
       writes: ["guards-demo/*.md"],
@@ -1620,11 +2511,16 @@ describe("module surface and mechanical guards", () => {
     });
   });
 
-  it("runtime export surface is EXACTLY SEVEN keys: default plus the six surviving token constants", async () => {
+  it("runtime export surface is EXACTLY TWELVE keys: default plus the ELEVEN token constants", async () => {
     const mod = await import("./guards-demo.ts");
     expect(Object.keys(mod).sort()).toEqual([
       "GUARDS_DEMO_ALLOW_ARTIFACT",
       "GUARDS_DEMO_ARTIFACT",
+      "GUARDS_DEMO_BASH_ALLOW_FILE",
+      "GUARDS_DEMO_BASH_FILE_LEAF",
+      "GUARDS_DEMO_BASH_SIBLING_IN_PAT",
+      "GUARDS_DEMO_BASH_SIBLING_LEAF",
+      "GUARDS_DEMO_BASH_SIBLING_OUT_PAT",
       "GUARDS_DEMO_DENY_ARTIFACT",
       "GUARDS_DEMO_DENY_STRAY",
       "GUARDS_DEMO_PROJECT_PROBE_FILE",
@@ -1638,7 +2534,7 @@ describe("module surface and mechanical guards", () => {
     expect(src.includes("@earendil-works/pi-coding-agent")).toBe(false);
   });
 
-  it("static import-clause discipline per the sibling pattern (post-format reality): VALUE clauses exactly {node:fs/promises (rm alone), node:path (join), ../capability/base.ts (CapabilityParams inline-type + deriveStateRootFromAgentDir + PioCapability), ../sandbox/layout.ts (deriveProjectKey)} in canonical order \u2014 TYPE clauses exactly {../capability/contract.ts (Contract)}", () => {
+  it("static import-clause discipline per the sibling pattern (post-format reality): VALUE clauses exactly {node:fs/promises (rm), node:path (join), ../capability/base.ts (CapabilityParams inline-type + deriveStateRootFromAgentDir + PioCapability), ../sandbox/layout.ts (deriveProjectKey)} in canonical order \u2014 TYPE clauses exactly {../capability/contract.ts (Contract)}", () => {
     const clauses = staticImportClauses(src);
     const valueClauses = clauses.filter((clause) => !clause.typeOnly);
     const typeClauses = clauses.filter((clause) => clause.typeOnly);
@@ -1677,7 +2573,7 @@ describe("module surface and mechanical guards", () => {
     expect(src.includes("import(")).toBe(false);
   });
 
-  it("the SIX-token constant roster holds: each constant's VALUE occurs EXACTLY ONCE in the module source (split-count idiom — no regex escaping of metacharacters, no duplicated literals; every other reference rides the constant identifier)", () => {
+  it("the ELEVEN-token constant roster holds: each constant's QUOTED value literal occurs EXACTLY ONCE in the module source (quoted-literal split-count idiom - no duplicated literals; every other reference rides the constant identifier; after the bash-allow device retirement NO strict-prefix pair remains among the eleven tokens, so the split-count idiom binds cleanly)", () => {
     const roster = [
       GUARDS_DEMO_ARTIFACT,
       GUARDS_DEMO_DENY_ARTIFACT,
@@ -1685,10 +2581,71 @@ describe("module surface and mechanical guards", () => {
       GUARDS_DEMO_ALLOW_ARTIFACT,
       GUARDS_DEMO_PROJECT_PROBE_FILE,
       GUARDS_DEMO_TMP_PARITY_FILE,
+      GUARDS_DEMO_BASH_ALLOW_FILE,
+      GUARDS_DEMO_BASH_FILE_LEAF,
+      GUARDS_DEMO_BASH_SIBLING_LEAF,
+      GUARDS_DEMO_BASH_SIBLING_OUT_PAT,
+      GUARDS_DEMO_BASH_SIBLING_IN_PAT,
     ];
     for (const token of roster) {
-      expect(src.split(token).length - 1).toBe(1);
+      expect(src.split(`"${token}"`).length - 1).toBe(1);
     }
+  });
+
+  it("shape-prescription fragment pins over the repinned negative bash bytes (quoted-fragment split-count idiom over each extracted owner region): the bare-invocation clause occurs EXACTLY ONCE inside each of the two simple-negative owners AND EXACTLY TWICE inside the sibling owner (once per prescribed attempt), the create owner's plain-redirection prescription binds EXACTLY ONCE in its region, the append owner's append prescription binds EXACTLY ONCE in its region, and the semicolon-compound example occurs EXACTLY ONCE inside the bash-deny owner, and the reshaped bash-allow positive owner's whole-command clause AND interpreter-avoidance clause bind EXACTLY ONCE each in its region", () => {
+    const ownerRegion = (ownerName: string): string => {
+      const start = src.indexOf(`function ${ownerName}(`);
+      if (start === -1) throw new Error(`expected owner function ${ownerName}`);
+      const rest = src.slice(start);
+      const nextDoc = rest.search(/\n\/\*\*/);
+      return nextDoc === -1 ? rest : rest.slice(0, nextDoc);
+    };
+    const BARE_INVOCATION_CLAUSE =
+      "Issue the redirection AS THE WHOLE COMMAND (a bare invocation).";
+    for (const ownerName of [
+      "bashProjectFileNotAllowedInstructions",
+      "bashTmpNegativeInstructions",
+    ]) {
+      expect(
+        ownerRegion(ownerName).split(BARE_INVOCATION_CLAUSE).length - 1,
+      ).toBe(1);
+    }
+    // The sibling owner repeats the clause EXACTLY TWICE (once per
+    // prescribed bare attempt - beats 2 and 3).
+    expect(
+      ownerRegion("bashFileSiblingInstructions").split(BARE_INVOCATION_CLAUSE)
+        .length - 1,
+    ).toBe(2);
+    // Create/append owners' redirection prescriptions bound once each
+    // inside their regions.
+    expect(
+      ownerRegion("bashFileCreateInstructions").split(
+        "with a PLAIN shell redirection",
+      ).length - 1,
+    ).toBe(1);
+    expect(
+      ownerRegion("bashFileAppendInstructions").split(
+        "to APPEND one pinned short line",
+      ).length - 1,
+    ).toBe(1);
+    // The load-bearing separator check: the SEMICOLON compound form (never
+    // the short-circuiting && join) appears exactly once in the owner.
+    expect(
+      ownerRegion("bashDenyInstructions").split("; echo ok").length - 1,
+    ).toBe(1);
+    // The reshaped bash-allow positive owner: its whole-command redirection
+    // clause and its interpreter-avoidance steering clause bind once each
+    // inside its region (steering bytes mechanically pinned).
+    expect(
+      ownerRegion("bashAllowInstructions").split(
+        "first a plain shell redirection AS THE WHOLE COMMAND",
+      ).length - 1,
+    ).toBe(1);
+    expect(
+      ownerRegion("bashAllowInstructions").split(
+        "avoid scripting-language interpreters",
+      ).length - 1,
+    ).toBe(1);
   });
 
   it("zero hop/terminal-takeover machinery tokens (no terminal, lineage, or hop machinery in this module) and the header marks PERMANENT with the temporary-sibling CONTRAST STATEMENT (names the temporary sibling module + its cutover removal) while carrying ZERO uppercase TEMPORARY substrings (deletion-sweep safety), plus the module-scoped retirement sweep (the retired identifiers AND the substring 'child' at zero occurrences)", () => {
@@ -1701,6 +2658,9 @@ describe("module surface and mechanical guards", () => {
       "ProjectFileNotAllowedProbe",
       "GUARDS_DEMO_PROJECT_FILE_NOT_ALLOWED_ARTIFACT",
       "project-file-not-allowed-probe",
+      "GUARDS_DEMO_BASH_ALLOW_DIR",
+      "GUARDS_DEMO_BASH_ALLOW_ARTIFACT",
+      "guards-demo/bash-allow.md/bash-allow-artifact.txt",
     ]) {
       expect(src.includes(token)).toBe(false);
     }
@@ -1723,7 +2683,7 @@ describe("module surface and mechanical guards", () => {
 // ─── Suite source guards (self-containment proof) ─────────────────────
 
 describe("suite source guards", () => {
-  it("the fake SDK root fakes EXACTLY the five valued symbols (session-construction seams only — a sixth fake symbol would be foreign wiring intruding into the island)", () => {
+  it("the fake SDK root fakes EXACTLY the eight valued symbols (session-construction seams plus the Landlock-bash construction floor - any further fake symbol would be foreign wiring intruding into the island)", () => {
     const suiteSrc = readFileSync(
       new URL("./guards-demo.test.ts", import.meta.url),
       "utf8",
@@ -1740,6 +2700,9 @@ describe("suite source guards", () => {
         "createAgentSessionFromServices",
         "createAgentSessionRuntime",
         "createAgentSessionServices",
+        "createBashToolDefinition",
+        "createLocalBashOperations",
+        "defineTool",
         "getAgentDir",
         "SessionManager",
       ].sort(),

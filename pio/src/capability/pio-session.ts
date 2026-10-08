@@ -98,6 +98,41 @@
 // to the swap. The enterCapability / exitCapability pair is the
 // instance-level span-producer surface; no public verdict surface exists,
 // verdicts firing exclusively inside the interceptor closure.
+//
+// Command-write fencing threads the SAME way: create builds EXACTLY ONE
+// Landlock-bash instance over the SAME execution state the guard install
+// stamps - BY REFERENCE, so the instance's per-invocation fresh snapshot
+// consult tracks span and phase churn identically to the write-handler
+// closure and late binding survives handle swaps. The entry rides the
+// UNCONDITIONAL customTools slot: the stored-factory closure re-spreads
+// the very same instance on every session re-creation (composed frames
+// share it within one runtime; a separate process mints its own through
+// its own create), so no placement adds wiring. session.ts stays the
+// generic channel and is unchanged; the guard-handler list gains NO
+// member, because the kernel adjudicates command writes and the tool
+// renders only: a single refusal site, rendered from the pre-spawn
+// consult.
+//
+// Phase-permission disclosure (the transcript-visible carrier): every
+// execute_phase consults the execution state FRESH - ONCE, strictly AFTER
+// its own attach completes (late binding, never pre-attach), OUTSIDE the
+// try (a channel fault escapes verbatim through the standard containment
+// channels; the channel adds no try/catch) - and appends the rendered
+// block AT THE END of the marker-led composition into the SAME text
+// payload, so the listing trails EVERY observed run of the phase,
+// corrective retries included. UNCONDITIONAL: a stateless or governing-empty window renders
+// the delimiter line alone (silence is not fault). The block answers WHICH
+// FILES THE PHASE MAY WRITE from the user's perspective: the shared core's
+// surviving declared paths VERBATIM (one materializeEffectiveSet consult -
+// declaration order, first-occurrence dedupe, plus the two CLAMPED class
+// propositions, never re-judged here), each class on its own line,
+// assembly order files then project then scratch, NO sentence terminators
+// anywhere.
+// Unsupported declaration shapes ride along raw, unfiltered: the block
+// mirrors the shared core AND the gate's own refusal voice, which already
+// lists such tokens. The exported renderer is the
+// block's SOLE BYTE OWNER; its fixed wording lives in the module-private
+// disclosure static.
 
 import { existsSync } from "node:fs";
 import { join, resolve } from "node:path";
@@ -107,9 +142,12 @@ import type {
   AgentSessionEventListener,
   AgentSessionRuntime,
 } from "@earendil-works/pi-coding-agent";
+import { materializeEffectiveSet } from "../permission-mechanics.ts";
 import { slugify } from "../sandbox/layout.ts";
 import { createPioSession, EXECUTION_STATE_STAMP } from "../session.ts";
+import type { ExecutionSnapshot } from "../session-execution-state.ts";
 import { SessionExecutionState } from "../session-execution-state.ts";
+import { createLandlockBash } from "../tools/bash/landlock-bash.ts";
 import { deriveStateRootFromAgentDir } from "./base.ts";
 import { ContractViolationError } from "./errors.ts";
 import type { CapabilitySources } from "./guards/guard-vocabulary.ts";
@@ -167,6 +205,63 @@ function renderMissingOutputLine(
   resolvedPath: string,
 ): string {
   return `phase '${phaseId}' output '${entry}' missing at ${resolvedPath} \u2014 still absent after ${MAX_EXPECTATION_RETRIES} expectation re-run(s); the ceiling is exhausted`;
+}
+
+/** THE phase-permission DISCLOSURE BLOCK's fixed bytes (module-private -
+ * the single literal home for the label, the joiner, and the two class
+ * elements; the exported renderer below is the block's SOLE BYTE OWNER).
+ * Element wording carries NO sentence terminator (minimal message). */
+const PHASE_DISCLOSURE_STATIC = {
+  label: "Phase Permissions",
+  filesJoin: ", ",
+  projectElementLeadIn: "project files at ",
+  scratchElementLiteral: "scratch files at /tmp",
+};
+
+/** THE phase-permission DISCLOSURE renderer (SOLE BYTE OWNER of the block):
+ * pure over plain values, fed a FRESH snapshot consult result (never a
+ * stored object reference) - no side effects, no I/O, no clock. Body
+ * derivation is ONE shared-core consult (materializeEffectiveSet): the
+ * surviving declared paths render VERBATIM as the files line (declaration
+ * order, first-occurrence dedupe - exactly the shared core's survivor list,
+ * unsupported declaration shapes riding along raw, unfiltered), and the two
+ * CLAMPED class propositions render as their own lines, never re-judged
+ * here. Assembly order: files line, project class line, scratch class line.
+ * A stateless reading short-circuits to the DELIMITER LINE ALONE with NO
+ * shared-core consult: an absent execution state arrives as undefined, a
+ * depth-0/no-attach window arrives as a null-phase record - one code path
+ * per case; the core requires a non-null phase record and is never
+ * consulted without one. NO trailing period anywhere; lines are LF-joined;
+ * no trailing newline. */
+export function renderPhasePermissionDisclosure(
+  snapshot?: ExecutionSnapshot,
+): string {
+  const { label, filesJoin, projectElementLeadIn, scratchElementLiteral } =
+    PHASE_DISCLOSURE_STATIC;
+  const lines: string[] = [`${label}:`];
+  if (snapshot !== undefined && snapshot.phase !== null) {
+    // One consult, one code path: the shared core owns the survivor filter
+    // and the clamped class propositions alike.
+    const effective = materializeEffectiveSet(
+      snapshot.phase,
+      snapshot.sources,
+      snapshot.paths,
+    );
+    if (effective.survivors.length > 0) {
+      lines.push(effective.survivors.join(filesJoin));
+    }
+    if (effective.projectWritesActive) {
+      lines.push(`${projectElementLeadIn}${snapshot.paths.workspaceCwd}`);
+    }
+    if (effective.scratchActive) {
+      lines.push(scratchElementLiteral);
+    }
+  }
+
+  if (lines.length === 1) {
+    lines.push("None");
+  }
+  return lines.join("\n");
 }
 
 /** Closed option bag for one phase execution. */
@@ -484,8 +579,15 @@ export class PioSession {
     // survives rebind swaps and span churn; no containment anywhere.
     const writeToolCallHandler = (toolName: string, input: unknown) =>
       decideWrite(executionState.snapshot(), toolName, input);
+    // THE one fenced bash instance: built over the SAME execution state the
+    // guard install stamps BY REFERENCE - the per-invocation fresh snapshot
+    // consult makes late binding sufficient (identical doctrine to the
+    // closure above); the instance may persist while the frames it consults
+    // churn.
+    const landlockBash = createLandlockBash(cwd, executionState);
     const runtime = await createPioSession(cwd, sessionsRoot, {
       sessionListener: listener,
+      customTools: [landlockBash],
       guardInstall: { executionState, handlers: [writeToolCallHandler] },
     });
     return new PioSession(runtime, observer, executionState);
@@ -619,10 +721,6 @@ export class PioSession {
   async execute_phase(id: string, opts?: PhaseOptions): Promise<PhaseResult> {
     const min = opts?.min ?? 1;
     const max = opts?.max ?? Infinity;
-    // Composed once per phase: re-runs re-stamp the identical leading line.
-    const text =
-      renderPhaseMarker(id) +
-      (opts?.instructions ? `\n${opts.instructions}` : "");
     // Resolved once at phase start and retained for the whole duration:
     // the settlement gate, the ceiling failure, and the execution-state
     // feed all consult this same retained list.
@@ -661,6 +759,23 @@ export class PioSession {
       );
       attached = true;
     }
+    // THE phase-permission DISCLOSURE: ONE fresh snapshot consult strictly
+    // AFTER the attach completes (late binding - the block reflects the
+    // window this very phase just armed, never a pre-attach reading) and
+    // OUTSIDE the try (a channel fault escapes verbatim - no containment).
+    // Appended AT THE END of the marker-led composition into the SAME text
+    // payload so the block trails every observed run incl. corrective
+    // retries (corrective notes ride strictly after it).
+    const disclosure = renderPhasePermissionDisclosure(
+      this.#executionState?.snapshot(),
+    );
+    // Composed once per phase: the marker line and the instructions, then
+    // the trailing disclosure block; re-runs re-send the identical bytes.
+    const text =
+      renderPhaseMarker(id) +
+      (opts?.instructions ? `\n${opts.instructions}` : "") +
+      "\n\n" +
+      disclosure;
     let iterations = 0;
     // Independent of budget and stop rule; never surfaced on PhaseResult.
     let expectationRetries = 0;

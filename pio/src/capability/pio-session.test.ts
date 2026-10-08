@@ -37,11 +37,13 @@
 // (descriptor read plus instanceof - no second cast seam) and the pinned
 // empty-contract fixture span enters before any phase runs. Verdict
 // assertions ride identity over the REAL predicate (the refusal bytes stay
-// owned by ./guards/write-gate.ts); every PI_CODING_AGENT_DIR touch is
-// row-scoped save/restore.
+// owned by ./guards/write-gate.ts); the per-run disclosure consult resolves
+// the owned anchor channels FRESH on every execute_phase, so a file-level
+// agent-dir baseline covers phase-driving rows and every remaining
+// PI_CODING_AGENT_DIR touch stays a row-scoped save/restore nested over it.
 import { randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import type {
@@ -51,6 +53,7 @@ import type {
 } from "@earendil-works/pi-coding-agent";
 import { deriveProjectKey } from "../sandbox/layout.ts";
 import { EXECUTION_STATE_STAMP } from "../session.ts";
+import type { ExecutionSnapshot } from "../session-execution-state.ts";
 import { SessionExecutionState } from "../session-execution-state.ts";
 import type { CapabilityParams } from "./base.ts";
 import {
@@ -67,6 +70,7 @@ import {
   PioSession,
   renderCapabilityMarker,
   renderPhaseMarker,
+  renderPhasePermissionDisclosure,
   SessionHandleRefusalError,
 } from "./pio-session.ts";
 import {
@@ -164,6 +168,25 @@ interface ServicesOpts {
   };
 }
 
+/** Structural fake of a threaded custom-tool entry (wider than the SDK
+ * ToolDefinition surface the descriptor rows consult): name, the ops bag,
+ * and the receipt-recording execute the rows drive. */
+interface FakeThreadedTool {
+  name: string;
+  operations: unknown;
+  execute: (args: unknown) => Promise<unknown>;
+}
+
+/** Suite-local structural view of the from-services options arg (wider-than-
+ * SDK convention, established in this file): rows read the threaded
+ * custom-tools entry CAST-FREE off the recorded factory call. */
+interface FromServicesArg {
+  services: unknown;
+  sessionManager: ManagerFake;
+  sessionStartEvent: unknown;
+  customTools?: ReadonlyArray<FakeThreadedTool>;
+}
+
 const harness = vi.hoisted(() => {
   const managerCwd = "/managed/cwd";
   const agentDir = "/agent/dir";
@@ -174,11 +197,17 @@ const harness = vi.hoisted(() => {
     storedFactories: ((input: FactoryInput) => Promise<unknown>)[];
     servicesArgs: ServicesOpts[];
     stampCarriers: FakeSession[];
+    fromServicesArgs: FromServicesArg[];
+    bashFactoryCalls: { cwd: string; operations: unknown }[];
+    bashExecReceipts: { args: unknown; bag: unknown }[];
   } = {
     rounds: [],
     storedFactories: [],
     servicesArgs: [],
     stampCarriers: [],
+    fromServicesArgs: [],
+    bashFactoryCalls: [],
+    bashExecReceipts: [],
   };
 
   const fakeManager = { getCwd: () => managerCwd };
@@ -228,13 +257,18 @@ const harness = vi.hoisted(() => {
     state.servicesArgs.push(options);
     return fakeServices;
   });
-  const createAgentSessionFromServices = vi.fn(async () => {
-    // Additive stamp carrier: the real seam stamps the guard install onto
-    // the created handle; rows read back that descriptor cast-free.
-    const carrier = mintFakeHandle();
-    state.stampCarriers.push(carrier);
-    return { extensionsResult: {}, session: carrier };
-  });
+  const createAgentSessionFromServices = vi.fn(
+    async (options: FromServicesArg) => {
+      // Additive from-services arg record: rows read the threaded
+      // custom-tools entry cast-free off the real seam's spread. The stamp
+      // carrier stays additive - the real seam stamps the guard install
+      // onto the created handle; rows read back that descriptor cast-free.
+      state.fromServicesArgs.push(options);
+      const carrier = mintFakeHandle();
+      state.stampCarriers.push(carrier);
+      return { extensionsResult: {}, session: carrier };
+    },
+  );
   const createAgentSessionRuntime = vi.fn(
     async (
       factory?: (input: FactoryInput) => Promise<unknown>,
@@ -254,16 +288,44 @@ const harness = vi.hoisted(() => {
     },
   );
 
+  // THE Landlock-bash construction floor: import-binding completeness over
+  // ../tools/bash/landlock-bash.ts's FOUR SDK value reaches. The factory is
+  // a RECORDING structural fake - it logs the cwd plus the ops bag it
+  // received and returns the structural definition rows drive; defineTool
+  // mirrors the real inference-preserving wrap as the identity passthrough;
+  // getShellConfig + createLocalBashOperations stay UNEXERCISED here (the
+  // island never drives the real per-spawn machinery).
+  const createBashToolDefinition = vi.fn(
+    (cwd: string, options: { operations: unknown }) => {
+      state.bashFactoryCalls.push({ cwd, operations: options.operations });
+      const execute = vi.fn(async (args: unknown) => {
+        state.bashExecReceipts.push({ args, bag: options.operations });
+        return { content: [], details: { exitCode: 0 } };
+      });
+      return { name: "bash", operations: options.operations, execute };
+    },
+  );
+  const defineTool = vi.fn((tool: unknown) => tool);
+  const getShellConfig = vi.fn(() => ({ shell: "/bin/bash", args: ["-c"] }));
+  const createLocalBashOperations = vi.fn(() => ({}));
+
   const reset = () => {
     state.rounds = [];
     state.storedFactories = [];
     state.servicesArgs = [];
     state.stampCarriers = [];
+    state.fromServicesArgs = [];
+    state.bashFactoryCalls = [];
+    state.bashExecReceipts = [];
     getAgentDir.mockClear();
     SessionManager.create.mockClear();
     createAgentSessionServices.mockClear();
     createAgentSessionFromServices.mockClear();
     createAgentSessionRuntime.mockClear();
+    createBashToolDefinition.mockClear();
+    defineTool.mockClear();
+    getShellConfig.mockClear();
+    createLocalBashOperations.mockClear();
   };
 
   return {
@@ -274,6 +336,10 @@ const harness = vi.hoisted(() => {
     createAgentSessionServices,
     createAgentSessionFromServices,
     createAgentSessionRuntime,
+    createBashToolDefinition,
+    defineTool,
+    getShellConfig,
+    createLocalBashOperations,
     reset,
     managerCwd,
     agentDir,
@@ -287,11 +353,32 @@ vi.mock("@earendil-works/pi-coding-agent", () => ({
   createAgentSessionServices: harness.createAgentSessionServices,
   createAgentSessionFromServices: harness.createAgentSessionFromServices,
   createAgentSessionRuntime: harness.createAgentSessionRuntime,
+  createBashToolDefinition: harness.createBashToolDefinition,
+  defineTool: harness.defineTool,
+  getShellConfig: harness.getShellConfig,
+  createLocalBashOperations: harness.createLocalBashOperations,
 }));
 
 beforeEach(() => {
   harness.reset();
+  // THE file-level agent-dir baseline (save/set): phase-running rows resolve
+  // the owned anchor channels through the fresh per-run snapshot consult, so
+  // they run under a resolvable agent dir deterministically; row-scoped
+  // switches (withAgentDir) save and restore back onto this baseline.
+  savedAgentDir = process.env.PI_CODING_AGENT_DIR;
+  process.env.PI_CODING_AGENT_DIR = AGENT_DIR_LITERAL;
 });
+
+afterEach(() => {
+  if (savedAgentDir === undefined) {
+    delete process.env.PI_CODING_AGENT_DIR;
+  } else {
+    process.env.PI_CODING_AGENT_DIR = savedAgentDir;
+  }
+});
+
+/** Save slot for the file-level agent-dir baseline (restored in afterEach). */
+let savedAgentDir: string | undefined;
 
 function lastRound(): Round {
   const round = harness.state.rounds[harness.state.rounds.length - 1];
@@ -324,6 +411,15 @@ function assertMintedState(stamped: unknown): SessionExecutionState {
 function lastServicesArg(): ServicesOpts {
   const o = harness.state.servicesArgs[harness.state.servicesArgs.length - 1];
   if (!o) throw new Error("expected recorded services options");
+  return o;
+}
+
+/** The LAST recorded from-services arg (throw-guard recovery, house idiom -
+ * zero additional casts). */
+function lastFromServicesArg(): FromServicesArg {
+  const o =
+    harness.state.fromServicesArgs[harness.state.fromServicesArgs.length - 1];
+  if (!o) throw new Error("expected a recorded from-services arg");
   return o;
 }
 
@@ -960,13 +1056,13 @@ describe("PioSession — phase markers", () => {
     expect(rendered.endsWith("\n")).toBe(false);
   });
 
-  it("stamps the marker as the leading line ahead of the instructions", async () => {
+  it("stamps the marker ahead of the instructions, AHEAD of the disclosure tail", async () => {
     const { instance, round } = await host();
     scriptRuns(round, quietRun());
     await instance.execute_phase("build", { instructions: "Write the thing" });
     expect(round.session.prompt).toHaveBeenCalledTimes(1);
     expect(round.session.prompt).toHaveBeenCalledWith(
-      "\u2014\u2014 build \u2014\u2014\nWrite the thing",
+      `\u2014\u2014 build \u2014\u2014\nWrite the thing\n\n${expectedDisclosure()}`,
     );
   });
 
@@ -976,7 +1072,7 @@ describe("PioSession — phase markers", () => {
     await instance.execute_phase("solo");
     expect(round.session.prompt).toHaveBeenCalledTimes(1);
     expect(round.session.prompt).toHaveBeenCalledWith(
-      "\u2014\u2014 solo \u2014\u2014",
+      `\u2014\u2014 solo \u2014\u2014\n\n${expectedDisclosure()}`,
     );
   });
 
@@ -999,8 +1095,362 @@ describe("PioSession — phase markers", () => {
       },
     });
     expect(sent).toHaveLength(2);
-    expect(sent[0]).toBe("\u2014\u2014 again \u2014\u2014");
+    expect(sent[0]).toBe(
+      `\u2014\u2014 again \u2014\u2014\n\n${expectedDisclosure()}`,
+    );
     expect(sent[1]).toBe(sent[0]);
+  });
+});
+
+// ---------------------------------------------------------------------
+// Phase-permission DISCLOSURE channel: the in-transcript writable-targets
+// listing folded AT THE END of the marker-led composition into the SAME
+// text payload of every execute_phase run. Identity-over-replicas doctrine -
+// the EXPECTED BLOCK BYTES are assembled IN-TEST by the suite-local helper
+// below (the fixed constants re-typed locally; the SOLE BYTE OWNER stays
+// the module-private static + exported renderer in ./pio-session.ts); all
+// prompts ride the SAME mocked SDK seam every other row uses.
+// ---------------------------------------------------------------------
+
+/** LOCAL replica of the block's fixed label (SOLE OWNER: the module-private
+ * disclosure static in ./pio-session.ts). */
+const DISCLOSURE_LABEL_REPLICA = "Phase Permissions";
+
+/** LOCAL replica of the block's header line: the plain pinned label plus
+ * the terminal colon (no flanks, no escapes - the committed bare-line
+ * form). */
+const DISCLOSURE_HEADER_REPLICA = `${DISCLOSURE_LABEL_REPLICA}:`;
+
+/** Assemble an expected disclosure block in-test: the header line plus
+ * whichever body lines qualify (owner order: files, project class, scratch
+ * class); a window carrying NO body line gains the empty-form None line
+ * (mirroring the renderer's own condition); LF-joined, NO trailing period
+ * or newline anywhere. */
+function expectedDisclosure(
+  files?: readonly string[],
+  projectCwd?: string,
+  scratch?: boolean,
+): string {
+  const lines: string[] = [DISCLOSURE_HEADER_REPLICA];
+  if (files !== undefined && files.length > 0) {
+    lines.push(files.join(", "));
+  }
+  if (projectCwd !== undefined) {
+    lines.push(`project files at ${projectCwd}`);
+  }
+  if (scratch) {
+    lines.push("scratch files at /tmp");
+  }
+  if (lines.length === 1) {
+    lines.push("None");
+  }
+  return lines.join("\n");
+}
+
+describe("PioSession — phase-permission disclosure", () => {
+  // Row-seeded deliverables live under the LITERAL project slot (the
+  // baseline env resolves it deterministically); the settlement gate is row
+  // DUTY here (these rows exercise prompt bytes, not the gate), so every row
+  // seeds its declared artifacts before driving the phase. The state root is
+  // wiped after every row so no residue rides into siblings.
+  afterEach(async () => {
+    await rm(deriveStateRootFromAgentDir(AGENT_DIR_LITERAL), {
+      recursive: true,
+      force: true,
+    });
+  });
+
+  /** Seed the declared artifact(s) so the settlement gate passes on the
+   * first break (disk seeding is row duty, mirroring the expectation-gate
+   * rows' convention). */
+  async function seedArtifacts(...targets: string[]): Promise<void> {
+    for (const target of targets) {
+      await mkdir(path.dirname(target), { recursive: true });
+      await writeFile(target, "seeded for the disclosure window\n");
+    }
+  }
+
+  it("SILENT window (attached span, zero declarations, no flags): the block is the PLAIN HEADER PLUS THE EMPTY-FORM None LINE and the phase settles with NO fault raised (done:true, iterations:1, the prompt ends with the None line)", async () => {
+    const { instance, round } = await host();
+    scriptRuns(round, quietRun());
+    const result = await instance.execute_phase("disc-silent");
+    expect(round.session.prompt).toHaveBeenCalledTimes(1);
+    expect(round.session.prompt).toHaveBeenCalledWith(
+      `\u2014\u2014 disc-silent \u2014\u2014\n\n${expectedDisclosure()}`,
+    );
+    expect(result.done).toBe(true);
+    expect(result.iterations).toBe(1);
+  });
+
+  it("STATELESS feed: the renderer called with NO ARGUMENT, with EXPLICIT undefined, or with a depth-0 record (sources/phase null over RESOLVED anchors) yields the EMPTY-FORM BLOCK (header plus the capital-N None line) - both short-circuit arms skip the shared core, no fault", () => {
+    // The depth-0 record mirrors what snapshot() actually freezes when no
+    // span layer is retained: null sources/phase with resolved anchor paths.
+    const depthZero: ExecutionSnapshot = {
+      sources: null,
+      phase: null,
+      paths: {
+        projectSlotRoot: "/lit/state/projects/key",
+        workspaceCwd: "/work",
+      },
+    };
+    expect(renderPhasePermissionDisclosure()).toBe(expectedDisclosure());
+    expect(renderPhasePermissionDisclosure(undefined)).toBe(
+      expectedDisclosure(),
+    );
+    expect(renderPhasePermissionDisclosure(depthZero)).toBe(
+      expectedDisclosure(),
+    );
+  });
+
+  it("SINGLE-FILE window: a span declaring a contract pattern that admits the phase's ONE declared artifact renders THAT EXACT PATH as the files line (verbatim, comma-space joiner trivially one entry)", async () => {
+    const { instance, round, gate } = await host();
+    const slotRoot = gate.state.snapshot().paths.projectSlotRoot;
+    gate.state.enterCapability({
+      name: "disc-cover",
+      writes: ["research/*.md"],
+      allowProjectWrites: false,
+    });
+    const target = path.join(slotRoot, "research", "report.md");
+    await seedArtifacts(target);
+    scriptRuns(round, quietRun());
+    await instance.execute_phase("disc-single", { write: [target] });
+    expect(round.session.prompt).toHaveBeenCalledWith(
+      `\u2014\u2014 disc-single \u2014\u2014\n\n${expectedDisclosure([target])}`,
+    );
+  });
+
+  it("MULTI-FILE window: declaration ORDER with FIRST-OCCURRENCE DEDUPE - duplicate declared entries render ONCE, in first-seen order, joined by the comma-space joiner", async () => {
+    const { instance, round, gate } = await host();
+    const slotRoot = gate.state.snapshot().paths.projectSlotRoot;
+    gate.state.enterCapability({
+      name: "disc-cover-work",
+      writes: ["work/*.md"],
+      allowProjectWrites: false,
+    });
+    const a = path.join(slotRoot, "work", "a.md");
+    const b = path.join(slotRoot, "work", "b.md");
+    const c = path.join(slotRoot, "work", "c.md");
+    await seedArtifacts(a, b, c);
+    scriptRuns(round, quietRun());
+    await instance.execute_phase("disc-multi", { write: [a, b, a, c] });
+    expect(round.session.prompt).toHaveBeenCalledWith(
+      `\u2014\u2014 disc-multi \u2014\u2014\n\n${expectedDisclosure([a, b, c])}`,
+    );
+  });
+
+  it("PATTERN-PASSTHROUGH: a declaration CARRYING a wildcard that IS coverage-admitted renders RAW in the files line - the block mirrors the shared core unfiltered (no concreteness filter consumed)", async () => {
+    const { instance, round, gate } = await host();
+    const slotRoot = gate.state.snapshot().paths.projectSlotRoot;
+    gate.state.enterCapability({
+      name: "disc-pattern",
+      writes: ["research/*.md"],
+      allowProjectWrites: false,
+    });
+    const token = path.join(slotRoot, "research", "r*port.md");
+    await seedArtifacts(token);
+    scriptRuns(round, quietRun());
+    await instance.execute_phase("disc-token", { write: [token] });
+    expect(round.session.prompt).toHaveBeenCalledWith(
+      `\u2014\u2014 disc-token \u2014\u2014\n\n${expectedDisclosure([token])}`,
+    );
+  });
+
+  it("SCOPE-ONLY window: the CLAMPED-active project-files class (dual-flag agreement over the coalesced sources) renders EXACTLY the project-class line naming the absolute workspace cwd", async () => {
+    const { instance, round, gate } = await host();
+    gate.state.enterCapability({
+      name: "disc-scoped",
+      writes: [],
+      allowProjectWrites: true,
+    });
+    const cwd = gate.state.snapshot().paths.workspaceCwd;
+    scriptRuns(round, quietRun());
+    await instance.execute_phase("disc-scope", {
+      allowProjectWrites: true,
+    });
+    expect(round.session.prompt).toHaveBeenCalledWith(
+      `\u2014\u2014 disc-scope \u2014\u2014\n\n${expectedDisclosure(undefined, cwd)}`,
+    );
+  });
+
+  it("SCRATCH-ONLY window: the phase's OWN single scratch flag (never clamped - single-flag doctrine) renders EXACTLY the scratch-class line with the bare /tmp literal", async () => {
+    const { instance, round } = await host();
+    scriptRuns(round, quietRun());
+    await instance.execute_phase("disc-scratch", { tmpDirAllowed: true });
+    expect(round.session.prompt).toHaveBeenCalledWith(
+      `\u2014\u2014 disc-scratch \u2014\u2014\n\n${expectedDisclosure(undefined, undefined, true)}`,
+    );
+  });
+
+  it("COMBINED window: files PLUS BOTH class lines render FOUR LF-separated lines TOTAL - header, files, project, scratch - in owner order", async () => {
+    const { instance, round, gate } = await host();
+    const slotRoot = gate.state.snapshot().paths.projectSlotRoot;
+    gate.state.enterCapability({
+      name: "disc-rich",
+      writes: ["notes/*.md"],
+      allowProjectWrites: true,
+    });
+    const note = path.join(slotRoot, "notes", "n.md");
+    const cwd = gate.state.snapshot().paths.workspaceCwd;
+    await seedArtifacts(note);
+    const sent: string[] = [];
+    round.session.prompt.mockImplementationOnce(async (text: string) => {
+      sent.push(text);
+      emit(round, ...quietRun());
+    });
+    await instance.execute_phase("disc-combined", {
+      write: [note],
+      allowProjectWrites: true,
+      tmpDirAllowed: true,
+    });
+    expect(sent).toHaveLength(1);
+    const block = sent[0]?.split("\n").slice(-4) ?? [];
+    expect(block).toEqual(expectedDisclosure([note], cwd, true).split("\n"));
+    expect(sent[0].split("\n", 1)[0] ?? "").toBe(
+      "\u2014\u2014 disc-combined \u2014\u2014",
+    );
+  });
+
+  it("FILES-ABSENT-WITH-CLASSES window: the block is THREE lines - header plus the two class lines (the files line is ABSENT, no placeholder)", async () => {
+    const { instance, round, gate } = await host();
+    gate.state.enterCapability({
+      name: "disc-classes",
+      writes: [],
+      allowProjectWrites: true,
+    });
+    const cwd = gate.state.snapshot().paths.workspaceCwd;
+    const sent: string[] = [];
+    round.session.prompt.mockImplementationOnce(async (text: string) => {
+      sent.push(text);
+      emit(round, ...quietRun());
+    });
+    await instance.execute_phase("disc-classes-only", {
+      allowProjectWrites: true,
+      tmpDirAllowed: true,
+    });
+    expect(sent).toHaveLength(1);
+    const lines = (sent[0] ?? "").split("\n");
+    expect(lines[0]).toBe("\u2014\u2014 disc-classes-only \u2014\u2014");
+    expect(lines.slice(-3)).toEqual([
+      DISCLOSURE_HEADER_REPLICA,
+      `project files at ${cwd}`,
+      "scratch files at /tmp",
+    ]);
+  });
+
+  it("STRUCTURAL pins over EVERY rendered form: LF-split = 1 + present body lines (the two empty forms carry the capital-N None line instead), the header line is byte-exact (plain pinned label plus terminal colon), ZERO trailing-period terminators, no trailing newline (MINIMAL MESSAGE)", () => {
+    const fileOnly: ExecutionSnapshot = {
+      sources: { name: "", writes: ["*.md"], allowProjectWrites: false },
+      phase: {
+        id: "struct-f",
+        declared: ["/slot/root/a.md"],
+        allowProjectWrites: false,
+        tmpDirAllowed: false,
+      },
+      paths: { projectSlotRoot: "/slot/root", workspaceCwd: "/ws" },
+    };
+    const classesOnly: ExecutionSnapshot = {
+      sources: { name: "", writes: [], allowProjectWrites: true },
+      phase: {
+        id: "struct-c",
+        declared: [],
+        allowProjectWrites: true,
+        tmpDirAllowed: true,
+      },
+      paths: { projectSlotRoot: "/slot/root", workspaceCwd: "/ws" },
+    };
+    const combined: ExecutionSnapshot = {
+      sources: { name: "", writes: ["*.md"], allowProjectWrites: true },
+      phase: {
+        id: "struct-x",
+        declared: ["/slot/root/a.md", "/slot/root/b.md"],
+        allowProjectWrites: true,
+        tmpDirAllowed: true,
+      },
+      paths: { projectSlotRoot: "/slot/root", workspaceCwd: "/ws" },
+    };
+    const forms: Array<[string, number]> = [
+      [renderPhasePermissionDisclosure(), 2],
+      [
+        renderPhasePermissionDisclosure({
+          sources: null,
+          phase: null,
+          paths: { projectSlotRoot: "", workspaceCwd: "" },
+        }),
+        2,
+      ],
+      [renderPhasePermissionDisclosure(fileOnly), 2],
+      [renderPhasePermissionDisclosure(classesOnly), 3],
+      [renderPhasePermissionDisclosure(combined), 4],
+    ];
+    for (const [form, lineCount] of forms) {
+      const lines = form.split("\n");
+      // Line-count identity: 1 (header) + present body lines; the empty
+      // forms end at exactly 2 (header + None).
+      expect(lines).toHaveLength(lineCount);
+      // Header line byte-exact: the plain pinned label plus the terminal
+      // colon (ASCII spot-checks replicate the no-flank, no-escape truth).
+      expect(lines[0]).toBe(DISCLOSURE_HEADER_REPLICA);
+      expect(lines[0].codePointAt(0)).toBe(0x50);
+      expect(lines[0].codePointAt(lines[0].length - 1)).toBe(0x3a);
+      // MINIMAL MESSAGE: zero sentence terminators, no trailing newline.
+      for (const line of lines) {
+        expect(line.endsWith(".")).toBe(false);
+      }
+      expect(form.endsWith("\n")).toBe(false);
+    }
+  });
+
+  it("LATE-BINDING: the injected block reflects the consulted window AFTER THIS CALL's attach completes - swapping the governing span BETWEEN two phase starts flips the disclosed listing onto the NEXT prompt (and the first prompt already carries its own attached dimensions)", async () => {
+    const { instance, round, gate } = await host();
+    const slotRoot = gate.state.snapshot().paths.projectSlotRoot;
+    const lateTarget = path.join(slotRoot, "late", "l.md");
+    await seedArtifacts(lateTarget);
+    const sent: string[] = [];
+    round.session.prompt.mockImplementationOnce(async (text: string) => {
+      sent.push(text);
+      emit(round, ...quietRun());
+    });
+    round.session.prompt.mockImplementationOnce(async (text: string) => {
+      sent.push(text);
+      emit(round, ...quietRun());
+    });
+    // Call one: fixture span governs (its empty writes admit nothing) -
+    // yet the phase's OWN attached scratch flag shows: the consult runs
+    // strictly AFTER the attach completes.
+    await instance.execute_phase("disc-late-1", { tmpDirAllowed: true });
+    // Swap the consulted window BETWEEN the two calls (after phase one has
+    // settled AND detached): the next phase start governs under the
+    // entering covering span.
+    gate.state.enterCapability({
+      name: "disc-later",
+      writes: ["late/*.md"],
+      allowProjectWrites: false,
+    });
+    // Call two: the covering span admits the declared artifact - the
+    // difference rides the next prompt.
+    await instance.execute_phase("disc-late-2", { write: [lateTarget] });
+    expect(sent[0]).toBe(
+      `\u2014\u2014 disc-late-1 \u2014\u2014\n\n${expectedDisclosure(undefined, undefined, true)}`,
+    );
+    expect(sent[1]).toBe(
+      `\u2014\u2014 disc-late-2 \u2014\u2014\n\n${expectedDisclosure([lateTarget])}`,
+    );
+  });
+
+  it("UNCONDITIONAL ride: an attached GOVERNING-EMPTY window (a dimension declared that the clamped span rules invisible) STILL receives the header-plus-None empty form - silence is not fault", async () => {
+    const { instance, round } = await host();
+    const sent: string[] = [];
+    round.session.prompt.mockImplementationOnce(async (text: string) => {
+      sent.push(text);
+      emit(round, ...quietRun());
+    });
+    // Fixture span: allowProjectWrites false - the phase's own true flag is
+    // CLAMPED off at decision time (dual-flag disagreement).
+    await instance.execute_phase("disc-bare", { allowProjectWrites: true });
+    expect(sent).toHaveLength(1);
+    expect(sent[0]).toBe(
+      `\u2014\u2014 disc-bare \u2014\u2014\n\n${expectedDisclosure()}`,
+    );
   });
 });
 
@@ -1693,7 +2143,7 @@ describe("PioSession — composed-host surface (P-rows)", () => {
     // (placement-blind framing).
     expect(h0.prompt).toHaveBeenCalledTimes(1);
     expect(h0.prompt).toHaveBeenCalledWith(
-      "\u2014\u2014 p5 \u2014\u2014\nWrite the thing",
+      `\u2014\u2014 p5 \u2014\u2014\nWrite the thing\n\n${expectedDisclosure()}`,
     );
     expect(result.done).toBe(true);
     expect(result.iterations).toBe(1);
@@ -1730,7 +2180,7 @@ describe("PioSession — composed-host surface (P-rows)", () => {
     const after = await H.execute_phase("p5-after", { instructions: "Again" });
     expect(h1.prompt).toHaveBeenCalledTimes(1);
     expect(h1.prompt).toHaveBeenCalledWith(
-      "\u2014\u2014 p5-after \u2014\u2014\nAgain",
+      `\u2014\u2014 p5-after \u2014\u2014\nAgain\n\n${expectedDisclosure()}`,
     );
     expect(h0.prompt.mock.calls.length).toBe(h0PromptsBefore);
     expect(after.done).toBe(true);
@@ -1828,9 +2278,11 @@ class FixtureCapability extends PioCapability {
   }
 }
 
-/** Replica of the fixture phase's marker-leading baseline text (U+2014 x2,
- * single spaces — the existing prompt-text golden discipline). */
-const GUARDED_BASELINE = "\u2014\u2014 guarded \u2014\u2014\nWrite the thing";
+/** Replica of the fixture phase's prompt baseline text: the marker line,
+ * then the instructions, then the disclosure empty-form block TRAILING
+ * (governing-empty fixture span confers no body lines - the capital-N None
+ * line names the empty form) (the existing prompt-text golden discipline). */
+const GUARDED_BASELINE = `\u2014\u2014 guarded \u2014\u2014\nWrite the thing\n\n${expectedDisclosure()}`;
 
 /** Pinned corrective-note replica (SOLE OWNER: the module-private template
  * in ./pio-session.ts): the flanked em-dash delimiter line labeled output
@@ -1999,7 +2451,7 @@ describe("PioSession — expectation gate (write:)", () => {
     });
     expect(round.session.prompt).toHaveBeenCalledTimes(1);
     expect(round.session.prompt).toHaveBeenCalledWith(
-      "\u2014\u2014 preexisting \u2014\u2014",
+      `\u2014\u2014 preexisting \u2014\u2014\n\n${expectedDisclosure()}`,
     );
     expect(result.done).toBe(true);
     expect(result.iterations).toBe(1);
@@ -2008,7 +2460,7 @@ describe("PioSession — expectation gate (write:)", () => {
   it("corrective-note freshness (property v): two declared paths, the first lands during retry one — the retry-two block lists ONLY the still-missing path (landed path dropped; declaration-order comma-space join preserved on the earlier block) and the ceiling throw carries one line per STILL-MISSING path only", async () => {
     const first = path.join(tmp, "first.md");
     const second = path.join(tmp, "second.md");
-    const baseline = "\u2014\u2014 multi \u2014\u2014";
+    const baseline = `\u2014\u2014 multi \u2014\u2014\n\n${expectedDisclosure()}`;
     const { instance, round } = await host();
     // Pass two writes ONLY the first declared path; the others stay quiet.
     round.session.prompt.mockImplementationOnce(async () => {
@@ -2051,8 +2503,8 @@ describe("PioSession — expectation gate (write:)", () => {
       },
     });
     expect(sentTexts(round)).toEqual([
-      "\u2014\u2014 plain-rerun \u2014\u2014",
-      "\u2014\u2014 plain-rerun \u2014\u2014",
+      `\u2014\u2014 plain-rerun \u2014\u2014\n\n${expectedDisclosure()}`,
+      `\u2014\u2014 plain-rerun \u2014\u2014\n\n${expectedDisclosure()}`,
     ]);
     expect(calls).toBe(2);
     expect(result.done).toBe(true);
@@ -2061,7 +2513,7 @@ describe("PioSession — expectation gate (write:)", () => {
 
   it("independence and accounting: a declared phase whose hook ALWAYS demands continuation past max: 3 keeps passing the gate beyond the budget — EXACTLY 6 prompts (budget runs 3 + corrective 3) then the typed throw, with iterations counted as 6 settled runs", async () => {
     const target = path.join(tmp, "never-lands.md");
-    const baseline = "\u2014\u2014 coexist \u2014\u2014";
+    const baseline = `\u2014\u2014 coexist \u2014\u2014\n\n${expectedDisclosure()}`;
     const { instance, round } = await host();
     scriptRuns(
       round,
@@ -2142,7 +2594,7 @@ describe("PioSession — expectation gate (write:)", () => {
     });
     expect(round.session.prompt).toHaveBeenCalledTimes(1);
     expect(round.session.prompt).toHaveBeenCalledWith(
-      "\u2014\u2014 dir-expects \u2014\u2014",
+      `\u2014\u2014 dir-expects \u2014\u2014\n\n${expectedDisclosure()}`,
     );
     expect(result.done).toBe(true);
     expect(result.iterations).toBe(1);
@@ -2150,7 +2602,7 @@ describe("PioSession — expectation gate (write:)", () => {
 
   it("mechanical semantics (ii): a RELATIVE entry resolves under process.cwd() with NO chdir (the expectation is computed at assertion time via node:path resolve) and the never-write ceiling names the cwd-resolved path in every corrective block AND the violation line", async () => {
     const entry = `pio-expectation-relative-${randomUUID()}.md`;
-    const baseline = "\u2014\u2014 relative-write \u2014\u2014";
+    const baseline = `\u2014\u2014 relative-write \u2014\u2014\n\n${expectedDisclosure()}`;
     const { instance, round } = await host();
     scriptRuns(round, quietRun(), quietRun(), quietRun(), quietRun());
     let thrown: unknown;
@@ -2180,7 +2632,7 @@ describe("PioSession — expectation gate (write:)", () => {
 
   it("accounting (c): the min floor is consumed BEFORE any gate consult — with min: 2 and a never-landing file the first two prompts are BOTH pure baseline (the floor-driven continuation sees no gate) and the first denial carries run count 2 (5 prompts: floor+break runs 2 + corrective 3)", async () => {
     const target = path.join(tmp, "floored-ghost.md");
-    const baseline = "\u2014\u2014 floored-write \u2014\u2014";
+    const baseline = `\u2014\u2014 floored-write \u2014\u2014\n\n${expectedDisclosure()}`;
     const { instance, round } = await host();
     scriptRuns(
       round,
@@ -2222,19 +2674,19 @@ describe("PioSession — expectation gate (write:)", () => {
     });
     expect(round.session.prompt).toHaveBeenCalledTimes(1);
     expect(round.session.prompt).toHaveBeenCalledWith(
-      "\u2014\u2014 budget-gate \u2014\u2014",
+      `\u2014\u2014 budget-gate \u2014\u2014\n\n${expectedDisclosure()}`,
     );
     expect(result.done).toBe(true);
     expect(result.iterations).toBe(1);
   });
 
-  it("degenerate declarations: an UNDECLARED phase and an EMPTY write: [] phase each reproduce today's bytes — one prompt, exact baseline text, done: true (the existing goldens hold untouched as the primary regression proof)", async () => {
+  it("degenerate declarations: an UNDECLARED phase and an EMPTY write: [] phase each settle with the DISCLOSURE-TRAILING baseline (empty-form header plus None over the governing-empty fixture span) — one prompt each, exact text, done: true (the disclosure-folded goldens are the primary regression proof)", async () => {
     const { instance, round } = await host();
     scriptRuns(round, quietRun());
     const a = await instance.execute_phase("unguarded-baseline");
     expect(round.session.prompt).toHaveBeenCalledTimes(1);
     expect(round.session.prompt.mock.calls[0]?.[0]).toBe(
-      "\u2014\u2014 unguarded-baseline \u2014\u2014",
+      `\u2014\u2014 unguarded-baseline \u2014\u2014\n\n${expectedDisclosure()}`,
     );
     expect(a.done).toBe(true);
     expect(a.iterations).toBe(1);
@@ -2243,7 +2695,7 @@ describe("PioSession — expectation gate (write:)", () => {
     const b = await instance.execute_phase("empty-decl", { write: [] });
     expect(round.session.prompt).toHaveBeenCalledTimes(2);
     expect(round.session.prompt.mock.calls[1]?.[0]).toBe(
-      "\u2014\u2014 empty-decl \u2014\u2014",
+      `\u2014\u2014 empty-decl \u2014\u2014\n\n${expectedDisclosure()}`,
     );
     expect(b.done).toBe(true);
     expect(b.iterations).toBe(1);
@@ -2251,7 +2703,7 @@ describe("PioSession — expectation gate (write:)", () => {
 });
 
 describe("export surface", () => {
-  it("runtime export surface is EXACTLY ['PioSession', 'SessionHandleRefusalError', 'SessionVariableStore', 'renderCapabilityMarker', 'renderPhaseMarker'] sorted (types erase under erasable syntax)", async () => {
+  it("runtime export surface is EXACTLY ['PioSession', 'SessionHandleRefusalError', 'SessionVariableStore', 'renderCapabilityMarker', 'renderPhaseMarker', 'renderPhasePermissionDisclosure'] sorted (types erase under erasable syntax)", async () => {
     expect(Object.keys(await import("./pio-session.ts")).sort()).toEqual(
       [
         "PioSession",
@@ -2259,6 +2711,7 @@ describe("export surface", () => {
         "SessionVariableStore",
         "renderCapabilityMarker",
         "renderPhaseMarker",
+        "renderPhasePermissionDisclosure",
       ].sort(),
     );
   });
@@ -2278,7 +2731,7 @@ describe("source guards (composed-host edge discipline over pio-session.ts)", ()
     expect(src.includes("isComposed")).toBe(false);
   });
 
-  it("the SDK root sits in EXACTLY ONE clause — the TYPE clause, normalized byte form pinned with AgentSession LEADING — and the VALUE clause set is exactly the pinned eight-specifier gate-wiring set behind it", () => {
+  it("the SDK root sits in EXACTLY ONE clause — the TYPE clause, normalized byte form pinned with AgentSession LEADING — and the VALUE clause set is exactly the pinned ten-specifier gate-wiring set behind it", () => {
     // EXACTLY ONE clause references the SDK root, and it is the TYPE
     // clause.
     expect(src.match(/from "@earendil-works\/pi-coding-agent"/g)?.length).toBe(
@@ -2306,9 +2759,11 @@ describe("source guards (composed-host edge discipline over pio-session.ts)", ()
     expect(valueClauses).toEqual([
       "node:fs",
       "node:path",
+      "../permission-mechanics.ts",
       "../sandbox/layout.ts",
       "../session.ts",
       "../session-execution-state.ts",
+      "../tools/bash/landlock-bash.ts",
       "./base.ts",
       "./errors.ts",
       "./guards/write-gate.ts",
@@ -2317,6 +2772,12 @@ describe("source guards (composed-host edge discipline over pio-session.ts)", ()
     expect(src.indexOf('from "@earendil-works/pi-coding-agent"')).toBeLessThan(
       src.indexOf('from "../session.ts"'),
     );
+  });
+
+  it("fragment occurrences over the disclosure channel: the module-private disclosure static appears EXACTLY TWICE (declaration + the renderer's single destructure read) and the renderer itself is declared EXACTLY ONCE beside its SINGLE invocation — the injection site consults one optional-chained snapshot reading, never more", () => {
+    expect(src.match(/PHASE_DISCLOSURE_STATIC/g)?.length).toBe(2);
+    expect(src.match(/renderPhasePermissionDisclosure\(/g)?.length).toBe(2);
+    expect(src.match(/#executionState\?\.snapshot\(\)/g)?.length).toBe(1);
   });
 
   it("zero dynamic import( occurrences in the module", () => {
@@ -2334,9 +2795,10 @@ describe("source guards (composed-host edge discipline over pio-session.ts)", ()
 // workers share the process; a leaked deletion poisons sibling rows).
 // ---------------------------------------------------------------------
 
-/** Literal absolute agent dir for env-controlled rows (never a /tmp/ root
- * - a /tmp/-anchored fixture would ride the scratch-class doctrine and
- * muddle the refusal-shape targets). */
+/** Literal absolute agent dir for env-controlled rows AND the file-level
+ * phase-driving baseline (never a /tmp/ root - a /tmp/-anchored fixture
+ * would ride the scratch-class doctrine and muddle the refusal-shape
+ * targets). */
 const AGENT_DIR_LITERAL = "/lit/state/.pi/agent";
 
 /** Env-unset message replica (SOLE OWNER: deriveStateRootFromAgentDir in
@@ -3172,5 +3634,185 @@ describe("mechanical discipline over the gate-wiring bytes", () => {
         ).toBeNull();
       }
     }
+  });
+});
+
+// ---------------------------------------------------------------------
+// Landlock-bash customTools threading: the unconditional single-entry
+// registration over the construction seam. The grown SDK mock carries the
+// FOUR construction/per-spawn value reaches of ../tools/bash/landlock-bash.ts
+// (recording factory + identity wrap + two inert per-spawn seams); the rows
+// below drive the REAL PioSession.create and observe the threaded entry
+// cast-free off the recorded from-services arg. NO row drives the real ops
+// exec (island doctrine): routed-execution and late-binding claims decompose
+// into measured seam-level mechanics plus cited physics, never real spawns.
+// Rows that consult snapshot() ride the standing row-scoped env switch
+// (withAgentDir); every other row stays env-free (construction is
+// storage-only and the mocks absorb session building).
+// ---------------------------------------------------------------------
+
+/** Measured constant: the installed 0.85.1 dist default active tool roster
+ * (core/agent-session.js ~L2210 - the _refreshToolRegistry branch taken when
+ * no base-tools override exists). Byte-stable golden (house lockstep idiom):
+ * a future pin bump surfaces here as a deliberate update, not silent drift. */
+const DEFAULT_ACTIVE_TOOL_NAMES = ["read", "bash", "edit", "write"];
+
+describe("PioSession \u2014 Landlock-bash customTools threading", () => {
+  it("unconditional single-entry identity (both construction forms): the from-services arg carries EXACTLY ONE customTools entry naming bash, the factory ledger shows ONE instantiation at the launched cwd, the entry's ops bag is REFERENCE-IDENTICAL to the ledger bag, and the guard wiring stays undisturbed", async () => {
+    for (const sessionsRoot of [undefined, SESSIONS_ROOT]) {
+      harness.reset();
+      await PioSession.create(CWD, sessionsRoot);
+      const { servicesArg } = await driveStoredClosure();
+      const tools = lastFromServicesArg().customTools;
+      expect(tools).toBeDefined();
+      expect(tools?.length).toBe(1);
+      if (!tools) throw new Error("expected the threaded entry set");
+      const entry = tools[0];
+      expect(entry.name).toBe("bash");
+      // Single-source chain: the factory ledger holds EXACTLY ONE
+      // instantiation at the launched cwd, and the entry's bag IS the
+      // ledger's bag (no copy or wrap anywhere on the seam: session.ts
+      // spreads the array verbatim and the identity defineTool preserves
+      // the bag reference).
+      const calls = harness.state.bashFactoryCalls;
+      expect(calls).toHaveLength(1);
+      const call = calls[0];
+      if (!call) throw new Error("expected a factory-ledger entry");
+      expect(call.cwd).toBe(CWD);
+      expect(entry.operations).toBe(call.operations);
+      // Guard wiring undisturbed: the single threaded extension factory.
+      const factories =
+        servicesArg.resourceLoaderOptions?.extensionFactories ?? [];
+      expect(factories).toHaveLength(1);
+    }
+  });
+
+  it("registry-replacement harmlessness: under the measured default active-tool roster, the SINGLE bash entry shadows EXACTLY ONE base definition and STAYS ACTIVE (override-by-name physics: the custom set lands over the builtin map)", async () => {
+    await PioSession.create(CWD);
+    await driveStoredClosure();
+    const tools = lastFromServicesArg().customTools;
+    if (tools?.length !== 1) {
+      throw new Error("expected the single threaded bash entry");
+    }
+    const entry = tools[0];
+    // The roster line binds the MEASURED constant; it does not re-prove the
+    // registry internals - the physics rides the dist's override-by-name
+    // path (custom definitions set over the builtin map AFTER it), so one
+    // bash entry replaces the base entry and stays in the active roster.
+    expect(DEFAULT_ACTIVE_TOOL_NAMES).toContain(entry.name);
+    expect(entry.name).toBe("bash");
+    expect(tools.length).toBe(1);
+  });
+
+  it("routed execution: awaiting the threaded entry's execute settles through EXACTLY ONE receipt whose bound bag is REFERENCE-IDENTICAL to the entry's ops bag AND the factory-ledger bag (the wiring chain is single-source at every hop), resolving the neutral settlement", async () => {
+    await PioSession.create(CWD);
+    await driveStoredClosure();
+    const tools = lastFromServicesArg().customTools;
+    if (tools?.length !== 1) {
+      throw new Error("expected the single threaded bash entry");
+    }
+    const entry = tools[0];
+    // RIDES (measured elsewhere, cited): the real factory's execute routes
+    // a scripted execution to the PROVIDED ops bag per the dist fallback
+    // contract (options?.operations ?? createLocalBashOperations(...) -
+    // core/tools/bash.js), and the landed bash-instance kickoff live probe
+    // observed the single-entry roster plus routed execution reaching the
+    // custom ops. MEASURED HERE: the seam-level reference chain - registry
+    // entry, threaded definition, and ops bag stay ONE object at every hop.
+    const scripted = { command: "echo routed" };
+    const settlement = await entry.execute(scripted);
+    const receipts = harness.state.bashExecReceipts;
+    expect(receipts).toHaveLength(1);
+    const receipt = receipts[0];
+    if (!receipt) throw new Error("expected a receipt record");
+    expect(receipt.args).toBe(scripted);
+    expect(receipt.bag).toBe(entry.operations);
+    const call = harness.state.bashFactoryCalls[0];
+    if (!call) throw new Error("expected a factory-ledger entry");
+    expect(receipt.bag).toBe(call.operations);
+    expect(settlement).toStrictEqual({ content: [], details: { exitCode: 0 } });
+  });
+
+  it("late-binding consult: the SAME threaded instance persists across handle re-creation while span/phase churn flips the consulted snapshot over the shared state (three-part mechanic)", async () => {
+    // (i) Instance persistence across handle recreation: two stored-closure
+    // re-runs (the /new-flow mirror) yield fresh stamp-carrier handles whose
+    // re-spread customTools arrays are THE SAME array carrying the SAME
+    // single entry - the ops bag survives by reference at every hop, the
+    // factory ledger stays at ONE instantiation (the probe-once latch rides
+    // this identity; no re-mint across handle swaps), and both handles
+    // carry the SAME stamped execution state object.
+    await PioSession.create(CWD);
+    const firstDrive = await driveStoredClosure();
+    const toolsFirst = lastFromServicesArg().customTools;
+    if (toolsFirst?.length !== 1) {
+      throw new Error("expected the single threaded bash entry");
+    }
+    const secondDrive = await driveStoredClosure();
+    const toolsSecond = lastFromServicesArg().customTools;
+    if (toolsSecond?.length !== 1) {
+      throw new Error("expected the single threaded bash entry");
+    }
+    expect(toolsSecond).toBe(toolsFirst);
+    expect(toolsSecond[0].operations).toBe(toolsFirst[0].operations);
+    expect(harness.state.bashFactoryCalls).toHaveLength(1);
+    const stateA = assertMintedState(stampValue(firstDrive.createdHandle));
+    const stateB = assertMintedState(stampValue(secondDrive.createdHandle));
+    expect(stateB).toBe(stateA);
+    // (ii) Flip over the shared state: window A is the depth-0 world
+    // (sources null, phase null); entering the fixture span plus attaching
+    // the phase record flips window B's projection onto EXACTLY those
+    // dimensions while the paths stay resolvable and equal (the channels
+    // resolve FRESH per reading - stability across the flip is what makes
+    // the attribution hold).
+    await withAgentDir(AGENT_DIR_LITERAL, async () => {
+      const windowA = stateA.snapshot();
+      expect(windowA.sources).toBeNull();
+      expect(windowA.phase).toBeNull();
+      stateA.enterCapability(FIXTURE_SPAN);
+      const literalTarget = "/lit/guard/target.md";
+      stateA.attachPhase("landlock-late-binding", [literalTarget], true, true);
+      const windowB = stateA.snapshot();
+      expect(windowB.sources).toEqual(FIXTURE_SPAN);
+      expect(windowB.phase).toStrictEqual({
+        id: "landlock-late-binding",
+        declared: [literalTarget],
+        allowProjectWrites: true,
+        tmpDirAllowed: true,
+      });
+      expect(windowB.paths).toEqual(windowA.paths);
+      // (iii) Single-expression linkage (design-type glue, flagged): the
+      // mutated state IS the stamp-discovered state (identity above); the
+      // fence-creation call site and the guard-install site bind the SAME
+      // executionState local inside create - line-level glue, NOT
+      // mechanically observable without driving the real exec, which the
+      // island doctrine bars. Attribution isolation closes the argument:
+      // the SAME bag persisted across both windows, so any consult
+      // difference is attributable to the SHARED STATE alone - the fence
+      // tracks the frame.
+    });
+  });
+
+  it("guard-handler-list invariant: the services arg carries EXACTLY ONE extension factory, the captured tool_call handler PASSES a bash-named event (verdict undefined - the write gate self-filters by tool name; no second member intercepts commands) AND blocks a write event over a denied input with a verdict deep-equal to the REAL predicate over the same state reading", async () => {
+    await withAgentDir(AGENT_DIR_LITERAL, async () => {
+      const { gate } = await host();
+      const factories =
+        lastServicesArg().resourceLoaderOptions?.extensionFactories ?? [];
+      expect(factories).toHaveLength(1);
+      // Bash-named event: PASS - silence means allowed, and nothing besides
+      // the single write-gate member sits in the consulted list.
+      expect(gate.toolCallHandler(toolCall("bash", { command: "ls" }))).toBe(
+        undefined,
+      );
+      // Denied write: refusal with identity over the REAL predicate (the
+      // empty-contract fixture span admits NOTHING - the span site is
+      // non-admitting).
+      const deniedInput = { path: "/outside/a.md" };
+      expect(
+        gate.toolCallHandler(toolCall("write", deniedInput)),
+      ).toStrictEqual(decideWrite(gate.state.snapshot(), "write", deniedInput));
+      expect(
+        gate.toolCallHandler(toolCall("write", deniedInput)),
+      ).toBeDefined();
+    });
   });
 });

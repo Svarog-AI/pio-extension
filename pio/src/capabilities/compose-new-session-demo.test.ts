@@ -3,7 +3,7 @@
 // harness imports): two cooperating worlds in one file.
 //
 // 1. SCRIPTED-EVENT TOP WORLD (research-suite idiom): a fake SDK root mocking
-// exactly the five faked value symbols drives PioSession.create(cwd) — fake
+// exactly the eight faked value symbols drives PioSession.create(cwd) — fake
 // manager/services/runtime/session with subscribe/prompt/getToolDefinition/
 // sessionId/dispose; scripted prompt resolutions emit SYNTHETIC EVENTS ONLY
 // (they observe, write NOTHING to disk); a single-turn settle pass =
@@ -158,6 +158,22 @@ const sdkKit = vi.hoisted(() => {
     state.rounds.push(round);
     return round.runtime;
   });
+  // Construction floor for the unconditional customTools threading: the
+  // real PioSession.create builds the Landlock-bash instance eagerly at the
+  // construction seam; these fakes absorb the construction-time SDK value
+  // reaches (this island's rows never inspect the threaded entry - the bare
+  // static shape suffices; the full four-symbol floor lives solely in
+  // pio-session.test.ts where observation resides).
+  const createBashToolDefinition = vi.fn(
+    (_cwd: string, options: { operations: unknown }) => ({
+      name: "bash",
+      operations: options.operations,
+    }),
+  );
+  const defineTool = vi.fn((tool: unknown) => tool);
+  // Eager at construction (seams.localOps ?? createLocalBashOperations()):
+  // structural stub - the island never drives the delegate bag.
+  const createLocalBashOperations = vi.fn(() => ({}));
   const reset = (): void => {
     mints = 0;
     state.rounds = [];
@@ -166,6 +182,9 @@ const sdkKit = vi.hoisted(() => {
     createAgentSessionServices.mockClear();
     createAgentSessionFromServices.mockClear();
     createAgentSessionRuntime.mockClear();
+    createBashToolDefinition.mockClear();
+    defineTool.mockClear();
+    createLocalBashOperations.mockClear();
   };
   return {
     state,
@@ -174,6 +193,9 @@ const sdkKit = vi.hoisted(() => {
     createAgentSessionServices,
     createAgentSessionFromServices,
     createAgentSessionRuntime,
+    createBashToolDefinition,
+    defineTool,
+    createLocalBashOperations,
     reset,
   };
 });
@@ -184,6 +206,9 @@ vi.mock("@earendil-works/pi-coding-agent", () => ({
   createAgentSessionServices: sdkKit.createAgentSessionServices,
   createAgentSessionFromServices: sdkKit.createAgentSessionFromServices,
   createAgentSessionRuntime: sdkKit.createAgentSessionRuntime,
+  createBashToolDefinition: sdkKit.createBashToolDefinition,
+  defineTool: sdkKit.defineTool,
+  createLocalBashOperations: sdkKit.createLocalBashOperations,
 }));
 
 // ─── The stubbed research sibling (file-local mock) ─────────────────────
@@ -539,12 +564,16 @@ const ENV_UNSET_REPLICA =
 const envMalformedReplica = (value: string): string =>
   `capability: PI_CODING_AGENT_DIR is malformed ('${value}') \u2014 cannot derive the state root`;
 
-/** Engine-composed prompt texts (marker line + instructions, verbatim the
- * phase engine's composition). */
+/** Engine-composed prompt texts (marker line + instructions, then the
+ * trailing disclosure block - verbatim the phase engine's composition).
+ * The demo-side worlds ride the EMPTY-FORM block (the demo span declares
+ * nothing and arms no flags - header plus capital-N None line, re-typed
+ * locally per the suite's established pattern). */
+const DISCLOSURE_EMPTY_FORM_REPLICA = "Phase Permissions:\nNone";
 const greetingPromptText = (): string =>
-  `${renderPhaseMarker("greeting")}\n${GREETING_REPLICA}`;
+  `${renderPhaseMarker("greeting")}\n${GREETING_REPLICA}\n\n${DISCLOSURE_EMPTY_FORM_REPLICA}`;
 const summaryPromptText = (absolutePath: string): string =>
-  `${renderPhaseMarker("summary")}\n${summaryReplica(absolutePath)}`;
+  `${renderPhaseMarker("summary")}\n${summaryReplica(absolutePath)}\n\n${DISCLOSURE_EMPTY_FORM_REPLICA}`;
 
 /** Self-consistent absolute-path derivation via the SAME public channels the
  * BASE SETTLE SEAM derives (expected settled value of the stub's
@@ -745,11 +774,15 @@ describe("admission, composition, summary, settlement (C rows)", () => {
     it(`C3 child-fault (${variant.label}): the demo's run RESOLVES (never rejects) ok:false with the child's FIRST capture FORWARDED VERBATIM ({type, message} equal to the child's own entry — no types minted, no cause refinement re-branded) — and EXACTLY ONE prompt occurred (the greeting — the summary turn NEVER STARTS)`, async () => {
       const tmp = newTempRoot();
       enterWorkTree(tmp);
-      delete process.env.PI_CODING_AGENT_DIR; // row-chosen UNSET: failure results settle untransformed — no conversion may even run behind the gate
       stubKit.state.mode = variant.mode;
       const { instance, round } = await host();
       stubKit.state.anchor = instance;
-      scriptRuns(round, quietSettle());
+      round.session.prompt.mockImplementationOnce(async (): Promise<void> => {
+        emit(round, ...quietSettle());
+        // Row-chosen UNSET AFTER the turn settles: failure results settle
+        // untransformed - no conversion may even run behind the gate.
+        delete process.env.PI_CODING_AGENT_DIR;
+      });
       const demo = new ComposeNewSessionDemoCapability({ session: instance });
       const result = await demo.run();
       expect(result.ok).toBe(false);
@@ -776,11 +809,15 @@ describe("admission, composition, summary, settlement (C rows)", () => {
     it(`C4 malformed-success (${variant.label}): the demo's run RESOLVES ok:false with the PLAIN-Error fixed sentence (the one self-detected anomaly — no class minted, nothing to forward) — and EXACTLY ONE prompt (greeting only; the summary skips)`, async () => {
       const tmp = newTempRoot();
       enterWorkTree(tmp);
-      delete process.env.PI_CODING_AGENT_DIR;
       stubKit.state.mode = variant.mode;
       const { instance, round } = await host();
       stubKit.state.anchor = instance;
-      scriptRuns(round, quietSettle());
+      round.session.prompt.mockImplementationOnce(async (): Promise<void> => {
+        emit(round, ...quietSettle());
+        // Row-chosen UNSET AFTER the turn settles: the settlement seam
+        // reads the channel at await time, never at prompt-compose time.
+        delete process.env.PI_CODING_AGENT_DIR;
+      });
       const demo = new ComposeNewSessionDemoCapability({ session: instance });
       const result = await demo.run();
       expect(result.ok).toBe(false);
@@ -820,10 +857,15 @@ describe("admission, composition, summary, settlement (C rows)", () => {
     it(`C5 settle-time conversion fault (${variant.label}): the BASE's seam faults while settling the child's file-mode output (pinned CapabilityEnvError bytes) and the demo FORWARDS the child's capture VERBATIM — EXACTLY ONE prompt (greeting only), the child ran to completion, NO summary turn`, async () => {
       const tmp = newTempRoot();
       enterWorkTree(tmp);
-      variant.prepare();
       const { instance, round } = await host();
       stubKit.state.anchor = instance;
-      scriptRuns(round, quietSettle());
+      round.session.prompt.mockImplementationOnce(async (): Promise<void> => {
+        emit(round, ...quietSettle());
+        // Row-chosen DEFECT after the turn settles: the settle-time
+        // conversion consults the channel at await time, never at
+        // prompt-compose time.
+        variant.prepare();
+      });
       const demo = new ComposeNewSessionDemoCapability({ session: instance });
       const result = await demo.run();
       expect(result.ok).toBe(false);

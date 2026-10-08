@@ -12,8 +12,8 @@
 // directly observable. Synthetic events flow through the single documented
 // cast seam asEvent — the sole `as` over synthetic event payloads (the
 // handle-typing seams asHandle / asRuntime below are the only other
-// assertions in this file, plus the marked foreign-kind seam
-// foreignVarKind feeding the malformed-kind registry-fault row).
+// assertions in this file, plus the marked foreign-type seam
+// foreignVarType feeding the malformed-type registry-fault row).
 //
 // Physics-mirror harness (installed 0.85.1 dist): fake handles bookkeep
 // LIVE listeners — subscribe returns a functional per-listener unsubscribe
@@ -66,7 +66,7 @@ import type { Contract } from "./contract.ts";
 import { ContractViolationError, VariableRejectionError } from "./errors.ts";
 import type { CapabilitySources } from "./guards/guard-vocabulary.ts";
 import { decideWrite } from "./guards/write-gate.ts";
-import type { IterationCtx, PhaseResult, VarKind } from "./pio-session.ts";
+import type { IterationCtx, PhaseResult, VarType } from "./pio-session.ts";
 import {
   PioSession,
   renderCapabilityMarker,
@@ -1019,7 +1019,7 @@ describe("PioSession — vars store", () => {
     const { instance } = await host();
     const store = instance.vars;
     // W2C mechanical preambles (mandatory-type ruling): every legacy raw
-    // write declares its base kind first; row intent and assertions
+    // write declares its base type first; row intent and assertions
     // unchanged.
     store.declare("a", "number");
     store.declare("b", "string");
@@ -1058,7 +1058,7 @@ describe("PioSession — vars store", () => {
 
 // ---------------------------------------------------------------------
 // Validated store core (goal session-variable-storage, landing): the
-// mandatory-type base-kind registry, the single validated write entry
+// mandatory-type base-type registry, the single validated write entry
 // point over the D4 admission/conversion table, the overloaded typed
 // reads, and the delta-window cursor idiom. Pure-store rows construct
 // the EXPORTED class directly (hermetic, zero harness); the cross-
@@ -1078,37 +1078,37 @@ const varUndeclaredWriteLine = (name: string): string =>
 /** Replica of the pinned coercion-reject line (declared-name write path). */
 const varCoercionRejectLine = (
   name: string,
-  kind: string,
-  typeSpelling: string,
+  type: string,
+  spelling: string,
   clause: string,
 ): string =>
-  `variable '${name}' cannot take a value of type '${typeSpelling}' as declared kind '${kind}' \u2014 ${clause}`;
+  `variable '${name}' cannot take a value of type '${spelling}' as declared type '${type}' \u2014 ${clause}`;
 
 /** Replica of the pinned typed-read ABSENT line. */
-const varReadAbsentLine = (name: string, kind: string): string =>
-  `read of variable '${name}' as '${kind}' failed \u2014 variable is absent`;
+const varReadAbsentLine = (name: string, type: string): string =>
+  `read of variable '${name}' as '${type}' failed \u2014 variable is absent`;
 
 /** Replica of the pinned typed-read CONVERSION-FAULT line (<description>
  * is the stored-value slot: `stored value of type '<typeof>'` with stored-
  * null spelled distinctly per the explicit ruling). */
 const varReadConvertLine = (
   name: string,
-  kind: string,
+  type: string,
   description: string,
 ): string =>
-  `read of variable '${name}' as '${kind}' failed \u2014 ${description} cannot convert to '${kind}'`;
+  `read of variable '${name}' as '${type}' failed \u2014 ${description} cannot convert to '${type}'`;
 
 /** Replica of the pure-ASCII bookkeeping conflict line (NO em dashes). */
 const varRegistryConflictLine = (
   name: string,
-  newKind: string,
-  existingKind: string,
+  newType: string,
+  existingType: string,
 ): string =>
-  `var registry: cannot declare '${name}' as '${newKind}': already declared as '${existingKind}'`;
+  `var registry: cannot declare '${name}' as '${newType}': already declared as '${existingType}'`;
 
-/** Replica of the pure-ASCII bookkeeping malformed-kind line. */
-const varRegistryMalformedLine = (kind: string, name: string): string =>
-  `var registry: invalid base kind '${kind}' for variable '${name}'`;
+/** Replica of the pure-ASCII bookkeeping malformed-type line. */
+const varRegistryMalformedLine = (type: string, name: string): string =>
+  `var registry: invalid base type '${type}' for variable '${name}'`;
 
 // Pinned CLAUSE vocabulary (one constant per emitted clause — every
 // clause the shared conversion core can emit is goldened through these).
@@ -1124,15 +1124,15 @@ const CLAUSE_REFERENCE_CYCLE = "value contains a reference cycle";
 const CLAUSE_BOOLEAN_TOKEN = "token is not a recognized boolean form";
 const CLAUSE_SHAPE_ARRAY = "value is an array";
 const CLAUSE_SHAPE_OBJECT = "value is an object";
-const clauseGeneric = (kind: string): string =>
-  `value does not coerce to '${kind}'`;
+const clauseGeneric = (type: string): string =>
+  `value does not coerce to '${type}'`;
 
 // MARKED CAST SEAM (test-side only, house pattern; the ONE non-handle
 // assertion in this file alongside asEvent / asHandle / asRuntime):
-// a runtime-foreign kind that type erasure admits — drives the
-// malformed-kind bookkeeping fault row (source never casts; the union
+// a runtime-foreign type that type erasure admits — drives the
+// malformed-type bookkeeping fault row (source never casts; the union
 // erases at runtime so only a foreign caller could supply this).
-const foreignVarKind = "bogus" as VarKind;
+const foreignVarType = "bogus" as VarType;
 
 /** Fault-capture helper for the UNEXPORTED bookkeeping class: asserts
  * Error shape by NAME only (no instanceof — the class is module-local,
@@ -1168,7 +1168,7 @@ function expectFamilyFault(fn: () => void, line: string): void {
 }
 
 describe("SessionVariableStore — base-type registry (declare)", () => {
-  it("registers a base kind readable through declarations(): fresh object per call, declaration ORDER preserved, independent of stored values", () => {
+  it("registers a base type readable through declarations(): fresh object per call, declaration ORDER preserved, independent of stored values", () => {
     const store = new SessionVariableStore();
     store.declare("first", "boolean");
     store.declare("second", "number");
@@ -1185,7 +1185,7 @@ describe("SessionVariableStore — base-type registry (declare)", () => {
     expect(store.declarations()).toEqual(snapshot);
   });
 
-  it("same-name SAME-kind re-declaration is an IDEMPOTENT no-op: no fault, declaration order untouched, writes stay valid", () => {
+  it("same-name SAME-type re-declaration is an IDEMPOTENT no-op: no fault, declaration order untouched, writes stay valid", () => {
     const store = new SessionVariableStore();
     store.declare("flag", "boolean");
     store.set("flag", true);
@@ -1197,7 +1197,7 @@ describe("SessionVariableStore — base-type registry (declare)", () => {
     expect(store.get("flag", "boolean")).toBe(false);
   });
 
-  it("same-name DIFFERENT-kind re-declaration faults LOUDLY in the developer-facing ASCII bookkeeping family with the exact pinned bytes, never half-applied", () => {
+  it("same-name DIFFERENT-type re-declaration faults LOUDLY in the developer-facing ASCII bookkeeping family with the exact pinned bytes, never half-applied", () => {
     const store = new SessionVariableStore();
     store.declare("flag", "boolean");
     store.set("flag", true);
@@ -1212,9 +1212,9 @@ describe("SessionVariableStore — base-type registry (declare)", () => {
     expect(store.get("flag", "boolean")).toBe(true);
   });
 
-  it("a MALFORMED kind (runtime foreignness past type erasure) faults in the SAME bookkeeping family with the exact pinned bytes; nothing is minted and a legal declaration afterwards still works", () => {
+  it("a MALFORMED type (runtime foreignness past type erasure) faults in the SAME bookkeeping family with the exact pinned bytes; nothing is minted and a legal declaration afterwards still works", () => {
     const store = new SessionVariableStore();
-    const fault = captureNamedFault(() => store.declare("n", foreignVarKind));
+    const fault = captureNamedFault(() => store.declare("n", foreignVarType));
     expect(fault.name).toBe("VarRegistryError");
     expect(fault.message).toBe(varRegistryMalformedLine("bogus", "n"));
     // The malformed attempt mints NOTHING (explicit authoring-side
@@ -1237,7 +1237,7 @@ describe("SessionVariableStore — base-type registry (declare)", () => {
 });
 
 describe("SessionVariableStore — undeclared-write rejection (mandatory-type doctrine)", () => {
-  it("a write to a name WITHOUT a registered kind THROWS the family with the pinned undeclared-write line BEFORE any conversion, leaving the store empty and naming no incoming value or kind on purpose", () => {
+  it("a write to a name WITHOUT a registered type THROWS the family with the pinned undeclared-write line BEFORE any conversion, leaving the store empty and naming no incoming value or type on purpose", () => {
     const store = new SessionVariableStore();
     expectFamilyFault(
       () => store.set("fresh", "anything"),
@@ -1246,7 +1246,7 @@ describe("SessionVariableStore — undeclared-write rejection (mandatory-type do
     expect(store.list()).toEqual([]);
     expect(store.declarations()).toEqual({});
     // Same lane for EVERY incoming shape: the fault is the ABSENCE of a
-    // kind, adjudicated before any value inspection.
+    // type, adjudicated before any value inspection.
     const cyclic: Record<string, unknown> = {};
     cyclic.self = cyclic;
     expectFamilyFault(
@@ -1551,7 +1551,7 @@ describe("SessionVariableStore — D4 admission/conversion matrix (set, declared
 });
 
 describe("SessionVariableStore — stored-by-reference integrity walk (deep structure)", () => {
-  it("top-level SELF-reference cycles reject under 'object' and 'array' kinds with the cycle clause (never rendered — clause grammar dodges the serialization hazard)", () => {
+  it("top-level SELF-reference cycles reject under 'object' and 'array' types with the cycle clause (never rendered — clause grammar dodges the serialization hazard)", () => {
     const store = new SessionVariableStore();
     store.declare("o", "object");
     store.declare("a", "array");
@@ -1670,7 +1670,7 @@ describe("SessionVariableStore — typed reads (overloaded surface)", () => {
     expect(store.get("o", "object")).toBe(obj);
   });
 
-  it("unconvertible stored values THROW the pinned convert line with the STORED TYPE spelling — and present-but-null read as ANY other kind is a conversion FAULT (stored-null spelled distinctly, per the explicit ruling, NOT legacy's null leniency)", () => {
+  it("unconvertible stored values THROW the pinned convert line with the STORED TYPE spelling — and present-but-null read as ANY other type is a conversion FAULT (stored-null spelled distinctly, per the explicit ruling, NOT legacy's null leniency)", () => {
     const store = new SessionVariableStore();
     store.declare("o", "object");
     store.set("o", { a: 1 });
@@ -1696,7 +1696,7 @@ describe("SessionVariableStore — typed reads (overloaded surface)", () => {
     expect(store.get("word", "string")).toBe("banana");
   });
 
-  it("typed reads resolve the CONCRETE kind types at compile time (IDE guarantee — positive assignability rows checked by npm run check)", () => {
+  it("typed reads resolve the CONCRETE types at compile time (IDE guarantee — positive assignability rows checked by npm run check)", () => {
     const store = new SessionVariableStore();
     store.declare("n", "number");
     store.set("n", 42);
@@ -1826,7 +1826,7 @@ describe("SessionVariableStore — cross-instance independence over the new surf
     expect(b.vars.get("only-a")).toBeUndefined();
     expect(a.vars.get("only-a", "number")).toBe(1);
     expect(b.vars.get("only-b", "number")).toBe(2);
-    // Registry isolation: the SAME name may carry a DIFFERENT kind in the
+    // Registry isolation: the SAME name may carry a DIFFERENT type in the
     // other instance (per-instance ownership carries over automatically).
     b.vars.declare("k", "number");
     b.vars.set("k", 7);
@@ -1848,7 +1848,7 @@ describe("SessionVariableStore — cross-instance independence over the new surf
     const H2 = PioSession.fromRuntime(runtime);
     H.vars.declare("k", "string");
     H.vars.set("k", "H-val");
-    H2.vars.declare("k", "number"); // different KIND, same name — legal
+    H2.vars.declare("k", "number"); // different TYPE, same name — legal
     H2.vars.set("k", 9);
     expect(H.vars.get("k", "string")).toBe("H-val");
     expect(H2.vars.get("k", "number")).toBe(9);
@@ -1866,10 +1866,10 @@ describe("SessionVariableStore — cross-instance independence over the new surf
 });
 
 describe("SessionVariableStore — W2C round-trips (restated binding: declare-then-write)", () => {
-  it("all six kinds round-trip declare-then-write with well-typed values (outcomes identical to legacy's corresponding writes) and list() insertion order is preserved under the new API", () => {
+  it("all six types round-trip declare-then-write with well-typed values (outcomes identical to legacy's corresponding writes) and list() insertion order is preserved under the new API", () => {
     const store = new SessionVariableStore();
     store.declare("f", "boolean");
-    store.set("f", "true"); // textual form converts to the declared kind
+    store.set("f", "true"); // textual form converts to the declared type
     store.declare("num", "number");
     store.set("num", "42"); // numeric string converts
     store.declare("str", "string");
@@ -1900,7 +1900,7 @@ describe("SessionVariableStore — containment shape (bare identity)", () => {
   it("a two-line family instance reduces through captureError to the BARE IDENTITY literal {type, message}: NO cause key, NO violations key, joined message bytes pinned", () => {
     const lines = [
       "variable 'a' has no declared base type \u2014 a base type must be declared before writing",
-      "variable 'b' cannot take a value of type 'string' as declared kind 'boolean' \u2014 token is not a recognized boolean form",
+      "variable 'b' cannot take a value of type 'string' as declared type 'boolean' \u2014 token is not a recognized boolean form",
     ];
     const captured = captureError(new VariableRejectionError(lines));
     expect(captured).toEqual({

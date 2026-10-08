@@ -71,7 +71,7 @@ describe("VariableRejectionError", () => {
     // store-side clause bytes are goldened in pio-session.test.ts (sole
     // owners: the module-private renderers there).
     const lines = [
-      "variable 'enabled' cannot take a value of type 'string' as declared kind 'boolean' \u2014 token is not a recognized boolean form",
+      "variable 'enabled' cannot take a value of type 'string' as declared type 'boolean' \u2014 token is not a recognized boolean form",
       "read of variable 'count' as 'number' failed \u2014 variable is absent",
       "read of variable 'flag' as 'boolean' failed \u2014 stored value of type 'string' cannot convert to 'boolean'",
     ];

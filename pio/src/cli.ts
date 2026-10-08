@@ -76,6 +76,11 @@ const HELP_LINES: readonly string[] = [
   // the demo takes nothing.
   "  guards-demo — PERMANENT guard demonstration: first pass skips the declared write, the expectation guard denies settlement with a corrective note naming the exact path, the compliant re-run settles, then a summary states the outcome",
   "  pio run guards-demo",
+  // NOTE the em dash is the U+2014 EM DASH character (pinned codepoint),
+  // matching the pair style above; the canonical line is the BARE form —
+  // the demo takes nothing.
+  "  vars-demo — PERMANENT variable-store demonstration: model and TS code read and write the same live session variables — visible expectation-guard retry, following-turn read-back, composed callee sharing the store by identity",
+  "  pio run vars-demo",
 ];
 
 function startsWithDash(token: string): boolean {

@@ -269,24 +269,29 @@ const GREETING_REPLICA = `You are starting a session-variable demonstration.
 2. Do nothing else in this turn \u2014 no tools, no questions. End your turn right after the greeting.`;
 
 /** Pinned model-write template (SOLE OWNER: the modelWriteInstructions owner
- * in ./vars-demo.ts). Em dashes are U+2014 (escaped). */
+ * in ./vars-demo.ts - three beats ending in the sibling's verbatim verdict
+ * beat; no em dash occurs in the body). */
 const modelWriteReplica = (): string =>
-  `Use the setVar tool to define ${MODEL_NOTE_VAR} with the EXACT value: ${MODEL_NOTE_VALUE}. State in one short sentence that it landed. End your turn right after (no further tools).`;
+  `Use the setVar tool to define ${MODEL_NOTE_VAR} with the EXACT value: ${MODEL_NOTE_VALUE}. The expectation is that the value LANDS as stored - the store round-trips the exact value the entry point admitted. Describe in one sentence if it's satisfied. End your turn right after (no further tools).`;
 
 /** Pinned guard-retry template (SOLE OWNER: the guardRetryInstructions owner
- * in ./vars-demo.ts - ONE static text, two passes). Em dashes are U+2014
- * (escaped). */
+ * in ./vars-demo.ts - ONE static text, two passes; the ruling-honored hybrid
+ * keeps the RULES skeleton byte-stable and inserts the standalone unnumbered
+ * verdict-OUTPUT directive between rule 2 and the autonomy line). Em dashes
+ * are U+2014 (escaped). */
 const guardRetryReplica = (): string =>
   `This run demonstrates the variable expectation guard over ${GATE_PROBE_VAR}.
 Rules for THIS run:
 1. FIRST PASS \u2014 no corrective note appears below these instructions: draft the intended ${GATE_PROBE_VAR} content in your reply ONLY and finish the run WITHOUT any setVar call touching ${GATE_PROBE_VAR}.
 2. CORRECTIVE PASS \u2014 a corrective note naming ${GATE_PROBE_VAR} IS present below these instructions: define ${GATE_PROBE_VAR} with the setVar tool using the EXACT value: ${GATE_PROBE_VALUE}.
+In EVERY pass, close your reply with the expectation-satisfaction verdict the other probes carry. Describe in one sentence if it's satisfied.
 Work autonomously; do not ask the user anything during the run.`;
 
 /** Pinned read-back template (SOLE OWNER: the readBackInstructions owner in
- * ./vars-demo.ts). Em dashes are U+2014 (escaped). */
+ * ./vars-demo.ts - three beats ending in the sibling's verbatim verdict
+ * beat; no em dash occurs in the body). */
 const readBackReplica = (): string =>
-  `Use the getVar tool to read ${TS_FACTS_VAR} (expect the compact JSON rendering of the seeded array) and ${MODEL_NOTE_VAR} (expect the BARE string - defined by the model in an earlier phase: cross-origin parity, one store, any origin). State both readings in your reply, one line each, quoting the exact renderings. End your turn right after (listVars is available but not required).`;
+  `Use the getVar tool to read ${TS_FACTS_VAR} and ${MODEL_NOTE_VAR}, and state both renderings in your reply, one line each, quoting them exactly. The expectation is that the seeded array renders as COMPACT JSON and the model-authored string renders BARE - cross-origin parity, one store, any origin. Describe in one sentence if it's satisfied. End your turn right after (listVars is available but not required).`;
 
 /** Pinned summary template (SOLE OWNER: the summaryInstructions owner in
  * ./vars-demo.ts - variants A/B keyed ONLY on the observed iteration count).
@@ -308,14 +313,29 @@ const summaryReplica = (
 };
 
 /** Pinned compose-read template (SOLE OWNER: the composeReadInstructions
- * owner in ./vars-demo.ts). Em dashes are U+2014 (escaped). */
+ * owner in ./vars-demo.ts - three beats ending in the sibling's verbatim
+ * verdict beat; no em dash occurs in the body). */
 const composeReadReplica = (): string =>
-  `Use the getVar tool to read ${MODEL_NOTE_VAR} and state its EXACT rendering - it was defined earlier in this same session, and you share that one variable store. End your turn right after (no other tools).`;
+  `Use the getVar tool to read ${MODEL_NOTE_VAR} and state its EXACT rendering in your reply. The expectation is that it renders the exact value authored earlier in this same session - the store is shared by instance identity. Describe in one sentence if it's satisfied. End your turn right after (no other tools).`;
 
 /** Pinned compose-write template (SOLE OWNER: the composeWriteInstructions
- * owner in ./vars-demo.ts). Em dashes are U+2014 (escaped). */
+ * owner in ./vars-demo.ts - three beats ending in the sibling's verbatim
+ * verdict beat; no em dash occurs in the body). */
 const composeWriteReplica = (): string =>
-  `Use the setVar tool to define ${CALLEE_NOTE_VAR} with the EXACT value: ${CALLEE_NOTE_VALUE}. State in one short sentence that it landed. End your turn right after (no other tools).`;
+  `Use the setVar tool to define ${CALLEE_NOTE_VAR} with the EXACT value: ${CALLEE_NOTE_VALUE}. The expectation is that the value LANDS as stored in the shared store the caller reads back after the composition. Describe in one sentence if it's satisfied. End your turn right after (no other tools).`;
+
+/** Sibling verdict-phrase replica (SOLE OWNER: the guards-demo probe
+ * template family in ./guards-demo.ts - reused VERBATIM per the settled
+ * ruling). Holds exactly the one-sentence verdict beat the re-pinned probe
+ * templates close with. */
+const VERDICT_PHRASE_REPLICA = "Describe in one sentence if it's satisfied.";
+
+/** Pinned guard-retry numbered-rule fragments (SOLE OWNER: the
+ * guardRetryInstructions owner in ./vars-demo.ts - the two-pass RULES
+ * skeleton survives the repin BYTE-IDENTICALLY at these positions). Em
+ * dashes are U+2014 (escaped). */
+const GUARD_RULE_1 = `1. FIRST PASS \u2014 no corrective note appears below these instructions: draft the intended ${GATE_PROBE_VAR} content in your reply ONLY and finish the run WITHOUT any setVar call touching ${GATE_PROBE_VAR}.`;
+const GUARD_RULE_2 = `2. CORRECTIVE PASS \u2014 a corrective note naming ${GATE_PROBE_VAR} IS present below these instructions: define ${GATE_PROBE_VAR} with the setVar tool using the EXACT value: ${GATE_PROBE_VALUE}.`;
 
 /** Replica of the variable-gate corrective block (SOLE OWNER:
  * renderVariableRetryLine in ../capability/pio-session.ts). Two lines joined
@@ -843,6 +863,39 @@ describe("admission, composition, settlement (C rows)", () => {
     expect(sdkKit.state.rounds).toHaveLength(1);
     expect(readdirSync(tmp).sort()).toEqual(["work"]);
     expect(stderrText()).toBe("");
+  });
+
+  it("C2d the verdict-beat structural row (over REAL module bytes): the SIX probe prompts - model-write, guard-retry pass 1, guard-retry corrective pass 2, read-back, compose-read, compose-write - each CONTAIN the sibling's verbatim verdict-phrase replica (index 3 rides under the appended variable-guard block, which carries no verdict phrase of its own), while the bookends - the greeting (index 0) and the summary (index 7) - contain it NOWHERE (negative controls: bookend/report turns carry no verdict beat)", async () => {
+    const tmp = newTempRoot();
+    enterWorkTree(tmp);
+    const { instance, round } = await host();
+    const tools = await recoverTools();
+    const driven: DrivenSettlement[] = [];
+    scriptCallerPhases(round, tools, driven, false);
+    scriptCalleePhases(round, tools, driven, true);
+    const demo = new VarsDemoCapability({ session: instance });
+    const result = await demo.run();
+    expect(result.ok).toBe(true);
+    if (!result.ok) throw new Error("unreachable");
+    // The SIX probe prompts each carry the one-sentence verdict beat in
+    // their instructed output.
+    for (const index of [1, 2, 3, 4, 5, 6]) {
+      expect(sentAt(round, index)).toContain(VERDICT_PHRASE_REPLICA);
+    }
+    // Bookend negative controls: the greeting and the summary NEVER carry
+    // the verdict beat.
+    expect(sentAt(round, 0)).not.toContain(VERDICT_PHRASE_REPLICA);
+    expect(sentAt(round, 7)).not.toContain(VERDICT_PHRASE_REPLICA);
+    expect(stderrText()).toBe("");
+  });
+
+  it("C2e the rules-skeleton survival row: BOTH pre-repin numbered-rule lines of the guard-retry template survive BYTE-IDENTICALLY (the corrective-note-disambiguation clauses intact, rule 1 before rule 2 in order), AND the verdict-phrase replica occurs in the single static text that teaches both passes (the inserted unnumbered verdict-OUTPUT directive)", () => {
+    const replica = guardRetryReplica();
+    const ruleOneIndex = replica.indexOf(GUARD_RULE_1);
+    const ruleTwoIndex = replica.indexOf(GUARD_RULE_2);
+    expect(ruleOneIndex).toBeGreaterThanOrEqual(0);
+    expect(ruleTwoIndex).toBeGreaterThan(ruleOneIndex);
+    expect(replica).toContain(VERDICT_PHRASE_REPLICA);
   });
 
   it("C3 callee-exhaustion fault forwarding (REAL ceiling - no locally-minted error): the callee's variable is NEVER driven - its compose-write phase runs 1 + 3 corrective passes (FOUR prompts, notes naming the variable after 1/2/3 run(s)), the fourth break hits the cap and throws the collect-all ceiling failure; the child's run() settles ok:false and the demo RESOLVES (never rejects) ok:false with the child's capture forwarded VERBATIM (family shape {type, cause, message, violations}); the summary NEVER STARTS (TEN prompts total, two markers); the store carries the three earlier values with the callee variable ABSENT; clean stderr", async () => {

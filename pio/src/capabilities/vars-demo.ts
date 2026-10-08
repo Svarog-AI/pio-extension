@@ -41,6 +41,15 @@
 //    in TypeScript BEFORE the first phase issues, so every phase listing
 //    (the caller's AND the callee's) validates at arm time over the shared
 //    registry, and the model's setVar stays bound to pre-declared names.
+// 5. The verdict-beat discipline (inherited from the sibling guards-demo
+//    probes): every PROBE turn's reply states whether its expectation was
+//    satisfied - the four action probes (model-write, read-back,
+//    compose-read, compose-write) each close with the explicit one-sentence
+//    verdict beat, and the guard-retry replies close with the SAME verdict
+//    inside each pass of the two-pass rules form (owner ruling: the rules
+//    form stays structurally intact; the output gains the verdict). The
+//    greeting and the summary are bookend/report turns and carry no verdict
+//    beat.
 //
 // Outcome model: NO file deliverables - the transcript IS the product; the
 // terminal record settles claim-free ok:true with the EMPTY outputs record
@@ -73,6 +82,11 @@
 //      typed-read surface (cross-boundary WRITE).
 //   5. Clean success settlement: the run settles ok (exit 0) with the
 //      stream-only summary as the final turn.
+//   6. Verdict beats: every probe turn's reply VISIBLY states whether its
+//      expectation was satisfied - the four action probes (model-write,
+//      read-back, compose-read, compose-write) each end with a one-sentence
+//      verdict sentence, and EACH guard-retry pass (the first pass and the
+//      corrective pass) ends with the same verdict.
 // Direct-tool note: setVar/getVar/listVars are live in EVERY hosted session
 // - the checklist MAY exercise the tools directly in the transcript (for
 // example listVars for the two-key {variables, types} document).
@@ -131,11 +145,14 @@ const GREETING_INSTRUCTIONS = `You are starting a session-variable demonstration
 2. Do nothing else in this turn \u2014 no tools, no questions. End your turn right after the greeting.`;
 
 /** The pinned model-write instruction template (SOLE OWNER of these PINNED
- * bytes; the suite replica names this owner). Three-beat minimal form:
- * imperative / expectation / one-sentence verdict. Em dashes are U+2014
- * (escaped). */
+ * bytes; the suite replica names this owner). Three beats: imperative (the
+ * model defines the note variable with the setVar tool at the pinned value)
+ * / expectation (the value LANDS as stored - the store round-trips the exact
+ * value the entry point admitted) / the SIBLING'S VERBATIM one-sentence
+ * verdict beat - then the standing closing-order trailer. No em dash occurs
+ * in the body. */
 function modelWriteInstructions(): string {
-  return `Use the setVar tool to define ${MODEL_NOTE_VAR} with the EXACT value: ${MODEL_NOTE_VALUE}. State in one short sentence that it landed. End your turn right after (no further tools).`;
+  return `Use the setVar tool to define ${MODEL_NOTE_VAR} with the EXACT value: ${MODEL_NOTE_VALUE}. The expectation is that the value LANDS as stored - the store round-trips the exact value the entry point admitted. Describe in one sentence if it's satisfied. End your turn right after (no further tools).`;
 }
 
 /** The pinned guard-retry instruction template (SOLE OWNER of these PINNED
@@ -143,25 +160,32 @@ function modelWriteInstructions(): string {
  * passes: the same baseline rides every run, so the first-pass skip
  * directive and the compliant-create directive coexist, disambiguated ONLY
  * by the presence or absence of the engine's corrective note strictly after
- * the baseline. The compact two-pass rules form is the ONLY sanctioned
- * expansion beyond the three-beat minimal probes (mirrors the sibling
- * guard-probe template). Em dashes are U+2014 (escaped). */
+ * the baseline. Ruling-honored hybrid (OWNER RULING): the two-pass RULES
+ * skeleton stays BYTE-STABLE - the numbered-rule lines survive unchanged and
+ * disambiguation rides solely on the corrective note's presence - while the
+ * inserted standalone unnumbered verdict-OUTPUT directive makes EACH pass's
+ * reply close with the SAME one-sentence expectation-satisfaction verdict
+ * the action probes carry (the sibling's verbatim beat). Em dashes are
+ * U+2014 (escaped) at the rule-line positions only. */
 function guardRetryInstructions(): string {
   return `This run demonstrates the variable expectation guard over ${GATE_PROBE_VAR}.
 Rules for THIS run:
 1. FIRST PASS \u2014 no corrective note appears below these instructions: draft the intended ${GATE_PROBE_VAR} content in your reply ONLY and finish the run WITHOUT any setVar call touching ${GATE_PROBE_VAR}.
 2. CORRECTIVE PASS \u2014 a corrective note naming ${GATE_PROBE_VAR} IS present below these instructions: define ${GATE_PROBE_VAR} with the setVar tool using the EXACT value: ${GATE_PROBE_VALUE}.
+In EVERY pass, close your reply with the expectation-satisfaction verdict the other probes carry. Describe in one sentence if it's satisfied.
 Work autonomously; do not ask the user anything during the run.`;
 }
 
 /** The pinned read-back instruction template (SOLE OWNER of these PINNED
- * bytes; the suite replica names this owner). Two getVar readings state the
- * cross-origin parity: the TS-seeded array renders as COMPACT JSON, the
- * model-authored string renders BARE - one store, any origin. Three beats:
- * imperative / expectation / one-sentence verdict. Em dashes are U+2014
- * (escaped). */
+ * bytes; the suite replica names this owner). Three beats: imperative (the
+ * model getVars BOTH readings - the TS-seeded array and the model-authored
+ * string - stating both renderings in the reply, one line each, quoted
+ * exactly) / expectation (the seeded array renders as COMPACT JSON and the
+ * model-authored string renders BARE - cross-origin parity, one store, any
+ * origin) / the SIBLING'S VERBATIM one-sentence verdict beat - then the
+ * standing closing-order trailer. No em dash occurs in the body. */
 function readBackInstructions(): string {
-  return `Use the getVar tool to read ${TS_FACTS_VAR} (expect the compact JSON rendering of the seeded array) and ${MODEL_NOTE_VAR} (expect the BARE string - defined by the model in an earlier phase: cross-origin parity, one store, any origin). State both readings in your reply, one line each, quoting the exact renderings. End your turn right after (listVars is available but not required).`;
+  return `Use the getVar tool to read ${TS_FACTS_VAR} and ${MODEL_NOTE_VAR}, and state both renderings in your reply, one line each, quoting them exactly. The expectation is that the seeded array renders as COMPACT JSON and the model-authored string renders BARE - cross-origin parity, one store, any origin. Describe in one sentence if it's satisfied. End your turn right after (listVars is available but not required).`;
 }
 
 /** The pinned summary template (SOLE OWNER of these PINNED bytes; the suite
@@ -194,21 +218,26 @@ function summaryInstructions(
 
 /** The pinned compose-read instruction template (SOLE OWNER of these PINNED
  * bytes; the suite replica names this owner). The pure cross-boundary READ
- * turn: the callee's model states the getVar rendering of the value the
- * CALLER'S model authored earlier in the SAME session (shared store by
- * instance identity). Three beats: imperative / expectation / one-sentence
- * verdict. Em dashes are U+2014 (escaped). */
+ * turn. Three beats: imperative (the callee's model getVars the
+ * caller-authored note value, stating its EXACT rendering in the reply) /
+ * expectation (it renders the exact value authored earlier in this same
+ * session - the store is shared by instance identity) / the SIBLING'S
+ * VERBATIM one-sentence verdict beat - then the standing closing-order
+ * trailer. No em dash occurs in the body. */
 function composeReadInstructions(): string {
-  return `Use the getVar tool to read ${MODEL_NOTE_VAR} and state its EXACT rendering - it was defined earlier in this same session, and you share that one variable store. End your turn right after (no other tools).`;
+  return `Use the getVar tool to read ${MODEL_NOTE_VAR} and state its EXACT rendering in your reply. The expectation is that it renders the exact value authored earlier in this same session - the store is shared by instance identity. Describe in one sentence if it's satisfied. End your turn right after (no other tools).`;
 }
 
-/** The pinned compose-write instruction template (SOLE OWNER of these PINNED
- * bytes; the suite replica names this owner). The gated cross-boundary WRITE
- * turn: the callee's model defines the value the caller reads back through
- * the typed-read surface after the composition. Three beats: imperative /
- * expectation / one-sentence verdict. Em dashes are U+2014 (escaped). */
+/** The pinned compose-write instruction template (SOLE OWNER of these
+ * PINNED bytes; the suite replica names this owner). The gated
+ * cross-boundary WRITE turn. Three beats: imperative (the callee's model
+ * sets the callee-note variable with the setVar tool at the pinned value) /
+ * expectation (the value LANDS as stored in the shared store the caller
+ * reads back after the composition) / the SIBLING'S VERBATIM one-sentence
+ * verdict beat - then the standing closing-order trailer. No em dash occurs
+ * in the body. */
 function composeWriteInstructions(): string {
-  return `Use the setVar tool to define ${CALLEE_NOTE_VAR} with the EXACT value: ${CALLEE_NOTE_VALUE}. State in one short sentence that it landed. End your turn right after (no other tools).`;
+  return `Use the setVar tool to define ${CALLEE_NOTE_VAR} with the EXACT value: ${CALLEE_NOTE_VALUE}. The expectation is that the value LANDS as stored in the shared store the caller reads back after the composition. Describe in one sentence if it's satisfied. End your turn right after (no other tools).`;
 }
 
 // THE module-private inline callee (UNEXPORTED - the loader table is the

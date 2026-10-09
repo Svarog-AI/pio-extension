@@ -570,7 +570,6 @@ describe("PioSession — markCapability (no-turn custom-message seam)", () => {
   it("triggers NO LLM turn from the mark alone and leaves the observation state snapshot-equal across it (custom messages are observation-neutral)", async () => {
     const { instance, round } = await host();
     const before = instance.counters();
-    const payloadsBefore = instance.getRunMessages();
     await instance.markCapability("neutral");
     // Zero prompt invocations: the mark never starts a run on this plane.
     expect(round.session.prompt).toHaveBeenCalledTimes(0);
@@ -578,9 +577,11 @@ describe("PioSession — markCapability (no-turn custom-message seam)", () => {
     // byte-equal to the pre-mark one (no assistant usage fed in).
     const after = instance.counters();
     expect(after).toStrictEqual(before);
-    // The payload master list gains nothing (feeds come only from
-    // agent_end; the custom message fires none here).
-    expect(instance.getRunMessages()).toEqual(payloadsBefore);
+    // A phase driven immediately afterwards collects ONLY its own settled
+    // payloads: the custom message injected nothing into the payload feed.
+    scriptRuns(round, quietRun());
+    const result = await instance.execute_phase("post-mark");
+    expect(result.messages).toEqual([]);
     expect(round.session.sendCustomMessage).toHaveBeenCalledTimes(1);
   });
 });
@@ -697,7 +698,6 @@ describe("PioSession — construction & scoping", () => {
     expect(round.session.subscribe).toHaveBeenCalledTimes(1);
 
     instance.counters();
-    instance.getFilesWrittenDelta();
     const store = instance.vars;
     // W2C mechanical preambles (mandatory-type ruling): declare before
     // the first write; row intent unchanged.
@@ -706,7 +706,6 @@ describe("PioSession — construction & scoping", () => {
     store.get("a");
     store.list();
     instance.counters();
-    instance.getFilesWrittenDelta();
 
     expect(round.session.subscribe).toHaveBeenCalledTimes(1);
   });
@@ -738,7 +737,6 @@ describe("PioSession — construction & scoping", () => {
       toolUses: {},
       tokens: 0,
     });
-    expect(b.getFilesWrittenDelta()).toEqual([]);
   });
 
   it("id mirrors the settled session handle id", async () => {
@@ -768,7 +766,7 @@ describe("PioSession — construction & scoping", () => {
 });
 
 describe("PioSession — zero state", () => {
-  it("counters() before any event carries the exact zero shape; take yields empty", async () => {
+  it("counters() before any event carries the exact zero shape", async () => {
     const { instance } = await host();
     const snapshot = instance.counters();
     expect(Object.keys(snapshot).sort()).toEqual([
@@ -781,7 +779,6 @@ describe("PioSession — zero state", () => {
     expect(snapshot.askUserCalls).toBe(0);
     expect(snapshot.toolUses).toEqual({});
     expect(snapshot.tokens).toBe(0);
-    expect(instance.getFilesWrittenDelta()).toEqual([]);
   });
 });
 
@@ -832,32 +829,48 @@ describe("PioSession — toolUses counter", () => {
 });
 
 describe("PioSession — filesWritten counter", () => {
-  it("successful write and edit ends commit into count and delta; a failed edit contributes nothing", async () => {
+  it("successful write and edit ends commit into count and the run window; a failed edit contributes nothing", async () => {
     const { instance, round } = await host();
-    emit(
-      round,
+    scriptRuns(round, [
+      agentStart(),
       start("w1", "write", { path: "/out/a.md" }),
       end("w1", "write", false),
       start("e1", "edit", { path: "/out/b.md" }),
       end("e1", "edit", true),
-    );
+      agentEnd([], false),
+    ]);
+    let seen: string[] | undefined;
+    await instance.execute_phase("commit-shape", {
+      shouldStopLoop: async (ctx) => {
+        seen = [...ctx.filesWritten];
+        return true;
+      },
+    });
+    expect(seen).toEqual(["/out/a.md"]);
     expect(instance.counters().filesWritten).toBe(1);
-    expect(instance.getFilesWrittenDelta()).toEqual(["/out/a.md"]);
   });
 
   it("non-file tools never contribute regardless of success", async () => {
     const { instance, round } = await host();
-    emit(
-      round,
+    scriptRuns(round, [
+      agentStart(),
       start("r1", "read", { path: "/in/a.md" }),
       end("r1", "read", false),
       start("b1", "bash", { command: "echo hi" }),
       end("b1", "bash", false),
       start("g1", "grep", {}),
       end("g1", "grep", false),
-    );
+      agentEnd([], false),
+    ]);
+    let seen: string[] | undefined;
+    await instance.execute_phase("non-file-tools", {
+      shouldStopLoop: async (ctx) => {
+        seen = [...ctx.filesWritten];
+        return true;
+      },
+    });
+    expect(seen).toEqual([]);
     expect(instance.counters().filesWritten).toBe(0);
-    expect(instance.getFilesWrittenDelta()).toEqual([]);
     expect(instance.counters().toolUses).toEqual({
       read: 1,
       bash: 1,
@@ -867,15 +880,22 @@ describe("PioSession — filesWritten counter", () => {
 
   it("paths correlate from the matching start because the end carries no args", async () => {
     const { instance, round } = await host();
-    emit(
-      round,
+    scriptRuns(round, [
+      agentStart(),
       start("p1", "write", { path: "/correlated/deep.md" }),
       end("p1", "write", false),
-    );
-    const delta = instance.getFilesWrittenDelta();
-    expect(delta).toHaveLength(1);
+      agentEnd([], false),
+    ]);
+    let seen: string[] | undefined;
+    await instance.execute_phase("correlation", {
+      shouldStopLoop: async (ctx) => {
+        seen = [...ctx.filesWritten];
+        return true;
+      },
+    });
+    expect(seen).toHaveLength(1);
     // Byte-for-byte the start's args.path — the only source of the value.
-    expect(delta[0]).toBe("/correlated/deep.md");
+    expect(seen?.[0]).toBe("/correlated/deep.md");
     expect(instance.counters().filesWritten).toBe(1);
   });
 
@@ -888,9 +908,21 @@ describe("PioSession — filesWritten counter", () => {
   for (const row of defensiveArgRows) {
     it(`an ignored write start (${row.label}) neither commits nor registers a pending entry`, async () => {
       const { instance, round } = await host();
-      emit(round, start("d1", "write", row.args), end("d1", "write", false));
+      scriptRuns(round, [
+        agentStart(),
+        start("d1", "write", row.args),
+        end("d1", "write", false),
+        agentEnd([], false),
+      ]);
+      let seen: string[] | undefined;
+      await instance.execute_phase("ignored-start", {
+        shouldStopLoop: async (ctx) => {
+          seen = [...ctx.filesWritten];
+          return true;
+        },
+      });
+      expect(seen).toEqual([]);
       expect(instance.counters().filesWritten).toBe(0);
-      expect(instance.getFilesWrittenDelta()).toEqual([]);
       // The start itself is still observed...
       expect(instance.counters().toolUses).toEqual({ write: 1 });
     });
@@ -898,67 +930,50 @@ describe("PioSession — filesWritten counter", () => {
 
   it("interleaved parallel edits: one succeeding end and one failing end commit exactly one path", async () => {
     const { instance, round } = await host();
-    emit(
-      round,
+    scriptRuns(round, [
+      agentStart(),
       start("a1", "edit", { path: "/pa.md" }),
       start("b1", "edit", { path: "/pb.md" }),
       end("b1", "edit", true),
       end("a1", "edit", false),
-    );
-    expect(instance.counters().filesWritten).toBe(1);
-    expect(instance.getFilesWrittenDelta()).toEqual(["/pa.md"]);
-  });
-
-  it("a stale write start is drained at agent_start and never leaks into a later run", async () => {
-    const { instance, round } = await host();
-    emit(round, start("s1", "write", { path: "/stale.md" }));
-    expect(instance.getFilesWrittenDelta()).toEqual([]);
-    emit(round, agentStart());
-    expect(instance.getFilesWrittenDelta()).toEqual([]);
-    emit(
-      round,
-      start("s2", "write", { path: "/fresh.md" }),
-      end("s2", "write", false),
-    );
-    expect(instance.getFilesWrittenDelta()).toEqual(["/fresh.md"]);
+      agentEnd([], false),
+    ]);
+    let seen: string[] | undefined;
+    await instance.execute_phase("interleave-commit", {
+      shouldStopLoop: async (ctx) => {
+        seen = [...ctx.filesWritten];
+        return true;
+      },
+    });
+    expect(seen).toEqual(["/pa.md"]);
     expect(instance.counters().filesWritten).toBe(1);
   });
 
-  it("explicit resets separate per-run windows while the cumulative count grows", async () => {
+  it("a stale write start is drained at the next run start and never leaks into a later run's window", async () => {
     const { instance, round } = await host();
-    emit(
+    scriptRuns(
       round,
-      agentStart(),
-      start("r1a", "write", { path: "/run1/a.md" }),
-      end("r1a", "write", false),
-      start("r1b", "edit", { path: "/run1/b.md" }),
-      end("r1b", "edit", false),
-      agentEnd(),
+      [agentStart(), start("s1", "write", { path: "/stale.md" })],
+      [
+        agentStart(),
+        start("s2", "write", { path: "/fresh.md" }),
+        end("s2", "write", false),
+        agentEnd([], false),
+      ],
     );
-    // Repeated reads within the window are content-stable.
-    expect(instance.getFilesWrittenDelta()).toEqual([
-      "/run1/a.md",
-      "/run1/b.md",
-    ]);
-    expect(instance.getFilesWrittenDelta()).toEqual([
-      "/run1/a.md",
-      "/run1/b.md",
-    ]);
-    expect(instance.counters().filesWritten).toBe(2);
-
-    // The explicit reset closes the first run's window.
-    instance.resetFilesWrittenDelta();
-
-    emit(
-      round,
-      agentStart(),
-      start("r2a", "write", { path: "/run2/c.md" }),
-      end("r2a", "write", false),
-      agentEnd(),
-    );
-    expect(instance.getFilesWrittenDelta()).toEqual(["/run2/c.md"]);
-    expect(instance.getFilesWrittenDelta()).toEqual(["/run2/c.md"]);
-    expect(instance.counters().filesWritten).toBe(3);
+    const seen: string[][] = [];
+    let n = 0;
+    await instance.execute_phase("drain-stale", {
+      shouldStopLoop: async (ctx) => {
+        n += 1;
+        seen.push([...ctx.filesWritten]);
+        return n === 2;
+      },
+    });
+    // Run 1 saw nothing committed (the dangling start has no end); run 2's
+    // own agent_start drained it, so only the fresh path lands.
+    expect(seen).toEqual([[], ["/fresh.md"]]);
+    expect(instance.counters().filesWritten).toBe(1);
   });
 });
 
@@ -2648,75 +2663,39 @@ describe("PioSession — run messages", () => {
   });
 });
 
-describe("PioSession — read/reset contract", () => {
-  it("keeps the window content-stable across repeated reads within a pass", async () => {
+describe("PioSession — hook window snapshot semantics", () => {
+  it("hands the hook stable per-invocation window views: retained references survive later runs unchanged (fresh copies, not a live buffer)", async () => {
     const { instance, round } = await host();
-    scriptRuns(round, [
-      agentStart(),
-      start("w1", "write", { path: "/r1/a.md" }),
-      end("w1", "write", false),
-      start("w2", "edit", { path: "/r1/b.md" }),
-      end("w2", "edit", false),
-      agentEnd([], false),
-    ]);
-    const reads: string[][] = [];
-    await instance.execute_phase("stable-window", {
-      shouldStopLoop: async (ctx) => {
-        reads.push([...ctx.filesWritten]);
-        reads.push([...instance.getFilesWrittenDelta()]);
-        reads.push([...instance.getFilesWrittenDelta()]);
-        return true;
-      },
-    });
-    expect(reads).toEqual([
-      ["/r1/a.md", "/r1/b.md"],
-      ["/r1/a.md", "/r1/b.md"],
-      ["/r1/a.md", "/r1/b.md"],
-    ]);
-  });
-
-  it("advances the baseline on reset while the cumulative count survives", async () => {
-    const { instance, round } = await host();
-    emit(
-      round,
-      agentStart(),
-      start("w1", "write", { path: "/r1/a.md" }),
-      end("w1", "write", false),
-      start("w2", "edit", { path: "/r1/b.md" }),
-      end("w2", "edit", false),
-      agentEnd([], false),
-    );
-    expect(instance.getFilesWrittenDelta()).toEqual(["/r1/a.md", "/r1/b.md"]);
-    expect(instance.counters().filesWritten).toBe(2);
-    instance.resetFilesWrittenDelta();
-    expect(instance.getFilesWrittenDelta()).toEqual([]);
-    expect(instance.counters().filesWritten).toBe(2);
-  });
-
-  it("accumulates payloads across passes and closes the window at closeout", async () => {
-    const { instance, round } = await host();
-    const m1 = { id: "m1" };
-    const m2 = { id: "m2" };
-    const m3 = { id: "m3" };
     scriptRuns(
       round,
-      [agentStart(), agentEnd([m1], false)],
-      [agentStart(), agentEnd([m2], false)],
-      [agentStart(), agentEnd([m3], false)],
+      [
+        agentStart(),
+        start("w1", "write", { path: "/r1/a.md" }),
+        end("w1", "write", false),
+        start("w2", "edit", { path: "/r1/b.md" }),
+        end("w2", "edit", false),
+        agentEnd([], false),
+      ],
+      [
+        agentStart(),
+        start("w3", "write", { path: "/r2/c.md" }),
+        end("w3", "write", false),
+        agentEnd([], false),
+      ],
     );
-    const observed: unknown[][] = [];
-    const result = await instance.execute_phase("accumulate", {
-      shouldStopLoop: async () => {
-        const firstRead = instance.getRunMessages();
-        const secondRead = instance.getRunMessages();
-        expect(firstRead).toEqual(secondRead);
-        observed.push([...firstRead]);
-        return observed.length === 3;
+    const retained: string[][] = [];
+    let n = 0;
+    await instance.execute_phase("snapshot-semantics", {
+      shouldStopLoop: async (ctx) => {
+        n += 1;
+        retained.push(ctx.filesWritten);
+        return n === 2;
       },
     });
-    expect(observed).toEqual([[m1], [m1, m2], [m1, m2, m3]]);
-    expect(result.messages).toEqual([m1, m2, m3]);
-    expect(instance.getRunMessages()).toEqual([]);
+    // Each invocation's window view is its own copy: run 1's retained
+    // reference stays put after run 2 settles over a closed window.
+    expect(retained).toEqual([["/r1/a.md", "/r1/b.md"], ["/r2/c.md"]]);
+    expect(instance.counters().filesWritten).toBe(3);
   });
 });
 
@@ -3033,14 +3012,8 @@ describe("PioSession — composed-host surface (P-rows)", () => {
 
     // Final tokens = T_pre + T_post EXACT: 838 + 34 = 872.
     expect(H.counters().tokens).toBe(872);
-    // Master list = [pre…, post] in EVENT ORDER via count AND delta
-    // content (no resets — the open window survives the rebind).
+    // Committed-path count merges across the swap: pre 2 + post 1 = 3.
     expect(H.counters().filesWritten).toBe(3);
-    expect(H.getFilesWrittenDelta()).toEqual([
-      "/pre/a.md",
-      "/pre/b.md",
-      "/post/c.md",
-    ]);
     // toolUses merged: write 2+1=3, one new bash start, ask_user at 1.
     expect(H.counters().toolUses).toEqual({ write: 3, ask_user: 1, bash: 1 });
     expect(H.counters().askUserCalls).toBe(1);
@@ -3491,9 +3464,6 @@ describe("PioSession — expectation gate (write:)", () => {
     await expect(
       instance.execute_phase("ceiling-die", { write: [target] }),
     ).rejects.toBeInstanceOf(ContractViolationError);
-    // The finally closeout fires on the reject cause too.
-    expect(instance.getFilesWrittenDelta()).toEqual([]);
-    expect(instance.getRunMessages()).toEqual([]);
     expect(instance.counters().filesWritten).toBe(4);
 
     round.session.prompt.mockImplementationOnce(async () => {
@@ -4128,8 +4098,6 @@ describe("PioSession — variable expectation gate (vars:)", () => {
     await expect(
       instance.execute_phase("ceiling-die-vars", { vars: ["dw"] }),
     ).rejects.toBeInstanceOf(ContractViolationError);
-    expect(instance.getFilesWrittenDelta()).toEqual([]);
-    expect(instance.getRunMessages()).toEqual([]);
     expect(instance.counters().filesWritten).toBe(4);
 
     round.session.prompt.mockImplementationOnce(async () => {
@@ -4147,7 +4115,7 @@ describe("PioSession — variable expectation gate (vars:)", () => {
     expect(first?.counters.filesWritten).toBe(4);
   });
 
-  it("arm-time validation (engine-level): a listing containing an unregistered name REJECTS with the name-asserted bookkeeping class and PINNED message bytes — ZERO prompt invocations, the execution-state phase slot still NULL, both windows pristine, cumulative counters untouched (nothing armed, nothing detached, no window opened)", async () => {
+  it("arm-time validation (engine-level): a listing containing an unregistered name REJECTS with the name-asserted bookkeeping class and PINNED message bytes — ZERO prompt invocations, the execution-state phase slot still NULL, cumulative counters untouched (nothing armed, nothing detached, no window opened)", async () => {
     const { instance, round, gate } = await host();
     scriptRuns(round, quietRun());
     let thrown: unknown;
@@ -4169,8 +4137,6 @@ describe("PioSession — variable expectation gate (vars:)", () => {
     expect(Object.hasOwn(thrown as Error, "cause")).toBe(false);
     expect(round.session.prompt).toHaveBeenCalledTimes(0);
     expect(gate.state.snapshot().phase).toBeNull();
-    expect(instance.getFilesWrittenDelta()).toEqual([]);
-    expect(instance.getRunMessages()).toEqual([]);
     expect(instance.counters()).toEqual({
       filesWritten: 0,
       askUserCalls: 0,
@@ -5466,10 +5432,19 @@ describe("PioSession \u2014 gate phase feeding (attach/detach lifecycle)", () =>
       await expect(
         instance.execute_phase("ceiling-leg", { write: ["/absent/x.md"] }),
       ).rejects.toBeInstanceOf(ContractViolationError);
-      // Windows closed (the standing invariant) AND the phase detached.
-      expect(instance.getFilesWrittenDelta()).toEqual([]);
-      expect(instance.getRunMessages()).toEqual([]);
       expect(gate.state.snapshot().phase).toBeNull();
+      // Windows closed (the standing invariant) - observed through the very
+      // next phase's clean first-run view and fresh message list.
+      scriptRuns(round, [agentStart(), agentEnd(["n1"], false)]);
+      let first: IterationCtx | undefined;
+      const next = await instance.execute_phase("after-leg", {
+        shouldStopLoop: async (ctx) => {
+          first = ctx;
+          return true;
+        },
+      });
+      expect(next.messages).toEqual(["n1"]);
+      expect(first?.filesWritten).toEqual([]);
     });
   });
 
@@ -5646,10 +5621,19 @@ describe("PioSession \u2014 gate phase feeding (attach/detach lifecycle)", () =>
           allowProjectWrites: true,
         }),
       ).rejects.toBeInstanceOf(ContractViolationError);
-      // Windows closed (the standing invariant) AND the phase detached.
-      expect(instance.getFilesWrittenDelta()).toEqual([]);
-      expect(instance.getRunMessages()).toEqual([]);
       expect(gate.state.snapshot().phase).toBeNull();
+      // Windows closed (the standing invariant) - observed through the very
+      // next phase's clean first-run view and fresh message list.
+      scriptRuns(round, [agentStart(), agentEnd(["n1"], false)]);
+      let first: IterationCtx | undefined;
+      const next = await instance.execute_phase("after-two-dim", {
+        shouldStopLoop: async (ctx) => {
+          first = ctx;
+          return true;
+        },
+      });
+      expect(next.messages).toEqual(["n1"]);
+      expect(first?.filesWritten).toEqual([]);
     });
   });
 });

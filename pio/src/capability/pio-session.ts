@@ -399,7 +399,7 @@ export interface PhaseOptions {
 export interface IterationCtx {
   /** Fresh session-cumulative snapshot taken after the settling run. */
   readonly counters: SessionCounters;
-  /** Committed paths of the just-settled run — stable under repeated reads. */
+  /** Committed paths of the just-settled run (fresh slice per hook invocation). */
   readonly filesWritten: string[];
   /** Per-run settled-run delta of started ask-user tool executions (this run only; contrast counters.askUserCalls, session-cumulative). */
   readonly askUserCalls: number;
@@ -1271,26 +1271,6 @@ export class PioSession {
     return this.#observer.snapshot();
   }
 
-  /** Committed write/edit paths since the last reset — stable under repeated calls. */
-  getFilesWrittenDelta(): string[] {
-    return this.#observer.filesWrittenDelta();
-  }
-
-  /** Advance the delta baseline past all committed paths; cumulative counter untouched. */
-  resetFilesWrittenDelta(): void {
-    this.#observer.resetPathBaseline();
-  }
-
-  /** Recorded settled-end payloads since the last reset — stable under repeated calls. */
-  getRunMessages(): unknown[] {
-    return this.#observer.runMessages();
-  }
-
-  /** Advance the message baseline past all recorded payloads. */
-  resetRunMessages(): void {
-    this.#observer.resetMessageBaseline();
-  }
-
   /**
    * Append the span's section header as a durable custom message WITHOUT
    * triggering an LLM turn (no options object = the SDK's append-only idle
@@ -1417,7 +1397,7 @@ export class PioSession {
     try {
       for (;;) {
         // Close the previous run's window before this run's can open.
-        this.resetFilesWrittenDelta();
+        this.#observer.resetPathBaseline();
         this.#observer.resetAskUserCallsBaseline();
         iterations += 1;
         const outgoing =
@@ -1431,8 +1411,8 @@ export class PioSession {
         if (this.#observer.takeRunAborted()) {
           throw new PhaseInterruptionError();
         }
-        const counters = this.counters();
-        const filesWritten = this.getFilesWrittenDelta();
+        const counters = this.#observer.snapshot();
+        const filesWritten = this.#observer.filesWrittenDelta();
         const askUserCalls = this.#observer.askUserCallsDelta();
         let proceed = iterations < min;
         const shouldStopLoop = opts?.shouldStopLoop;
@@ -1508,8 +1488,8 @@ export class PioSession {
           break;
         }
       }
-      const messages = this.getRunMessages();
-      const finalSnapshot = this.counters();
+      const messages = this.#observer.runMessages();
+      const finalSnapshot = this.#observer.snapshot();
       return {
         done: true,
         iterations,
@@ -1520,9 +1500,9 @@ export class PioSession {
       };
     } finally {
       // Windows never leak into the next phase regardless of the exit cause.
-      this.resetFilesWrittenDelta();
+      this.#observer.resetPathBaseline();
       this.#observer.resetAskUserCallsBaseline();
-      this.resetRunMessages();
+      this.#observer.resetMessageBaseline();
       if (attached) this.#executionState?.detachPhase();
     }
   }

@@ -74,8 +74,8 @@ function collectIo(): { io: CliIO; out: string[]; err: string[] } {
 }
 
 describe("parse (descriptor-level grammar)", () => {
-  it("bare invocation -> reserved", () => {
-    expect(parse([])).toEqual({ kind: "reserved" });
+  it("bare invocation -> run(adhoc) with the EMPTY inputs record (the sanctioned default-capability mapping)", () => {
+    expect(parse([])).toEqual({ kind: "run", capability: "adhoc", inputs: {} });
   });
 
   it("--help -> help", () => {
@@ -90,8 +90,12 @@ describe("parse (descriptor-level grammar)", () => {
     expect(parse(["--version"])).toEqual({ kind: "version" });
   });
 
-  it("bare run -> reserved", () => {
-    expect(parse(["run"])).toEqual({ kind: "reserved" });
+  it("bare run -> run(adhoc) with the EMPTY inputs record (same descriptor as the bare form)", () => {
+    expect(parse(["run"])).toEqual({
+      kind: "run",
+      capability: "adhoc",
+      inputs: {},
+    });
   });
 
   it("run cap -> run(cap) with the EMPTY inputs record (always present on run descriptors)", () => {
@@ -368,20 +372,40 @@ describe("main (behavior matrix)", () => {
     expect(err).toEqual([]);
   });
 
-  it("bare invocation: exit 1, exact reserved line on stderr, nothing on stdout", async () => {
+  it("bare invocation: delegates onward as the default capability ('adhoc', empty inputs) through the single run-path import; clean sinks", async () => {
+    const rc = vi.mocked(runCapability);
+    rc.mockReset();
+    rc.mockResolvedValue(0);
     const { io, out, err } = collectIo();
     const code = await main([], io);
-    expect(code).toBe(1);
+    expect(code).toBe(0);
+    expect(vi.mocked(runCapability)).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(runCapability)).toHaveBeenCalledWith(
+      "adhoc",
+      io,
+      undefined,
+      {},
+    );
     expect(out).toEqual([]);
-    expect(err).toEqual(["pio: default workflow capability not available yet"]);
+    expect(err).toEqual([]);
   });
 
-  it("bare run: exit 1, exact reserved line on stderr", async () => {
+  it("bare run: same delegation ('adhoc', empty inputs) - one pipeline for every named and unnamed invocation", async () => {
+    const rc = vi.mocked(runCapability);
+    rc.mockReset();
+    rc.mockResolvedValue(0);
     const { io, out, err } = collectIo();
     const code = await main(["run"], io);
-    expect(code).toBe(1);
+    expect(code).toBe(0);
+    expect(vi.mocked(runCapability)).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(runCapability)).toHaveBeenCalledWith(
+      "adhoc",
+      io,
+      undefined,
+      {},
+    );
     expect(out).toEqual([]);
-    expect(err).toEqual(["pio: default workflow capability not available yet"]);
+    expect(err).toEqual([]);
   });
 
   it("run cap --detach: exit 1, unknown-option line naming --detach", async () => {
@@ -615,6 +639,7 @@ describe("main (last-resort error boundary)", () => {
   });
 
   it("bare invocation with a faulting stderr sink: resolves 1 (never rejects); doubly-failed sink degrades silently", async () => {
+    vi.mocked(runCapability).mockRejectedValue(new Error(SINK_FAULT));
     const { io, out, err } = faultyIo("stderr");
     const code = await main([], io);
     expect(code).toBe(1);
@@ -699,6 +724,14 @@ describe("mechanical SDK-isolation guards", () => {
     expect(count(src)).toBe(0);
     expect(count(runSrc)).toBe(0);
     expect(count(loaderSrc)).toBe(1);
+  });
+
+  it("zero occurrences of the retired reserved-line literal across cli.ts / run-session.ts / sandbox/run.ts (the stub refusal died with the re-point)", () => {
+    const RETIRED_LINE = "default workflow capability not available yet";
+    for (const rel of ["./cli.ts", "./run-session.ts", "./sandbox/run.ts"]) {
+      const text = readFileSync(new URL(rel, import.meta.url), "utf8");
+      expect(text.includes(RETIRED_LINE), rel).toBe(false);
+    }
   });
 
   it("zero occurrences of the retired CAPABILITY_NOT_IMPLEMENTED identifier (ownership of the line moved to the loader's capabilityRefusalLine)", () => {

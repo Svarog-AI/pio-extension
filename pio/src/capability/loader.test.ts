@@ -713,15 +713,15 @@ describe("lazy discipline and structural guards", () => {
 // meaningful (either side drifting fails loudly).
 const DESCRIPTION_REPLICAS: Readonly<Record<string, string>> = {
   research:
-    "Bounded web-research loop producing one growing markdown report under the project slot.",
+    "Bounded web-research loop producing one growing markdown report saved in the project workspace.",
   "compose-new-session-demo":
-    "Temporary row-2 demo: greets, hands the terminal to a fresh research run on a hard-coded topic, then reports the top 3 findings.",
+    "Temporary demonstration: greets, hands the live terminal over to a brand-new session running research on a fixed topic, then reports the top 3 findings once control returns.",
   "compose-same-session-demo":
-    "Row-1 same-session demo: runs a co-shipping research callee inside the caller's session on a hard-coded topic, then reports the top 3 findings.",
+    "Standing demonstration: greets, runs research directly inside the current session (same conversation throughout) on a fixed topic, then reports the top 3 findings.",
   "guards-demo":
-    "Permanent guard demonstration: triggers the engine-owned file-expectation settlement gate, then settles with the corrective pass and states the outcome.",
+    "Standing demonstration of the engine's deliverable check: a phase deliberately skips its declared output file, the engine forces a corrected retry until the file exists, and the outcome is stated.",
   "vars-demo":
-    "Permanent variable-store demonstration: model and TS set and read shared session variables, with a deliberate expectation-guard retry and composed sharing.",
+    "Standing demonstration of the shared variable store: model and program code set and read the same session variables mid-run, including one deliberately forced retry and a value written by a nested sub-run.",
 };
 
 describe("on-demand catalog walk (listCapabilities)", () => {

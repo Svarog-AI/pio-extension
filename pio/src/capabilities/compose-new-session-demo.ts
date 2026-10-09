@@ -22,7 +22,7 @@ export const DEMO_TOPIC = "Gnosticism in Barcelona";
 /** One-line catalog description (SOLE OWNER of the pinned bytes; the loader
  * suite replica names this owner). Surfaced by the on-demand catalog walk. */
 export const DESCRIPTION =
-  "Temporary row-2 demo: greets, hands the terminal to a fresh research run on a hard-coded topic, then reports the top 3 findings.";
+  "Temporary demonstration: greets, hands the live terminal over to a brand-new session running research on a fixed topic, then reports the top 3 findings once control returns.";
 
 /** The pinned greeting template (PINNED bytes; the suite replica names this
  * owner). One settled turn: greet the operator and briefly name what comes

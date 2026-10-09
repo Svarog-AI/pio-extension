@@ -118,7 +118,7 @@ import { deriveProjectKey } from "../sandbox/layout.ts";
 /** One-line catalog description (SOLE OWNER of the pinned bytes; the loader
  * suite replica names this owner). Surfaced by the on-demand catalog walk. */
 export const DESCRIPTION =
-  "Permanent guard demonstration: triggers the engine-owned file-expectation settlement gate, then settles with the corrective pass and states the outcome.";
+  "Standing demonstration of the engine's deliverable check: a phase deliberately skips its declared output file, the engine forces a corrected retry until the file exists, and the outcome is stated.";
 
 /** The FIXED project-slot-relative artifact token (shrink-only tunable; the
  * suite rows reference this constant, never a duplicated literal). */

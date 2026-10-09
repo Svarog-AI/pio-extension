@@ -48,7 +48,7 @@
 // agent-dir baseline covers phase-driving rows and every remaining
 // PI_CODING_AGENT_DIR touch stays a row-scoped save/restore nested over it.
 import { randomUUID } from "node:crypto";
-import { readdirSync, readFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -69,7 +69,11 @@ import {
   PioCapability,
 } from "./base.ts";
 import type { Contract } from "./contract.ts";
-import { ContractViolationError, VariableRejectionError } from "./errors.ts";
+import {
+  ContractViolationError,
+  PhaseInterruptionError,
+  VariableRejectionError,
+} from "./errors.ts";
 import type { CapabilitySources } from "./guards/guard-vocabulary.ts";
 import { decideVarWrite } from "./guards/var-gate.ts";
 import { decideWrite } from "./guards/write-gate.ts";
@@ -669,6 +673,22 @@ function assistantMessage(usageFields: object) {
     stopReason: "stop",
     timestamp: 1,
   };
+}
+
+/** Aborted-assistant variant of the fixture above (sole delta: the
+ * platform's own abort marker on the settling message). */
+function abortedAssistant(usageFields: object) {
+  return { ...assistantMessage(usageFields), stopReason: "aborted" };
+}
+
+/** One interrupted run: start, the aborted settling message, empty end.
+ * Mirrors quietRun()'s shape plus the decisive message_end. */
+function abortedRun(): object[] {
+  return [
+    agentStart(),
+    messageEnd(abortedAssistant(usage(1, 1, 1, 1))),
+    agentEnd([], false),
+  ];
 }
 
 describe("PioSession — construction & scoping", () => {
@@ -4426,6 +4446,257 @@ describe("PioSession — variable expectation gate (vars:)", () => {
   });
 });
 
+// ---------------------------------------------------------------------
+// Between-turns interruption observability: the settling run's FINAL
+// assistant message carries the platform's own abort marker
+// (stopReason "aborted"); the engine observes it in the run window and
+// settles the active operation AS CANCELLED - a typed rejection preemptive
+// over floor/hook/budget and both gate faces, riding the standard
+// containment channels. Filesystem-scoped rows (the gate-face and
+// survival rows) drive real node:fs against per-row mkdtemp tmpdir
+// targets; every other row remains fs/env-free.
+// ---------------------------------------------------------------------
+
+describe("PioSession \u2014 interrupted-run observability (between-turns)", () => {
+  let tmp: string;
+
+  /** Replica of the pinned one-form interruption message (SOLE OWNER: the
+   * PhaseInterruptionError construction in ./errors.ts) - U+2014 escapes
+   * identically on both sides (never a literal em dash). */
+  const INTERRUPTION_REPLICA =
+    "Phase interruption: the settling run ended on a user abort \u2014 the phase settles as cancelled";
+
+  /** Fixture capability driving ONE bare interrupted phase through the
+   * FULL chain (real base run() -> real emitter). */
+  class InterruptedFixture extends PioCapability {
+    readonly contract: Contract = {
+      name: "interrupted-fixture",
+      version: "0.1.0",
+      inputs: [],
+      outputs: [],
+      writes: [],
+    };
+    async call(
+      _inputs: Record<string, unknown>,
+    ): Promise<Record<string, unknown>> {
+      await this.execute_phase("interrupted", { instructions: "keep going" });
+      return {};
+    }
+  }
+
+  beforeEach(async () => {
+    tmp = await mkdtemp(path.join(tmpdir(), "pio-interrupted-"));
+  });
+
+  afterEach(async () => {
+    await rm(tmp, { recursive: true, force: true });
+  });
+
+  it("engine-level typed interruption: a continuation-demanding state (floor + hook) scripts EXACTLY ONE aborted run - the phase REJECTS with the pinned PhaseInterruptionError (instanceof, name, replica bytes) and NO second iteration is issued", async () => {
+    const { instance, round } = await host();
+    scriptRuns(round, abortedRun());
+    let thrown: unknown;
+    try {
+      await instance.execute_phase("interrupted", {
+        instructions: "keep iterating",
+        min: 2,
+        max: 2,
+        shouldStopLoop: async () => false,
+      });
+    } catch (error) {
+      thrown = error;
+    }
+    expect(thrown).toBeInstanceOf(PhaseInterruptionError);
+    expect((thrown as Error).name).toBe("PhaseInterruptionError");
+    expect((thrown as Error).message).toBe(INTERRUPTION_REPLICA);
+    expect(round.session.prompt).toHaveBeenCalledTimes(1);
+  });
+
+  it("preemption over the min-floor explicitly: min: 3 cannot force a continuation past an aborted FIRST (and only) run - one prompt, the typed rejection", async () => {
+    const { instance, round } = await host();
+    scriptRuns(round, abortedRun());
+    let thrown: unknown;
+    try {
+      await instance.execute_phase("floor-preempted", {
+        instructions: "keep iterating",
+        min: 3,
+        max: 3,
+      });
+    } catch (error) {
+      thrown = error;
+    }
+    expect(thrown).toBeInstanceOf(PhaseInterruptionError);
+    expect(round.session.prompt).toHaveBeenCalledTimes(1);
+  });
+
+  it("preemption over BOTH expectation-gate faces: a never-landing declared file AND a registered-but-never-set declared variable burn ZERO corrective retries on an aborted first run - PhaseInterruptionError (explicitly NOT ContractViolationError), exactly one prompt (contrast the gate's four-prompt ceiling trajectory)", async () => {
+    const { instance, round } = await host();
+    const ghost = path.join(tmp, "interrupted-ghost.md");
+    instance.vars.declare("verdict", "string");
+    scriptRuns(round, abortedRun());
+    let thrown: unknown;
+    try {
+      await instance.execute_phase("gated-interrupted", {
+        instructions: "Write the thing",
+        write: [ghost],
+        vars: ["verdict"],
+      });
+    } catch (error) {
+      thrown = error;
+    }
+    expect(thrown).toBeInstanceOf(PhaseInterruptionError);
+    expect(thrown).not.toBeInstanceOf(ContractViolationError);
+    expect(round.session.prompt).toHaveBeenCalledTimes(1);
+  });
+
+  it("multi-turn interrupted run (final-message decisive): an intermediate NON-aborted assistant message (stopReason 'toolUse') neither masks nor fakes the flag - the aborted final message drives the rejection", async () => {
+    const { instance, round } = await host();
+    scriptRuns(round, [
+      agentStart(),
+      messageEnd({
+        ...assistantMessage(usage(2, 2, 2, 2)),
+        stopReason: "toolUse",
+      }),
+      messageEnd(abortedAssistant(usage(3, 3, 3, 3))),
+      agentEnd([], false),
+    ]);
+    let thrown: unknown;
+    try {
+      await instance.execute_phase("multi-turn", {
+        instructions: "keep going",
+      });
+    } catch (error) {
+      thrown = error;
+    }
+    expect(thrown).toBeInstanceOf(PhaseInterruptionError);
+    expect(round.session.prompt).toHaveBeenCalledTimes(1);
+  });
+
+  it("positive control - a non-aborted assistant message_end (stopReason 'stop') settles done EXACTLY as baseline: no over-triggering on normal settlements (the untouched legacy suite is the full proof alongside)", async () => {
+    const { instance, round } = await host();
+    scriptRuns(round, [
+      agentStart(),
+      messageEnd(assistantMessage(usage(4, 5, 6, 7))),
+      agentEnd([], false),
+    ]);
+    const result = await instance.execute_phase("calm", {
+      instructions: "steady",
+    });
+    expect(result.done).toBe(true);
+    expect(result.iterations).toBe(1);
+    expect(round.session.prompt).toHaveBeenCalledTimes(1);
+  });
+
+  it("consecutive runs - no flag leak across phases: phase A (one aborted run) REJECTS, then phase B (one quiet run) on the SAME host RESOLVES done with iterations 1 (consume-once + window anchoring end-to-end across the settle boundary)", async () => {
+    const { instance, round } = await host();
+    scriptRuns(round, abortedRun(), quietRun());
+    let thrownA: unknown;
+    try {
+      await instance.execute_phase("phase-a", { instructions: "a" });
+    } catch (error) {
+      thrownA = error;
+    }
+    expect(thrownA).toBeInstanceOf(PhaseInterruptionError);
+    const b = await instance.execute_phase("phase-b", { instructions: "b" });
+    expect(b.done).toBe(true);
+    expect(b.iterations).toBe(1);
+    expect(round.session.prompt).toHaveBeenCalledTimes(2);
+  });
+
+  it("window anchoring vs an out-of-band stale flag: an aborted message_end planted WITHOUT any prompt leaves the next quiet phase UNTOUCHED - the run's own agent_start clears the window strictly before the post-settlement consult (independent of the consume-once path)", async () => {
+    const { instance, round } = await host();
+    emit(round, messageEnd(abortedAssistant(usage(8, 8, 8, 8))));
+    scriptRuns(round, quietRun());
+    const result = await instance.execute_phase("untainted", {
+      instructions: "steady",
+    });
+    expect(result.done).toBe(true);
+    expect(result.iterations).toBe(1);
+  });
+
+  it("swap adjacency - cross-frame isolation under REAL teardown physics: after an interrupted phase's rejection, simulateSwap to a fresh zero-listener handle (same session identity, dispose-first order) + rebind leaves a subsequent quiet phase RESOLVING normally (the very swap order the compose-* demos exercise)", async () => {
+    const { instance, round } = await host();
+    scriptRuns(round, abortedRun(), quietRun());
+    let thrownA: unknown;
+    try {
+      await instance.execute_phase("pre-swap", { instructions: "a" });
+    } catch (error) {
+      thrownA = error;
+    }
+    expect(thrownA).toBeInstanceOf(PhaseInterruptionError);
+    // The real swap order: DISPOSE the outgoing handle first, apply the
+    // FRESH zero-listener incoming handle, then re-arm the observer.
+    const h1 = harness.mintFakeHandle(harness.sessionId);
+    simulateSwap(round, h1);
+    instance.rebind(asHandle(h1));
+    const b = await instance.execute_phase("post-swap", { instructions: "b" });
+    expect(b.done).toBe(true);
+    expect(b.iterations).toBe(1);
+    // Post-swap targeting of the REBOUND handle: phase A's prompt landed on
+    // the disposed outgoing handle, phase B's on the fresh incoming one.
+    expect(round.session.prompt).toHaveBeenCalledTimes(1);
+    expect(h1.prompt).toHaveBeenCalledTimes(1);
+  });
+
+  it("partial durable outputs survive the interrupt: the aborted run's committed write-tool pair still counts in the cumulative counters AND the file still exists on disk AFTER the typed rejection (light by design: survival asserted, not re-adjudicated)", async () => {
+    const committed = path.join(tmp, "committed.md");
+    const { instance, round } = await host();
+    await writeFile(committed, "committed before the abort\n");
+    scriptRuns(round, [
+      agentStart(),
+      start("tc-commit", "write", { path: committed }),
+      end("tc-commit", "write", false),
+      messageEnd(abortedAssistant(usage(5, 5, 5, 5))),
+      agentEnd([], false),
+    ]);
+    let thrown: unknown;
+    try {
+      await instance.execute_phase("partial", {
+        instructions: "Write the thing",
+        write: [committed],
+      });
+    } catch (error) {
+      thrown = error;
+    }
+    expect(thrown).toBeInstanceOf(PhaseInterruptionError);
+    expect(instance.counters().filesWritten).toBe(1);
+    expect(existsSync(committed)).toBe(true);
+  });
+
+  it("BINDING leg (mirror of the gate's leg-2 pattern): the FULL chain (fixture call() -> real base run() -> real emitter) settles {ok:false, errors:[BARE-IDENTITY interruption capture]} with exit code 1 - toStrictEqual pins the ABSENCE of cause and violations keys; the written status.json record carries the interruption type (the exact detection channel the adhoc coordinator consumes)", async () => {
+    const { instance, round } = await host();
+    scriptRuns(round, abortedRun());
+    const cap = new InterruptedFixture({ session: instance });
+    const sessionsRoot = path.join(tmp, ".sessions");
+    const emitter = createStatusEmitter({
+      sessionsRoot,
+      capability: { name: cap.contract.name, version: cap.contract.version },
+      tokens: () => instance.counters().tokens,
+      sessionFile: () => undefined,
+    });
+    const result = await cap.run({});
+    expect(round.session.prompt).toHaveBeenCalledTimes(1);
+    expect(result.ok).toBe(false);
+    if (result.ok) throw new Error("unreachable");
+    expect(result.errors?.[0]).toStrictEqual({
+      type: "PhaseInterruptionError",
+      message: INTERRUPTION_REPLICA,
+    });
+    const emission = await emitter.emit(result);
+    expect(emission.status.ok).toBe(false);
+    expect(emission.exitCode).toBe(1);
+    expect(exitCodeFor(emission.status)).toBe(1);
+    const record = JSON.parse(
+      readFileSync(statusPath(sessionsRoot), "utf8"),
+    ) as {
+      ok: boolean;
+      errors?: Array<{ type: string; message?: string }>;
+    };
+    expect(record.ok).toBe(false);
+    expect(record.errors?.[0]?.type).toBe("PhaseInterruptionError");
+  });
+});
+
 describe("export surface", () => {
   it("runtime export surface is EXACTLY ['PioSession', 'SessionHandleRefusalError', 'SessionVariableStore', 'renderCapabilityMarker', 'renderPhaseMarker', 'renderPhasePermissionDisclosure'] sorted (types erase under erasable syntax)", async () => {
     expect(Object.keys(await import("./pio-session.ts")).sort()).toEqual(
@@ -4480,6 +4751,9 @@ describe("source guards (composed-host edge discipline over pio-session.ts)", ()
         /^\s*import\s+(?!type\b)[^\n;]*?from\s+["']([^"']+)["']/gm,
       ),
     ].map((match) => match[1]);
+    // ./errors.ts EXEMPT: its clause is formatter-wrapped (the joined
+    // three-name brace list exceeds the width limit) and this regex
+    // observes single-line statements only.
     expect(valueClauses).toEqual([
       "node:fs",
       "node:path",
@@ -4490,7 +4764,6 @@ describe("source guards (composed-host edge discipline over pio-session.ts)", ()
       "../tools/bash/landlock-bash.ts",
       "../tools/vars/var-tools.ts",
       "./base.ts",
-      "./errors.ts",
       "./guards/var-gate.ts",
       "./guards/write-gate.ts",
     ]);
@@ -4553,6 +4826,12 @@ describe("source guards (composed-host edge discipline over pio-session.ts)", ()
           "Unreported by design in v1: the store IS the live state every reader can consult directly; the change-record rationale was retired by owner ruling.",
         ),
     ).toBe(true);
+  });
+
+  it("EXACTLY ONE interruption throw site in the module (normalized bytes, needle fragment-assembled so this suite never carries the raw identifier)", () => {
+    const normalized = src.replace(/\s+/g, " ");
+    const needle = `throw new ${["PhaseInterruption", "Error"].join("")}();`;
+    expect(normalized.split(needle).length - 1).toBe(1);
   });
 });
 

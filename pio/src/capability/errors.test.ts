@@ -7,7 +7,11 @@
 // source-guard row reads the module source via node:fs (descriptor read,
 // no import).
 import { readFileSync } from "node:fs";
-import { ContractViolationError, VariableRejectionError } from "./errors.ts";
+import {
+  ContractViolationError,
+  PhaseInterruptionError,
+  VariableRejectionError,
+} from "./errors.ts";
 
 describe("ContractViolationError", () => {
   it("is an instanceof ContractViolationError and Error", () => {
@@ -88,10 +92,39 @@ describe("VariableRejectionError", () => {
   });
 });
 
+describe("PhaseInterruptionError", () => {
+  it("is an instanceof PhaseInterruptionError and Error", () => {
+    const err = new PhaseInterruptionError();
+    expect(err).toBeInstanceOf(PhaseInterruptionError);
+    expect(err).toBeInstanceOf(Error);
+  });
+
+  it("has name 'PhaseInterruptionError'", () => {
+    expect(new PhaseInterruptionError().name).toBe("PhaseInterruptionError");
+  });
+
+  it("carries the pinned ONE-form message (U+2014 escaped identically on both sides; no interpolation, single concern)", () => {
+    const message = new PhaseInterruptionError().message;
+    expect(message).toBe(
+      "Phase interruption: the settling run ended on a user abort \u2014 the phase settles as cancelled",
+    );
+    expect(message.charCodeAt(59)).toBe(0x2014);
+    expect(message.length).toBe(91);
+  });
+
+  it("carries NO cause member (the closed five-member vocabulary adoption stays out of reach — bare-identity reduction is the detection channel)", () => {
+    expect("cause" in new PhaseInterruptionError()).toBe(false);
+  });
+});
+
 describe("mechanical discipline over the error-home surface", () => {
-  it("runtime export surface is EXACTLY ['ContractViolationError', 'VariableRejectionError'] sorted (types erase under erasable syntax)", async () => {
+  it("runtime export surface is EXACTLY ['ContractViolationError', 'PhaseInterruptionError', 'VariableRejectionError'] sorted (types erase under erasable syntax)", async () => {
     expect(Object.keys(await import("./errors.ts")).sort()).toEqual(
-      ["ContractViolationError", "VariableRejectionError"].sort(),
+      [
+        "ContractViolationError",
+        "PhaseInterruptionError",
+        "VariableRejectionError",
+      ].sort(),
     );
   });
 

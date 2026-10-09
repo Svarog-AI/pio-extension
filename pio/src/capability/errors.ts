@@ -61,6 +61,30 @@ export class VariableRejectionError extends Error {
 }
 
 /**
+ * Typed interruption raised when the settling run of an executed phase ends
+ * on a user abort (its final assistant message carries stopReason
+ * "aborted"): the phase settles AS CANCELLED instead of resuming into
+ * further iterations. Sole throw site: the between-turns consult in
+ * execute_phase, preemptive over floor/hook/budget and both gate faces.
+ *
+ * NO cause member on purpose: the closed five-member vocabulary is
+ * undisturbed and no member semantically fits (operator-caused, not
+ * budget/kill/spawn/contract/author-halt) — ES Error.cause stays unset, so
+ * captureError's adoption step finds nothing to adopt and instances reduce
+ * via the generic branch to bare identity {type, message}: the exact shape
+ * the adhoc coordinator detects by. Single concern by design — one pinned
+ * form, NO violations member.
+ */
+export class PhaseInterruptionError extends Error {
+  constructor() {
+    super(
+      "Phase interruption: the settling run ended on a user abort \u2014 the phase settles as cancelled",
+    );
+    this.name = "PhaseInterruptionError";
+  }
+}
+
+/**
  * JSON-safe captured failure: a thrown error reduced to plain data so it
  * survives serialization into the terminal status record's errors array.
  */

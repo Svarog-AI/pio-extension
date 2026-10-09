@@ -81,16 +81,12 @@ const stubKit = vi.hoisted(() => {
     bag: unknown;
     inputs: Record<string, unknown> | undefined;
     mode: StubMode;
-    park: (() => Promise<void>) | undefined;
-    enteredNotify: (() => void) | undefined;
     contract: Contract;
     absoluteToken: string | undefined;
   } = {
     bag: undefined,
     inputs: undefined,
     mode: "success",
-    park: undefined,
-    enteredNotify: undefined,
     contract: DEFAULT_CONTRACT,
     absoluteToken: undefined,
   };
@@ -98,8 +94,6 @@ const stubKit = vi.hoisted(() => {
     state.bag = undefined;
     state.inputs = undefined;
     state.mode = "success";
-    state.park = undefined;
-    state.enteredNotify = undefined;
     state.contract = DEFAULT_CONTRACT;
     state.absoluteToken = undefined;
   };
@@ -124,10 +118,6 @@ vi.mock("../capabilities/research.ts", async () => {
     }
     async call(inputs: Record<string, unknown>) {
       stubKit.state.inputs = inputs;
-      stubKit.state.enteredNotify?.();
-      if (stubKit.state.park !== undefined) {
-        await stubKit.state.park();
-      }
       switch (stubKit.state.mode) {
         case "success":
           return { report: stubKit.STUB_TOKEN };
@@ -165,7 +155,6 @@ interface HandleLike {
   readonly subscribe: ReturnType<typeof vi.fn> &
     ((listener: Listener) => () => void);
   readonly dispose: ReturnType<typeof vi.fn> & (() => void);
-  readonly captured: Listener[];
   readonly live: Listener[];
   disposed: boolean;
   readonly passes: Array<() => Promise<void>>;
@@ -180,7 +169,6 @@ interface RuntimeShape {
 interface Round {
   session: HandleLike;
   runtime: RuntimeShape;
-  captured: Listener[];
 }
 
 const sdkKit = vi.hoisted(() => {
@@ -209,7 +197,6 @@ const sdkKit = vi.hoisted(() => {
     sessionId: string,
     sessionFile: string | undefined,
   ): HandleLike => {
-    const captured: Listener[] = [];
     const live: Listener[] = [];
     const passes: Array<() => Promise<void>> = [];
     const handle: HandleLike = {
@@ -227,7 +214,6 @@ const sdkKit = vi.hoisted(() => {
         state.customMessages.push(payload);
       }),
       subscribe: vi.fn((listener: Listener): (() => void) => {
-        captured.push(listener);
         live.push(listener);
         return (): void => {
           const index = live.indexOf(listener);
@@ -241,7 +227,6 @@ const sdkKit = vi.hoisted(() => {
         live.length = 0;
       }),
       disposed: false,
-      captured,
       live,
       passes,
     };
@@ -286,7 +271,6 @@ const sdkKit = vi.hoisted(() => {
       const round: Round = {
         session: handle,
         runtime,
-        captured: handle.captured,
       };
       state.rounds.push(round);
       return runtime;
@@ -568,7 +552,6 @@ interface World {
   readonly runtime: RuntimeShape;
   readonly stop: ReturnType<typeof vi.fn> & (() => void);
   readonly stderrSink: ReturnType<typeof vi.fn> & ((line: string) => void);
-  readonly physics: boolean;
 }
 
 function seedTranscript(path: string, content: string): void {
@@ -614,7 +597,6 @@ async function setupWorld(opts: {
     runtime: round.runtime,
     stop,
     stderrSink,
-    physics: Boolean(opts.physics),
   };
   if (opts.physics) {
     installFrameEnvironment({
@@ -1123,6 +1105,17 @@ describe("refusal vocabulary (R6-R9 — top world)", () => {
     {
       label: "contract violation (collect-all lines VERBATIM)",
       payload: `{"name":"research","inputs":{}}`,
+      fact: VIOLATION_TOPIC_REPLICA,
+    },
+    {
+      // Decode-lenient branch: the `inputs` KEY IS ABSENT (not just empty).
+      // decodeDispatchRequest defaults it to {} (never refuses absence as
+      // malformed), so the decision still reaches the validator and its
+      // collect-all topic-violation rides next gather -- identity with the
+      // explicit-empty row above proves absence is tolerated, not rejected.
+      label:
+        "contract violation with ABSENT inputs key (decode defaults missing inputs to {}, never refuses absence)",
+      payload: `{"name":"research"}`,
       fact: VIOLATION_TOPIC_REPLICA,
     },
     {

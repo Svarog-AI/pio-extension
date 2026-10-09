@@ -2511,9 +2511,10 @@ describe("module surface and mechanical guards", () => {
     });
   });
 
-  it("runtime export surface is EXACTLY TWELVE keys: default plus the ELEVEN token constants", async () => {
+  it("runtime export surface is EXACTLY THIRTEEN keys: default plus the TWELVE token constants", async () => {
     const mod = await import("./guards-demo.ts");
     expect(Object.keys(mod).sort()).toEqual([
+      "DESCRIPTION",
       "GUARDS_DEMO_ALLOW_ARTIFACT",
       "GUARDS_DEMO_ARTIFACT",
       "GUARDS_DEMO_BASH_ALLOW_FILE",

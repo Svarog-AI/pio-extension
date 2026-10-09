@@ -1114,12 +1114,13 @@ function countOccurrences(haystack: string, needle: string): number {
 describe("module surface and mechanical source guards", () => {
   const src = readFileSync(new URL("./vars-demo.ts", import.meta.url), "utf8");
 
-  it("runtime export surface is EXACTLY the nine named constants + default (sorted-key pin; the private callee is UNREACHABLE - no export)", async () => {
+  it("runtime export surface is EXACTLY the ten named constants + default (sorted-key pin; the private callee is UNREACHABLE - no export)", async () => {
     const mod = await import("./vars-demo.ts");
     expect(Object.keys(mod).sort()).toEqual([
       "CALLEE_NAME",
       "CALLEE_NOTE_VALUE",
       "CALLEE_NOTE_VAR",
+      "DESCRIPTION",
       "GATE_PROBE_VALUE",
       "GATE_PROBE_VAR",
       "MODEL_NOTE_VALUE",

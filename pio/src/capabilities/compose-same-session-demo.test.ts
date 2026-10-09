@@ -1033,9 +1033,13 @@ describe("module surface and mechanical source guards", () => {
     "utf8",
   );
 
-  it("runtime export surface is EXACTLY ['DEMO_TOPIC', 'default'] (types erase under erasable syntax; no error class mints here — received failures forward verbatim) with the owner-bound topic value", async () => {
+  it("runtime export surface is EXACTLY ['DEMO_TOPIC', 'DESCRIPTION', 'default'] (types erase under erasable syntax; no error class mints here — received failures forward verbatim) with the owner-bound topic value", async () => {
     const mod = await import("./compose-same-session-demo.ts");
-    expect(Object.keys(mod).sort()).toEqual(["DEMO_TOPIC", "default"]);
+    expect(Object.keys(mod).sort()).toEqual([
+      "DEMO_TOPIC",
+      "DESCRIPTION",
+      "default",
+    ]);
     expect(mod.default).toBe(ComposeSameSessionDemoCapability);
     expect(DEMO_TOPIC).toBe("Gnosticism in Belgrade, Serbia");
   });

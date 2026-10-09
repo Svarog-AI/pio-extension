@@ -169,6 +169,9 @@ interface FakeRegistration {
 interface FakePi {
   registrations: FakeRegistration[];
   on: (event: string, handler: RecordedHandler) => void;
+  /** Accept-and-ignore recorder for the factory's second member (the /exit
+   * command registration the real seam now issues beside tool_call). */
+  registerCommand: (name: string, options: unknown) => void;
 }
 
 /** Structural fake of the services options shape (erased harness typing is
@@ -471,6 +474,9 @@ async function captureToolCallHandler(
     on: (event, handler) => {
       registrations.push({ event, handler });
     },
+    // The driven factory registers /exit beside tool_call; this helper only
+    // ever drives the interceptor, so the call is accepted and ignored.
+    registerCommand: () => undefined,
   };
   await extensionFactory(pi);
   const registration = registrations.find((r) => r.event === "tool_call");

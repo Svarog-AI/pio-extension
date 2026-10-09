@@ -8,7 +8,11 @@
 // observable. Synthetic payloads reach the seams through two channels:
 // session listener events via the single documented cast seam asEvent, and
 // tool-call events via the widened structural fake typing below (plain
-// literals, cast-free). asEvent remains the sole `as` in this file.
+// literals, cast-free). asEvent remains the sole `as` in this file. No row
+// boots the SDK interactive mode or simulates the /exit shutdown
+// ride-through (the wrapped-sink genuine-exit measurement belongs to the
+// quality-gate manual legs — established hermetic boundary, no seams built
+// for it).
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import type {
@@ -76,9 +80,23 @@ interface FakeRegistration {
   handler: RecordedHandler;
 }
 
+/** Widened structural fake of the registerCommand options object: the sole
+ * member exercised is the handler (erased harness typing is sanctioned);
+ * the stub context exposes only shutdown. */
+interface FakeCommandOptions {
+  handler: (args: string, ctx: { shutdown: () => void }) => Promise<void>;
+}
+
+interface FakeCommandRegistration {
+  name: string;
+  options: FakeCommandOptions;
+}
+
 interface FakePi {
   registrations: FakeRegistration[];
+  commands: FakeCommandRegistration[];
   on: (event: string, handler: RecordedHandler) => void;
+  registerCommand: (name: string, options: FakeCommandOptions) => void;
 }
 
 /** Structural fake of the services options shape (erased harness typing is
@@ -126,10 +144,15 @@ const harness = vi.hoisted(() => {
     for (const factory of options.resourceLoaderOptions?.extensionFactories ??
       []) {
       const registrations: FakeRegistration[] = [];
+      const commands: FakeCommandRegistration[] = [];
       const pi: FakePi = {
         registrations,
+        commands,
         on: (event, handler) => {
           registrations.push({ event, handler });
+        },
+        registerCommand: (name, options) => {
+          commands.push({ name, options });
         },
       };
       state.fakePis.push(pi);
@@ -262,6 +285,14 @@ function lastFakePi() {
   const pi = harness.state.fakePis[harness.state.fakePis.length - 1];
   if (!pi) throw new Error("expected a driven fake extension api");
   return pi;
+}
+
+/** The `exit` registration captured on the last-driven fake api (throws
+ * loudly when the factory never registered it — the RED signal). */
+function lastExitCommand(): FakeCommandRegistration {
+  const reg = lastFakePi().commands.find((command) => command.name === "exit");
+  if (!reg) throw new Error("expected a registered exit command");
+  return reg;
 }
 
 /** Read the stamp value off a handle by descriptor (cast-free discovery).
@@ -555,6 +586,61 @@ describe("createPioSession — threaded guard install + runner semantics", () =>
       escaped = err;
     }
     expect(escaped).toBe(fault);
+  });
+});
+
+describe("createPioSession — /exit command registration (the guard-install factory's second member)", () => {
+  it("exactly-once-per-construction + ADDITIVE: a guardInstall construction drives the captured factory registering `exit` EXACTLY ONCE by name while the SAME drive still carries the single tool_call interceptor (both members coexist on one driven api; the interceptor row family above stays unmodified-green as the additivity proof)", async () => {
+    await createPioSession(CWD, undefined, {
+      guardInstall: { executionState: {}, handlers: [] },
+    });
+    const pi = lastFakePi();
+    expect(pi.commands.map((command) => command.name)).toEqual(["exit"]);
+    expect(pi.registrations.map((r) => r.event)).toEqual(["tool_call"]);
+  });
+
+  it("per-construction, not process-global: a scripted closure re-run (/new flow) drives a FRESH fake api that independently registers `exit` exactly once of its own (two constructions ⇒ two independent registrations; NO shared registry — mirrors the per-construction isolation doctrine)", async () => {
+    await createPioSession(CWD, undefined, {
+      guardInstall: { executionState: {}, handlers: [] },
+    });
+    const initial = lastFakePi();
+    expect(initial.commands.map((command) => command.name)).toEqual(["exit"]);
+
+    await harness.rerunStoredFactory();
+
+    const rerun = lastFakePi();
+    expect(rerun).not.toBe(initial);
+    expect(rerun.commands.map((command) => command.name)).toEqual(["exit"]);
+  });
+
+  it("pure delegation + args ignored: invoking the recorded handler over a stub context whose shutdown is a spy ⇒ the spy is called EXACTLY ONCE with ZERO arguments per invocation; a second invocation with a JUNK args string delegates identically (no argument-parsing machinery; the handler resolves normally)", async () => {
+    await createPioSession(CWD, undefined, {
+      guardInstall: { executionState: {}, handlers: [] },
+    });
+    const handler = lastExitCommand().options.handler;
+    const shutdown = vi.fn();
+
+    await handler("", { shutdown });
+    expect(shutdown).toHaveBeenCalledTimes(1);
+    expect(shutdown).toHaveBeenCalledWith();
+
+    await handler("bogus extra tokens", { shutdown });
+    expect(shutdown).toHaveBeenCalledTimes(2);
+    expect(shutdown).toHaveBeenLastCalledWith();
+  });
+
+  it("faulting context degrades via dispatcher discipline: the handler invoked over a stub context whose shutdown THROWS rejects the handler's promise with the SAME error instance — zero swallowing, zero wrapping in OUR layer (mechanics-only pin: the measured dispatcher's try/catch owns containment — emitError, prompt loop survives; this row asserts our handler adds no containment of its own)", async () => {
+    await createPioSession(CWD, undefined, {
+      guardInstall: { executionState: {}, handlers: [] },
+    });
+    const handler = lastExitCommand().options.handler;
+    const fault = new Error("shutdown fault");
+    const badContext = {
+      shutdown: (): void => {
+        throw fault;
+      },
+    };
+    await expect(handler("", badContext)).rejects.toBe(fault);
   });
 });
 

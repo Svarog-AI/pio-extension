@@ -713,15 +713,15 @@ describe("lazy discipline and structural guards", () => {
 // meaningful (either side drifting fails loudly).
 const DESCRIPTION_REPLICAS: Readonly<Record<string, string>> = {
   research:
-    "Bounded web-research loop producing one growing markdown report saved in the project workspace.",
+    "Researches whatever topic you give it: searches the web and writes the findings into a readable markdown report saved in the project workspace.",
   "compose-new-session-demo":
-    "Temporary demonstration: greets, hands the live terminal over to a brand-new session running research on a fixed topic, then reports the top 3 findings once control returns.",
+    "Temporary demonstration of handing the terminal between sessions: after a greeting, a brand-new session takes over your terminal to research a fixed topic, and you get the top 3 findings from its report once control comes back.",
   "compose-same-session-demo":
-    "Standing demonstration: greets, runs research directly inside the current session (same conversation throughout) on a fixed topic, then reports the top 3 findings.",
+    "Demonstration of keeping everything in one session: after a greeting, research runs inside your current session without ever leaving it, and you get the top 3 findings from its report.",
   "guards-demo":
-    "Standing demonstration of the engine's deliverable check: a phase deliberately skips its declared output file, the engine forces a corrected retry until the file exists, and the outcome is stated.",
+    "Demonstration of missing-deliverable protection: a run deliberately skips writing its required file, the engine forces a corrected retry until the file exists, and the outcome is stated.",
   "vars-demo":
-    "Standing demonstration of the shared variable store: model and program code set and read the same session variables mid-run, including one deliberately forced retry and a value written by a nested sub-run.",
+    "Demonstration of the shared variable store: within one run, the AI and the program code set and read the same variables, one step is deliberately retried, and a value written by a nested sub-run is read back in the main run.",
 };
 
 describe("on-demand catalog walk (listCapabilities)", () => {

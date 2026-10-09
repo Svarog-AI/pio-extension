@@ -68,7 +68,7 @@ export const REPORT_FINGERPRINT_LENGTH = 12;
 /** One-line catalog description (SOLE OWNER of the pinned bytes; the loader
  * suite replica names this owner). Surfaced by the on-demand catalog walk. */
 export const DESCRIPTION =
-  "Bounded web-research loop producing one growing markdown report saved in the project workspace.";
+  "Researches whatever topic you give it: searches the web and writes the findings into a readable markdown report saved in the project workspace.";
 
 /** The pinned preflight stderr line (module-private composition; the suite
  * replica names this owner). Check order: web_search, then web_fetch. */

@@ -359,9 +359,6 @@ vi.mock("node:fs", async (importOriginal) => {
 
 const ROW_END_MESSAGE = "adhoc-suite: row end";
 
-const GREETING_FRAGMENT =
-  "Press ESC at any time to cancel the currently running operation; the conversation stays alive.";
-
 const CATALOG_HEADER_REPLICA = "Available capabilities:";
 
 const ADHOC_DESCRIPTION_REPLICA =
@@ -382,7 +379,7 @@ function listingReplica(): string {
 
 function gatherBaselineReplica(): string {
   const lead = `Cycle protocol for the adhoc dispatcher:
-1. REVIEW the conversation since the last cycle. If a decided-and-stored request is already visible and still stands, skip straight to step 4 (STORE) below. If nothing is pending or actionable this cycle, say briefly what you can help with and end WITHOUT defining the variable (leave it at the sentinel {}).`;
+1. REVIEW the conversation since the last cycle. If a decided-and-stored request is already visible and still stands, skip straight to step 4 (STORE) below. If there is nothing pending or actionable this cycle, keep getting information from the user about what they want next - ask anything that is missing within the delivered channels, and stay at it until you are certain what the next step is. When you have exhausted what you can ask, end your turn WITHOUT defining the variable (leave it at the sentinel {}).`;
   const tail = `2. CHECK: match the request against the listed capabilities and their declared inputs. If nothing fits, say so plainly and leave the variable at the sentinel.
 3. RECOMMEND: in your reply, name which capability you would call, which inputs you would pass, and why. Use the provisioned ask_user tool to gather whatever is missing (including the concrete input values) until you are confident.
 4. STORE: when determined, define the variable 'dispatch_request' with the setVar tool holding EXACTLY the JSON string {"name": "<capability>", "inputs": {...}} (values plain strings; inputs may be empty). When nothing dispatches, leave the variable at the sentinel {}.
@@ -801,12 +798,11 @@ const TOPIC = "Stained glass in Rouen";
 const DECISION_JSON = `{"name":"research","inputs":{"topic":"${TOPIC}"}}`;
 
 describe("happy chain (R1 — binding leg, physics world)", () => {
-  it("the full sitting: greeting -> gather burst (listing + REAL setVar + ask delta, then a quiet settle) -> confirm -> UNIFORM ROW-2 hop -> report with BASE-SETTLED absolute outputs -> consume-and-clear -> outer re-arm; exactly ONE span stamp across the whole sitting", async () => {
+  it("the full sitting: gather burst (listing + REAL setVar + ask delta, then a quiet settle) -> confirm -> UNIFORM ROW-2 hop -> report with BASE-SETTLED absolute outputs -> consume-and-clear -> outer re-arm; exactly ONE span stamp across the whole sitting", async () => {
     const root = newTempRoot();
     const world = await setupWorld({ root, env: "set", physics: true });
     const tools = await recoverTools();
     const results: DrivenSettlement[] = [];
-    scriptQuiet(world.round.session);
     scriptStorePass(world.round.session, tools, DECISION_JSON, true, results);
     scriptQuiet(world.round.session);
     scriptAsk(world.round.session);
@@ -823,32 +819,30 @@ describe("happy chain (R1 — binding leg, physics world)", () => {
     expect(result).toStrictEqual(VALVE_RESULT);
 
     const prompts = topPrompts(world);
-    expect(prompts).toHaveLength(6);
+    expect(prompts).toHaveLength(5);
     expect(prompts.every((record) => record.file === world.parentFile)).toBe(
       true,
     );
-    expect(sdkKit.state.promptLog).toHaveLength(6); // zero child-file prompts
-    expect(sentText(prompts, 0)).toContain(renderPhaseMarker("greeting"));
-    expect(sentText(prompts, 0)).toContain(GREETING_FRAGMENT);
+    expect(sdkKit.state.promptLog).toHaveLength(5); // zero child-file prompts
     const baseline = promptOf("gather", gatherBaselineReplica());
+    expect(sentText(prompts, 0)).toBe(baseline);
     expect(sentText(prompts, 1)).toBe(baseline);
-    expect(sentText(prompts, 2)).toBe(baseline);
-    expect(sentText(prompts, 3)).toContain(renderPhaseMarker("confirm"));
-    expect(sentText(prompts, 3)).toContain(CONFIRM_DECISION_LEAD);
-    expect(sentText(prompts, 3)).toContain(
+    expect(sentText(prompts, 2)).toContain(renderPhaseMarker("confirm"));
+    expect(sentText(prompts, 2)).toContain(CONFIRM_DECISION_LEAD);
+    expect(sentText(prompts, 2)).toContain(
       confirmDecisionLine("research", stubKit.RESEARCH_DESCRIPTION),
     );
-    expect(sentText(prompts, 3)).toContain(
+    expect(sentText(prompts, 2)).toContain(
       `Inputs to pass: ${JSON.stringify({ topic: TOPIC })}`,
     );
-    expect(sentText(prompts, 3)).toContain(CONFIRM_GRAMMAR_FRAGMENT);
+    expect(sentText(prompts, 2)).toContain(CONFIRM_GRAMMAR_FRAGMENT);
     const abs = expectedAbsolutePath(stubKit.STUB_TOKEN);
-    expect(sentText(prompts, 4)).toContain(renderPhaseMarker("report"));
-    expect(sentText(prompts, 4)).toContain(REPORT_SETTLED_LINE("research"));
-    expect(sentText(prompts, 4)).toContain(
+    expect(sentText(prompts, 3)).toContain(renderPhaseMarker("report"));
+    expect(sentText(prompts, 3)).toContain(REPORT_SETTLED_LINE("research"));
+    expect(sentText(prompts, 3)).toContain(
       `Outputs: ${JSON.stringify({ report: abs })}`,
     );
-    expect(sentText(prompts, 5)).toBe(baseline);
+    expect(sentText(prompts, 4)).toBe(baseline);
     expect(world.instance.vars.get(DISPATCH_REQUEST_VAR)).toBe(
       NO_DISPATCH_VALUE,
     );
@@ -913,7 +907,6 @@ describe("quiet-cycle shape (R2 — top world)", () => {
   it("quiescent cycling costs EXACTLY one gather prompt per inner iteration (two consecutive cycles pinned by prompt count/text; variable at the sentinel; no confirm/report prompts; no hop)", async () => {
     const root = newTempRoot();
     const world = await setupWorld({ root, env: "set" });
-    scriptQuiet(world.round.session); // greeting
     scriptQuiet(world.round.session); // cycle 1: gather reconciliation
     scriptQuiet(world.round.session); // cycle 2: gather reconciliation
     scriptValve(world.round.session); // row-end valve (cycle 3's prompt)
@@ -921,12 +914,11 @@ describe("quiet-cycle shape (R2 — top world)", () => {
     const result = await adhoc.run();
     expect(result).toStrictEqual(VALVE_RESULT);
     const prompts = topPrompts(world);
-    expect(prompts).toHaveLength(4);
+    expect(prompts).toHaveLength(3);
     const baseline = promptOf("gather", gatherBaselineReplica());
+    expect(sentText(prompts, 0)).toBe(baseline);
     expect(sentText(prompts, 1)).toBe(baseline);
     expect(sentText(prompts, 2)).toBe(baseline);
-    expect(sentText(prompts, 3)).toBe(baseline);
-    expect(sentText(prompts, 0)).toContain(renderPhaseMarker("greeting"));
     for (const record of prompts) {
       expect(record.text).not.toContain(renderPhaseMarker("confirm"));
       expect(record.text).not.toContain(renderPhaseMarker("report"));
@@ -948,7 +940,6 @@ describe("flow independence (R3 — physics world)", () => {
     const world = await setupWorld({ root, env: "set", physics: true });
     const tools = await recoverTools();
     const results: DrivenSettlement[] = [];
-    scriptQuiet(world.round.session); // greeting
     scriptStorePass(world.round.session, tools, DECISION_JSON, false, results);
     scriptAsk(world.round.session); // affirming confirm pass
     scriptHappyHop(world, {
@@ -965,19 +956,19 @@ describe("flow independence (R3 — physics world)", () => {
       setSuccessReplica(DISPATCH_REQUEST_VAR, DECISION_JSON),
     );
     const prompts = topPrompts(world);
-    expect(prompts).toHaveLength(5);
-    expect(sentText(prompts, 1)).toContain(renderPhaseMarker("gather"));
-    expect(sentText(prompts, 2)).toContain(renderPhaseMarker("confirm"));
-    expect(sentText(prompts, 2)).toContain(CONFIRM_DECISION_LEAD);
+    expect(prompts).toHaveLength(4);
+    expect(sentText(prompts, 0)).toContain(renderPhaseMarker("gather"));
+    expect(sentText(prompts, 1)).toContain(renderPhaseMarker("confirm"));
+    expect(sentText(prompts, 1)).toContain(CONFIRM_DECISION_LEAD);
     expect(world.runtime.switchSession).toHaveBeenCalledTimes(2);
     expect(stubKit.state.bag).toEqual({});
     expect(stubKit.state.inputs).toStrictEqual({ topic: TOPIC });
     const abs = expectedAbsolutePath(stubKit.STUB_TOKEN);
-    expect(sentText(prompts, 3)).toContain(REPORT_SETTLED_LINE("research"));
-    expect(sentText(prompts, 3)).toContain(
+    expect(sentText(prompts, 2)).toContain(REPORT_SETTLED_LINE("research"));
+    expect(sentText(prompts, 2)).toContain(
       `Outputs: ${JSON.stringify({ report: abs })}`,
     );
-    expect(sentText(prompts, 4)).toBe(
+    expect(sentText(prompts, 3)).toBe(
       promptOf("gather", gatherBaselineReplica()),
     );
     expect(world.instance.vars.get(DISPATCH_REQUEST_VAR)).toBe(
@@ -993,7 +984,6 @@ describe("ESC mid-burst (R4 — top world)", () => {
     const root = newTempRoot();
     const world = await setupWorld({ root, env: "set" });
     const tools = await recoverTools();
-    scriptQuiet(world.round.session); // greeting
     scriptStorePass(world.round.session, tools, DECISION_JSON, true, []);
     scriptAbort(world.round.session); // burst run 2 settles ABORTED
     scriptValve(world.round.session); // fresh burst's prompt = row-end valve
@@ -1005,9 +995,9 @@ describe("ESC mid-burst (R4 — top world)", () => {
       NO_DISPATCH_VALUE,
     );
     const prompts = topPrompts(world);
-    expect(prompts).toHaveLength(4);
-    expect(sentText(prompts, 3)).toBe(sentText(prompts, 1));
-    expect(sentText(prompts, 3)).toBe(
+    expect(prompts).toHaveLength(3);
+    expect(sentText(prompts, 2)).toBe(sentText(prompts, 0));
+    expect(sentText(prompts, 2)).toBe(
       promptOf("gather", gatherBaselineReplica()),
     );
     expect(world.runtime.switchSession).toHaveBeenCalledTimes(0);
@@ -1030,7 +1020,6 @@ describe("ESC mid-hosted-run (R5 — physics world)", () => {
     mkdirSync(archiveDir, { recursive: true });
     stubKit.state.contract = stubKit.INTERRUPT_CONTRACT;
     stubKit.state.mode = "abort";
-    scriptQuiet(world.round.session); // greeting
     scriptStorePass(world.round.session, tools, DECISION_JSON, true, []);
     scriptQuiet(world.round.session); // gather settles quiet
     scriptAsk(world.round.session); // affirming confirm
@@ -1058,10 +1047,10 @@ describe("ESC mid-hosted-run (R5 — physics world)", () => {
       { type: "PhaseInterruptionError", message: PIE_MESSAGE_REPLICA },
     ]);
     const prompts = topPrompts(world);
-    expect(prompts).toHaveLength(6);
+    expect(prompts).toHaveLength(5);
     expect(world.runtime.session.sessionId).toBe(sdkKit.PARENT_ID);
     expect(activeFrames()).toHaveLength(1);
-    const reportText = sentText(prompts, 4);
+    const reportText = sentText(prompts, 3);
     expect(reportText).toContain(renderPhaseMarker("report"));
     expect(reportText).toContain(INTERRUPT_CANCELLATION_LINE("research"));
     expect(reportText).toContain(INTERRUPT_SURVIVORS_LABEL);
@@ -1075,7 +1064,7 @@ describe("ESC mid-hosted-run (R5 — physics world)", () => {
     expect(world.instance.vars.get(DISPATCH_REQUEST_VAR)).toBe(
       NO_DISPATCH_VALUE,
     );
-    expect(sentText(prompts, 5)).toBe(
+    expect(sentText(prompts, 4)).toBe(
       promptOf("gather", gatherBaselineReplica()),
     );
     expect(world.stop).toHaveBeenCalledTimes(0);
@@ -1144,7 +1133,6 @@ describe("refusal vocabulary (R6-R9 — top world)", () => {
       const root = newTempRoot();
       const world = await setupWorld({ root, env: "set" });
       const tools = await recoverTools();
-      scriptQuiet(world.round.session); // greeting
       scriptStorePass(world.round.session, tools, row.payload, true, []);
       scriptQuiet(world.round.session); // burst 1 run 2 settles quiet
       scriptQuiet(world.round.session); // burst 2 (carries the fact) settles
@@ -1153,11 +1141,11 @@ describe("refusal vocabulary (R6-R9 — top world)", () => {
       const result = await adhoc.run();
       expect(result).toStrictEqual(VALVE_RESULT);
       const prompts = topPrompts(world);
-      expect(prompts).toHaveLength(5);
+      expect(prompts).toHaveLength(4);
       const baseline = promptOf("gather", gatherBaselineReplica());
+      expect(sentText(prompts, 0)).toBe(baseline);
       expect(sentText(prompts, 1)).toBe(baseline);
-      expect(sentText(prompts, 2)).toBe(baseline);
-      const second = sentText(prompts, 3);
+      const second = sentText(prompts, 2);
       expect(second).toContain(listingReplica());
       expect(second).toContain(row.fact);
       expect(second.indexOf(CATALOG_HEADER_REPLICA)).toBeLessThan(
@@ -1171,7 +1159,7 @@ describe("refusal vocabulary (R6-R9 — top world)", () => {
       );
       expect(world.runtime.switchSession).toHaveBeenCalledTimes(0);
       expect(stubKit.state.bag).toEqual({});
-      expect(sentText(prompts, 4)).toBe(baseline);
+      expect(sentText(prompts, 3)).toBe(baseline);
       expect(stderrText()).toBe("");
       expect(stdoutText()).toBe("");
     });
@@ -1184,7 +1172,6 @@ describe("stale variable (R10 — top world)", () => {
     const world = await setupWorld({ root, env: "set" });
     const tools = await recoverTools();
     const declineResults: DrivenSettlement[] = [];
-    scriptQuiet(world.round.session); // greeting
     scriptStorePass(world.round.session, tools, DECISION_JSON, true, []);
     scriptQuiet(world.round.session); // gather settles quiet
     scriptStorePass(
@@ -1201,14 +1188,14 @@ describe("stale variable (R10 — top world)", () => {
     const result = await adhoc.run();
     expect(result).toStrictEqual(VALVE_RESULT);
     const prompts = topPrompts(world);
-    expect(prompts).toHaveLength(7);
-    expect(sentText(prompts, 3)).toContain(renderPhaseMarker("confirm"));
+    expect(prompts).toHaveLength(6);
+    expect(sentText(prompts, 2)).toContain(renderPhaseMarker("confirm"));
     expect(declineResults[0]?.content[0]?.text).toBe(
       setSuccessReplica(DISPATCH_REQUEST_VAR, NO_DISPATCH_VALUE),
     );
     const baseline = promptOf("gather", gatherBaselineReplica());
+    expect(sentText(prompts, 3)).toBe(baseline);
     expect(sentText(prompts, 4)).toBe(baseline);
-    expect(sentText(prompts, 5)).toBe(baseline);
     expect(world.runtime.switchSession).toHaveBeenCalledTimes(0);
     expect(stubKit.state.bag).toEqual({});
     expect(world.instance.vars.get(DISPATCH_REQUEST_VAR)).toBe(
@@ -1258,7 +1245,6 @@ describe("env defect (R11 — physics world)", () => {
     const absoluteToken = join(root, "fixed", "report.md");
     stubKit.state.mode = "success-absolute";
     stubKit.state.absoluteToken = absoluteToken;
-    scriptQuiet(world.round.session);
     scriptStorePass(world.round.session, tools, DECISION_JSON, true, []);
     scriptQuiet(world.round.session);
     scriptAsk(world.round.session);
@@ -1273,7 +1259,7 @@ describe("env defect (R11 — physics world)", () => {
     const result = await adhoc.run();
     expect(result).toStrictEqual(VALVE_RESULT);
     const prompts = topPrompts(world);
-    const reportText = sentText(prompts, 4);
+    const reportText = sentText(prompts, 3);
     expect(reportText).toContain(REPORT_SETTLED_LINE("research"));
     expect(reportText).toContain(
       `Outputs: ${JSON.stringify({ report: absoluteToken })}`,
@@ -1302,7 +1288,6 @@ describe("env defect (R11 — physics world)", () => {
     fsKit.setForced((): void => {
       throw new Error("adhoc-suite: forced survivor-scan fault");
     });
-    scriptQuiet(world.round.session);
     scriptStorePass(world.round.session, tools, DECISION_JSON, true, []);
     scriptQuiet(world.round.session);
     scriptAsk(world.round.session);
@@ -1320,7 +1305,7 @@ describe("env defect (R11 — physics world)", () => {
     const result = await adhoc.run();
     expect(result).toStrictEqual(VALVE_RESULT);
     const prompts = topPrompts(world);
-    const reportText = sentText(prompts, 4);
+    const reportText = sentText(prompts, 3);
     expect(reportText).toContain(INTERRUPT_CANCELLATION_LINE("research"));
     expect(reportText).toContain(INTERRUPT_DEGRADED_REPLICA);
     expect(reportText).not.toContain(INTERRUPT_SURVIVORS_LABEL);
@@ -1347,7 +1332,6 @@ describe("result-variant coverage (physics world)", () => {
     const world = await setupWorld({ root, env: "set", physics: true });
     const tools = await recoverTools();
     stubKit.state.mode = "bare-error";
-    scriptQuiet(world.round.session);
     scriptStorePass(world.round.session, tools, DECISION_JSON, true, []);
     scriptQuiet(world.round.session);
     scriptAsk(world.round.session);
@@ -1362,7 +1346,7 @@ describe("result-variant coverage (physics world)", () => {
     const result = await adhoc.run();
     expect(result).toStrictEqual(VALVE_RESULT);
     const prompts = topPrompts(world);
-    const reportText = sentText(prompts, 4);
+    const reportText = sentText(prompts, 3);
     expect(reportText).toContain(renderPhaseMarker("report"));
     expect(reportText).toContain(
       REPORT_FAILED_LINE("research", "WebToolsMissingError"),
@@ -1384,7 +1368,7 @@ describe("result-variant coverage (physics world)", () => {
     expect(world.instance.vars.get(DISPATCH_REQUEST_VAR)).toBe(
       NO_DISPATCH_VALUE,
     );
-    expect(sentText(prompts, 5)).toBe(
+    expect(sentText(prompts, 4)).toBe(
       promptOf("gather", gatherBaselineReplica()),
     );
     expect(stderrText()).toBe("");
@@ -1397,7 +1381,6 @@ describe("result-variant coverage (physics world)", () => {
     const tools = await recoverTools();
     stubKit.state.contract = stubKit.INTERRUPT_CONTRACT;
     stubKit.state.mode = "abort";
-    scriptQuiet(world.round.session);
     scriptStorePass(world.round.session, tools, DECISION_JSON, true, []);
     scriptQuiet(world.round.session);
     scriptAsk(world.round.session);
@@ -1415,7 +1398,7 @@ describe("result-variant coverage (physics world)", () => {
     const result = await adhoc.run();
     expect(result).toStrictEqual(VALVE_RESULT);
     const prompts = topPrompts(world);
-    const reportText = sentText(prompts, 4);
+    const reportText = sentText(prompts, 3);
     expect(reportText).toContain(INTERRUPT_CANCELLATION_LINE("research"));
     expect(reportText).toContain(INTERRUPT_NONE_LINE);
     expect(reportText).not.toContain(INTERRUPT_SURVIVORS_LABEL);
@@ -1429,7 +1412,6 @@ describe("bound (R12 — top world)", () => {
   it("endless ask continuation in gather settles PLAINLY at the cap (done at ADHOC_BURST_MAX_RUNS - bound-behavior, NO throw, NO annotation duty); the body proceeds on the sentinel and the loop stays alive", async () => {
     const root = newTempRoot();
     const world = await setupWorld({ root, env: "set" });
-    scriptQuiet(world.round.session); // greeting
     for (let run = 0; run < ADHOC_BURST_MAX_RUNS; run++) {
       scriptAsk(world.round.session); // every run: delta > 0, nothing stored
     }
@@ -1438,11 +1420,11 @@ describe("bound (R12 — top world)", () => {
     const result = await adhoc.run();
     expect(result).toStrictEqual(VALVE_RESULT);
     const prompts = topPrompts(world);
-    expect(prompts).toHaveLength(1 + ADHOC_BURST_MAX_RUNS + 1);
-    expect(sentText(prompts, 1)).toBe(
+    expect(prompts).toHaveLength(ADHOC_BURST_MAX_RUNS + 1);
+    expect(sentText(prompts, 0)).toBe(
       promptOf("gather", gatherBaselineReplica()),
     );
-    expect(sentText(prompts, ADHOC_BURST_MAX_RUNS + 1)).toBe(
+    expect(sentText(prompts, ADHOC_BURST_MAX_RUNS)).toBe(
       promptOf("gather", gatherBaselineReplica()),
     );
     expect(world.instance.vars.get(DISPATCH_REQUEST_VAR)).toBe(

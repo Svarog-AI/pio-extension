@@ -792,13 +792,12 @@ const TOPIC = "Stained glass in Rouen";
 const DECISION_JSON = `{"name":"research","inputs":{"topic":"${TOPIC}"}}`;
 
 describe("happy chain (R1 — binding leg, physics world)", () => {
-  it("the full sitting: gather burst (listing + REAL setVar + ask delta, then a quiet settle) -> confirm -> UNIFORM ROW-2 hop -> report with BASE-SETTLED absolute outputs -> consume-and-clear -> outer re-arm; exactly ONE span stamp across the whole sitting", async () => {
+  it("the full sitting: gather burst (listing + REAL setVar + ask delta, settling the burst in its own run) -> confirm -> UNIFORM ROW-2 hop -> report with BASE-SETTLED absolute outputs -> consume-and-clear -> outer re-arm; exactly ONE span stamp across the whole sitting", async () => {
     const root = newTempRoot();
     const world = await setupWorld({ root, env: "set", physics: true });
     const tools = await recoverTools();
     const results: DrivenSettlement[] = [];
     scriptStorePass(world.round.session, tools, DECISION_JSON, true, results);
-    scriptQuiet(world.round.session);
     scriptAsk(world.round.session);
     scriptHappyHop(world, {
       childId: "child-r1",
@@ -813,30 +812,29 @@ describe("happy chain (R1 — binding leg, physics world)", () => {
     expect(result).toStrictEqual(VALVE_RESULT);
 
     const prompts = topPrompts(world);
-    expect(prompts).toHaveLength(5);
+    expect(prompts).toHaveLength(4);
     expect(prompts.every((record) => record.file === world.parentFile)).toBe(
       true,
     );
-    expect(sdkKit.state.promptLog).toHaveLength(5); // zero child-file prompts
+    expect(sdkKit.state.promptLog).toHaveLength(4); // zero child-file prompts
     const baseline = promptOf("gather", gatherBaselineReplica());
     expect(sentText(prompts, 0)).toBe(baseline);
-    expect(sentText(prompts, 1)).toBe(baseline);
-    expect(sentText(prompts, 2)).toContain(renderPhaseMarker("confirm"));
-    expect(sentText(prompts, 2)).toContain(CONFIRM_DECISION_LEAD);
-    expect(sentText(prompts, 2)).toContain(
+    expect(sentText(prompts, 1)).toContain(renderPhaseMarker("confirm"));
+    expect(sentText(prompts, 1)).toContain(CONFIRM_DECISION_LEAD);
+    expect(sentText(prompts, 1)).toContain(
       confirmDecisionLine("research", stubKit.RESEARCH_DESCRIPTION),
     );
-    expect(sentText(prompts, 2)).toContain(
+    expect(sentText(prompts, 1)).toContain(
       `Inputs to pass: ${JSON.stringify({ topic: TOPIC })}`,
     );
-    expect(sentText(prompts, 2)).toContain(CONFIRM_GRAMMAR_FRAGMENT);
+    expect(sentText(prompts, 1)).toContain(CONFIRM_GRAMMAR_FRAGMENT);
     const abs = expectedAbsolutePath(stubKit.STUB_TOKEN);
-    expect(sentText(prompts, 3)).toContain(renderPhaseMarker("report"));
-    expect(sentText(prompts, 3)).toContain(REPORT_SETTLED_LINE("research"));
-    expect(sentText(prompts, 3)).toContain(
+    expect(sentText(prompts, 2)).toContain(renderPhaseMarker("report"));
+    expect(sentText(prompts, 2)).toContain(REPORT_SETTLED_LINE("research"));
+    expect(sentText(prompts, 2)).toContain(
       `Outputs: ${JSON.stringify({ report: abs })}`,
     );
-    expect(sentText(prompts, 4)).toBe(baseline);
+    expect(sentText(prompts, 3)).toBe(baseline);
     expect(world.instance.vars.get(DISPATCH_REQUEST_VAR)).toBe(
       NO_DISPATCH_VALUE,
     );
@@ -974,12 +972,12 @@ describe("flow independence (R3 — physics world)", () => {
 });
 
 describe("ESC mid-burst (R4 — top world)", () => {
-  it("an aborted gather settlement throws PhaseInterruptionError OUT of the body's own phase, is caught around the cycle, DISCARDS the stored decision, and re-arms a fresh gather burst (prompts continue on the top handle; no hop)", async () => {
+  it("an aborted confirm settlement throws PhaseInterruptionError OUT of the body's own phase, is caught around the cycle, DISCARDS the stored decision, and re-arms a fresh gather burst (prompts continue on the top handle; no hop)", async () => {
     const root = newTempRoot();
     const world = await setupWorld({ root, env: "set" });
     const tools = await recoverTools();
     scriptStorePass(world.round.session, tools, DECISION_JSON, true, []);
-    scriptAbort(world.round.session); // burst run 2 settles ABORTED
+    scriptAbort(world.round.session); // the confirm run settles ABORTED
     scriptValve(world.round.session); // fresh burst's prompt = row-end valve
     const adhoc = new AdhocCapability({ session: world.instance });
     const result = await adhoc.run();
@@ -1015,7 +1013,6 @@ describe("ESC mid-hosted-run (R5 — physics world)", () => {
     stubKit.state.contract = stubKit.INTERRUPT_CONTRACT;
     stubKit.state.mode = "abort";
     scriptStorePass(world.round.session, tools, DECISION_JSON, true, []);
-    scriptQuiet(world.round.session); // gather settles quiet
     scriptAsk(world.round.session); // affirming confirm
     scriptHappyHop(world, {
       childId: "child-r5",
@@ -1041,10 +1038,10 @@ describe("ESC mid-hosted-run (R5 — physics world)", () => {
       { type: "PhaseInterruptionError", message: PIE_MESSAGE_REPLICA },
     ]);
     const prompts = topPrompts(world);
-    expect(prompts).toHaveLength(5);
+    expect(prompts).toHaveLength(4);
     expect(world.runtime.session.sessionId).toBe(sdkKit.PARENT_ID);
     expect(activeFrames()).toHaveLength(1);
-    const reportText = sentText(prompts, 3);
+    const reportText = sentText(prompts, 2);
     expect(reportText).toContain(renderPhaseMarker("report"));
     expect(reportText).toContain(INTERRUPT_CANCELLATION_LINE("research"));
     expect(reportText).toContain(INTERRUPT_SURVIVORS_LABEL);
@@ -1058,7 +1055,7 @@ describe("ESC mid-hosted-run (R5 — physics world)", () => {
     expect(world.instance.vars.get(DISPATCH_REQUEST_VAR)).toBe(
       NO_DISPATCH_VALUE,
     );
-    expect(sentText(prompts, 4)).toBe(
+    expect(sentText(prompts, 3)).toBe(
       promptOf("gather", gatherBaselineReplica()),
     );
     expect(world.stop).toHaveBeenCalledTimes(0);
@@ -1128,18 +1125,16 @@ describe("refusal vocabulary (R6-R9 — top world)", () => {
       const world = await setupWorld({ root, env: "set" });
       const tools = await recoverTools();
       scriptStorePass(world.round.session, tools, row.payload, true, []);
-      scriptQuiet(world.round.session); // burst 1 run 2 settles quiet
       scriptQuiet(world.round.session); // burst 2 (carries the fact) settles
       scriptValve(world.round.session); // row-end valve (burst 3's prompt)
       const adhoc = new AdhocCapability({ session: world.instance });
       const result = await adhoc.run();
       expect(result).toStrictEqual(VALVE_RESULT);
       const prompts = topPrompts(world);
-      expect(prompts).toHaveLength(4);
+      expect(prompts).toHaveLength(3);
       const baseline = promptOf("gather", gatherBaselineReplica());
       expect(sentText(prompts, 0)).toBe(baseline);
-      expect(sentText(prompts, 1)).toBe(baseline);
-      const second = sentText(prompts, 2);
+      const second = sentText(prompts, 1);
       expect(second).toContain(listingReplica());
       expect(second).toContain(row.fact);
       expect(second.indexOf(CATALOG_HEADER_REPLICA)).toBeLessThan(
@@ -1153,7 +1148,7 @@ describe("refusal vocabulary (R6-R9 — top world)", () => {
       );
       expect(world.runtime.switchSession).toHaveBeenCalledTimes(0);
       expect(stubKit.state.bag).toEqual({});
-      expect(sentText(prompts, 3)).toBe(baseline);
+      expect(sentText(prompts, 2)).toBe(baseline);
       expect(stderrText()).toBe("");
       expect(stdoutText()).toBe("");
     });
@@ -1167,7 +1162,6 @@ describe("stale variable (R10 — top world)", () => {
     const tools = await recoverTools();
     const declineResults: DrivenSettlement[] = [];
     scriptStorePass(world.round.session, tools, DECISION_JSON, true, []);
-    scriptQuiet(world.round.session); // gather settles quiet
     scriptStorePass(
       world.round.session,
       tools,
@@ -1182,14 +1176,14 @@ describe("stale variable (R10 — top world)", () => {
     const result = await adhoc.run();
     expect(result).toStrictEqual(VALVE_RESULT);
     const prompts = topPrompts(world);
-    expect(prompts).toHaveLength(6);
-    expect(sentText(prompts, 2)).toContain(renderPhaseMarker("confirm"));
+    expect(prompts).toHaveLength(5);
+    expect(sentText(prompts, 1)).toContain(renderPhaseMarker("confirm"));
     expect(declineResults[0]?.content[0]?.text).toBe(
       setSuccessReplica(DISPATCH_REQUEST_VAR, NO_DISPATCH_VALUE),
     );
     const baseline = promptOf("gather", gatherBaselineReplica());
+    expect(sentText(prompts, 2)).toBe(baseline);
     expect(sentText(prompts, 3)).toBe(baseline);
-    expect(sentText(prompts, 4)).toBe(baseline);
     expect(world.runtime.switchSession).toHaveBeenCalledTimes(0);
     expect(stubKit.state.bag).toEqual({});
     expect(world.instance.vars.get(DISPATCH_REQUEST_VAR)).toBe(
@@ -1240,7 +1234,6 @@ describe("env defect (R11 — physics world)", () => {
     stubKit.state.mode = "success-absolute";
     stubKit.state.absoluteToken = absoluteToken;
     scriptStorePass(world.round.session, tools, DECISION_JSON, true, []);
-    scriptQuiet(world.round.session);
     scriptAsk(world.round.session);
     scriptHappyHop(world, {
       childId: "child-r11a",
@@ -1253,7 +1246,7 @@ describe("env defect (R11 — physics world)", () => {
     const result = await adhoc.run();
     expect(result).toStrictEqual(VALVE_RESULT);
     const prompts = topPrompts(world);
-    const reportText = sentText(prompts, 3);
+    const reportText = sentText(prompts, 2);
     expect(reportText).toContain(REPORT_SETTLED_LINE("research"));
     expect(reportText).toContain(
       `Outputs: ${JSON.stringify({ report: absoluteToken })}`,
@@ -1283,7 +1276,6 @@ describe("env defect (R11 — physics world)", () => {
       throw new Error("adhoc-suite: forced survivor-scan fault");
     });
     scriptStorePass(world.round.session, tools, DECISION_JSON, true, []);
-    scriptQuiet(world.round.session);
     scriptAsk(world.round.session);
     scriptHappyHop(world, {
       childId: "child-r11b",
@@ -1299,7 +1291,7 @@ describe("env defect (R11 — physics world)", () => {
     const result = await adhoc.run();
     expect(result).toStrictEqual(VALVE_RESULT);
     const prompts = topPrompts(world);
-    const reportText = sentText(prompts, 3);
+    const reportText = sentText(prompts, 2);
     expect(reportText).toContain(INTERRUPT_CANCELLATION_LINE("research"));
     expect(reportText).toContain(INTERRUPT_DEGRADED_REPLICA);
     expect(reportText).not.toContain(INTERRUPT_SURVIVORS_LABEL);
@@ -1327,7 +1319,6 @@ describe("result-variant coverage (physics world)", () => {
     const tools = await recoverTools();
     stubKit.state.mode = "bare-error";
     scriptStorePass(world.round.session, tools, DECISION_JSON, true, []);
-    scriptQuiet(world.round.session);
     scriptAsk(world.round.session);
     scriptHappyHop(world, {
       childId: "child-r14",
@@ -1340,7 +1331,7 @@ describe("result-variant coverage (physics world)", () => {
     const result = await adhoc.run();
     expect(result).toStrictEqual(VALVE_RESULT);
     const prompts = topPrompts(world);
-    const reportText = sentText(prompts, 3);
+    const reportText = sentText(prompts, 2);
     expect(reportText).toContain(renderPhaseMarker("report"));
     expect(reportText).toContain(
       REPORT_FAILED_LINE("research", "WebToolsMissingError"),
@@ -1362,7 +1353,7 @@ describe("result-variant coverage (physics world)", () => {
     expect(world.instance.vars.get(DISPATCH_REQUEST_VAR)).toBe(
       NO_DISPATCH_VALUE,
     );
-    expect(sentText(prompts, 4)).toBe(
+    expect(sentText(prompts, 3)).toBe(
       promptOf("gather", gatherBaselineReplica()),
     );
     expect(stderrText()).toBe("");
@@ -1376,7 +1367,6 @@ describe("result-variant coverage (physics world)", () => {
     stubKit.state.contract = stubKit.INTERRUPT_CONTRACT;
     stubKit.state.mode = "abort";
     scriptStorePass(world.round.session, tools, DECISION_JSON, true, []);
-    scriptQuiet(world.round.session);
     scriptAsk(world.round.session);
     scriptHappyHop(world, {
       childId: "child-r15",
@@ -1392,7 +1382,7 @@ describe("result-variant coverage (physics world)", () => {
     const result = await adhoc.run();
     expect(result).toStrictEqual(VALVE_RESULT);
     const prompts = topPrompts(world);
-    const reportText = sentText(prompts, 3);
+    const reportText = sentText(prompts, 2);
     expect(reportText).toContain(INTERRUPT_CANCELLATION_LINE("research"));
     expect(reportText).toContain(INTERRUPT_NONE_LINE);
     expect(reportText).not.toContain(INTERRUPT_SURVIVORS_LABEL);

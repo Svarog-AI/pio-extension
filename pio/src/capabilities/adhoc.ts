@@ -314,7 +314,13 @@ export default class AdhocCapability extends PioCapability {
         vars: [DISPATCH_REQUEST_VAR],
         min: 1,
         max: ADHOC_BURST_MAX_RUNS,
-        shouldStopLoop: (ctx) => Promise.resolve(ctx.askUserCalls === 0),
+        shouldStopLoop: (ctx) => {
+          const stored = ctx.vars.get(DISPATCH_REQUEST_VAR);
+          return Promise.resolve(
+            ctx.askUserCalls === 0 ||
+              (stored !== undefined && stored !== NO_DISPATCH_VALUE),
+          );
+        },
       });
       carriedRefusal = undefined;
       const raw = session.vars.get(DISPATCH_REQUEST_VAR);

@@ -200,8 +200,14 @@ async function guardSources(
 /** Phase U — register the WHOLE roster in ONE read-modify-write on the
  * bubble sessions' GLOBAL settings file (measured getSettingsPath() over
  * $PI_CODING_AGENT_DIR). Missing file ⇒ minimal shape; everything else
- * (keys, entry order, foreign values) preserved verbatim; nothing missing
- * ⇒ NO write at all (steady-state zero-write pin). Written atomically:
+ * (keys, entry order, foreign values) preserved verbatim. The SAME write
+ * ALSO ensures the idle-escape pin (`doubleEscapeAction` → `"none"`, so an
+ * idle double-ESC stays inert instead of opening the tree selector
+ * mid-loop) — inserted ONLY when the key is ABSENT: a pre-existing value of
+ * ANY type wins verbatim (pi's own settings UI persists deliberate
+ * operator choices into this very file), so the no-write condition grows to
+ * nothing-missing AND pin-PRESENT (steady-state zero-write pin). Written
+ * atomically:
  * unique temp sibling IN THE SAME DIRECTORY (parent mkdir -p first —
  * ensurePiTree creates only <piTree>), then rename over the final name.
  * On write/rename fault: best-effort temp cleanup, ORIGINAL error
@@ -269,7 +275,14 @@ async function registerAll(
   // doubled; object-form entries never match a string entry and pass
   // through verbatim).
   const missing = entries.filter((entry) => !existing.some((e) => e === entry));
-  if (missing.length === 0) return; // NOTHING missing ⇒ NO write at all
+  // KEY PRESENCE decides the pin, not value truthiness: only absence pins.
+  const pinPresent = "doubleEscapeAction" in doc;
+  if (missing.length === 0 && pinPresent) {
+    return; // steady state (nothing missing AND pin present) ⇒ NO write at all
+  }
+  if (!pinPresent) {
+    doc.doubleEscapeAction = "none";
+  }
   doc.packages = [...existing, ...missing];
 
   const serialized = `${JSON.stringify(doc, null, 2)}\n`;
@@ -292,9 +305,9 @@ async function registerAll(
  * package into the isolated agent dir's global settings as a user-scope
  * LOCAL SOURCE entry — pi's loader then loads each vendored tree IN PLACE
  * (no copy, no symlink, no network). TWO PHASES: guard-all (one stat per
- * package, fail-fast), then register-all (ONE settings write, or a
- * zero-write no-op). Resolves void; rejects with LayoutError (the existing
- * family). */
+ * package, fail-fast), then register-all (ONE settings write — the whole
+ * roster PLUS the idle-escape pin, pin-only-if-absent — or a zero-write
+ * no-op). Resolves void; rejects with LayoutError (the existing family). */
 export async function ensureOwnedExtensions(
   piTree: string,
   seams?: OwnedExtensionSeams,

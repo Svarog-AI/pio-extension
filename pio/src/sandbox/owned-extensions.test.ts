@@ -133,10 +133,20 @@ describe("registration creation (guard-all + register-all)", () => {
     await ensureOwnedExtensions(piTree, { pioRoot, packages: [A] });
 
     const absA = path.join(pioRoot, "node_modules", A);
-    expect(await readSettings(piTree)).toEqual({ packages: [absA] });
-    // Canonical serialization: 2-space indent + trailing newline.
+    expect(await readSettings(piTree)).toEqual({
+      doubleEscapeAction: "none",
+      packages: [absA],
+    });
+    // Canonical serialization: 2-space indent + trailing newline. THE BYTE
+    // REPLICA AFFIRMATIVELY PINS THE FRESH-DOC KEY ORDER: the pin serializes
+    // FIRST (V8 insertion order — assigned before packages materializes on
+    // the empty doc); refactors must NOT reorder/sort keys.
     expect(await readFile(settingsPathOf(piTree), "utf8")).toBe(
-      `${JSON.stringify({ packages: [absA] }, null, 2)}\n`,
+      `${JSON.stringify(
+        { doubleEscapeAction: "none", packages: [absA] },
+        null,
+        2,
+      )}\n`,
     );
     // NOTHING is copied anymore: the entire state-root footprint IS the
     // ensured .pi handle + the settings file it registered into.
@@ -158,9 +168,16 @@ describe("registration creation (guard-all + register-all)", () => {
 
     const absA = path.join(pioRoot, "node_modules", A);
     const absB = path.join(pioRoot, "node_modules", B);
-    expect(await readSettings(piTree)).toEqual({ packages: [absA, absB] });
+    expect(await readSettings(piTree)).toEqual({
+      doubleEscapeAction: "none",
+      packages: [absA, absB],
+    });
     expect(await readFile(settingsPathOf(piTree), "utf8")).toBe(
-      `${JSON.stringify({ packages: [absA, absB] }, null, 2)}\n`,
+      `${JSON.stringify(
+        { doubleEscapeAction: "none", packages: [absA, absB] },
+        null,
+        2,
+      )}\n`,
     );
   });
 });
@@ -226,10 +243,18 @@ describe("settings upsert (ONE atomic write covering the whole roster)", () => {
       theme: "dark",
       packages: [absA, "/some/foreign/path", 42, { x: 1 }, absB],
       editor: { tabSize: 2 },
+      doubleEscapeAction: "none",
     });
-    // Top-level key ORDER preserved (insertion order survived the round-trip).
+    // Top-level key ORDER preserved (insertion order survived the round-trip)
+    // and the NEW pin key APPENDS LAST (existing-key reassignment keeps its
+    // position; a fresh key lands at the end of the V8 insertion order).
     const updated = (await readSettings(piTree)) as Record<string, unknown>;
-    expect(Object.keys(updated)).toEqual(["theme", "packages", "editor"]);
+    expect(Object.keys(updated)).toEqual([
+      "theme",
+      "packages",
+      "editor",
+      "doubleEscapeAction",
+    ]);
     // A's pre-existing entry is never doubled.
     const packages = (updated as { packages: unknown[] }).packages;
     expect(packages.filter((entry) => entry === absA)).toHaveLength(1);
@@ -242,6 +267,7 @@ describe("settings upsert (ONE atomic write covering the whole roster)", () => {
     const preseeded = {
       packages: [path.join(pioRoot, "node_modules", A), "/some/other"],
       theme: "dark",
+      doubleEscapeAction: "none",
     };
     const rawPreseed = `${JSON.stringify(preseeded, null, 2)}\n`;
     await writeFile(settingsPathOf(piTree), rawPreseed);
@@ -273,6 +299,104 @@ describe("settings upsert (ONE atomic write covering the whole roster)", () => {
       ([rel]) => rel !== ".pi/agent/settings.json",
     );
     expect(afterWalk).toEqual(beforeWalk);
+  });
+});
+
+describe("idle-escape pin (the second ensured key — pin-only-if-absent)", () => {
+  it("PIN-ALONE GAP: an otherwise-COMPLETE accumulated doc (whole roster present, unrelated keys around it) MISSING ONLY doubleEscapeAction ⇒ EXACTLY ONE atomic write whose result differs from the input BY EXACTLY the one APPENDED-LAST key (deep-equal modulo the addition; entry order + unrelated keys survive verbatim)", async () => {
+    const pioRoot = await fabricatePioRoot([A, B]);
+    const { piTree } = await makeStateRoot();
+    const seams = { pioRoot, packages: [A, B] as const };
+    const preseeded = {
+      theme: "dark",
+      packages: [
+        path.join(pioRoot, "node_modules", A),
+        path.join(pioRoot, "node_modules", B),
+      ],
+      editor: { tabSize: 2 },
+    };
+    await mkdir(path.dirname(settingsPathOf(piTree)), { recursive: true });
+    await writeFile(
+      settingsPathOf(piTree),
+      `${JSON.stringify(preseeded, null, 2)}\n`,
+    );
+    const writes: string[] = [];
+    const countingFs = {
+      ...nodeOwnedExtensionFs,
+      writeFile: async (file: string, data: string): Promise<void> => {
+        writes.push(file);
+        await nodeOwnedExtensionFs.writeFile(file, data);
+      },
+    };
+
+    await ensureOwnedExtensions(piTree, { ...seams, fs: countingFs });
+
+    // One settings touch, on the unique same-directory temp sibling.
+    expect(writes).toHaveLength(1);
+    expect(writes[0]?.startsWith(`${settingsPathOf(piTree)}.`)).toBe(true);
+    expect(writes[0]?.endsWith(".tmp")).toBe(true);
+    // The result IS the input modulo EXACTLY the one added key.
+    expect(await readSettings(piTree)).toEqual({
+      ...preseeded,
+      doubleEscapeAction: "none",
+    });
+    const updated = (await readSettings(piTree)) as Record<string, unknown>;
+    expect(Object.keys(updated)).toEqual([
+      "theme",
+      "packages",
+      "editor",
+      "doubleEscapeAction",
+    ]);
+  });
+
+  it('FOREIGN VALUE PRESERVED: a complete roster + a pre-existing "doubleEscapeAction": "fork" (valid alternative literal) ⇒ ZERO writes — settings BYTES AND mtime untouched, the foreign value survives VERBATIM (preserve-if-present: a deliberate in-bubble operator choice persisted into this very file is never reverted by a launch)', async () => {
+    const pioRoot = await fabricatePioRoot([A, B]);
+    const { piTree } = await makeStateRoot();
+    const seams = { pioRoot, packages: [A, B] as const };
+    const preseeded = {
+      theme: "dark",
+      packages: [
+        path.join(pioRoot, "node_modules", A),
+        path.join(pioRoot, "node_modules", B),
+      ],
+      doubleEscapeAction: "fork",
+    };
+    const rawPreseed = `${JSON.stringify(preseeded, null, 2)}\n`;
+    await mkdir(path.dirname(settingsPathOf(piTree)), { recursive: true });
+    await writeFile(settingsPathOf(piTree), rawPreseed);
+    const mtimeBefore = (await lstat(settingsPathOf(piTree))).mtimeMs;
+
+    await ensureOwnedExtensions(piTree, seams);
+
+    expect(await readFile(settingsPathOf(piTree), "utf8")).toBe(rawPreseed);
+    expect((await lstat(settingsPathOf(piTree))).mtimeMs).toBe(mtimeBefore);
+    const updated = (await readSettings(piTree)) as Record<string, unknown>;
+    expect(updated.doubleEscapeAction).toBe("fork");
+  });
+
+  it("GARBAGE PIN VALUES PRESERVED: a complete roster + a NON-STRING pin value (null in one pre-seed, a number in the next) ⇒ ZERO writes each time and the value survives VERBATIM — pins the KEY-PRESENCE (in-operator) semantic against a future value-truthiness implementation slip", async () => {
+    const pioRoot = await fabricatePioRoot([A, B]);
+    const { piTree } = await makeStateRoot();
+    const seams = { pioRoot, packages: [A, B] as const };
+    const base = {
+      theme: "dark",
+      packages: [
+        path.join(pioRoot, "node_modules", A),
+        path.join(pioRoot, "node_modules", B),
+      ],
+    };
+    for (const garbage of [null, 42]) {
+      const preseeded = { ...base, doubleEscapeAction: garbage };
+      const rawPreseed = `${JSON.stringify(preseeded, null, 2)}\n`;
+      await mkdir(path.dirname(settingsPathOf(piTree)), { recursive: true });
+      await writeFile(settingsPathOf(piTree), rawPreseed);
+      const mtimeBefore = (await lstat(settingsPathOf(piTree))).mtimeMs;
+
+      await ensureOwnedExtensions(piTree, seams);
+
+      expect(await readFile(settingsPathOf(piTree), "utf8")).toBe(rawPreseed);
+      expect((await lstat(settingsPathOf(piTree))).mtimeMs).toBe(mtimeBefore);
+    }
   });
 });
 
@@ -406,6 +530,7 @@ describe("multi-package rows (ordering + failure isolation)", () => {
     expect(writes[0]?.startsWith(`${settingsPathOf(piTree)}.`)).toBe(true);
     expect(writes[0]?.endsWith(".tmp")).toBe(true);
     expect(await readSettings(piTree)).toEqual({
+      doubleEscapeAction: "none",
       packages: [
         path.join(pioRoot, "node_modules", A),
         path.join(pioRoot, "node_modules", B),
@@ -441,6 +566,7 @@ describe("multi-package rows (ordering + failure isolation)", () => {
         path.join(pioRoot, "node_modules", B),
       ],
       isolated: true,
+      doubleEscapeAction: "none",
     });
   });
 });
@@ -599,10 +725,18 @@ describe("default-guard derivations (mechanical anti-coupling)", () => {
       theme: "dark",
       packages: [searchEntry, "/some/foreign/path", askUserEntry],
       editor: { tabSize: 2 },
+      doubleEscapeAction: "none",
     });
-    // Top-level key ORDER preserved (insertion order survived the round-trip).
+    // Top-level key ORDER preserved (insertion order survived the round-trip)
+    // and the NEW pin key APPENDS LAST (existing-key reassignment keeps its
+    // position; a fresh key lands at the end of the V8 insertion order).
     const updated = (await readSettings(piTree)) as Record<string, unknown>;
-    expect(Object.keys(updated)).toEqual(["theme", "packages", "editor"]);
+    expect(Object.keys(updated)).toEqual([
+      "theme",
+      "packages",
+      "editor",
+      "doubleEscapeAction",
+    ]);
     // The pre-existing native-search entry is never doubled.
     const packages = (updated as { packages: unknown[] }).packages;
     expect(packages.filter((entry) => entry === searchEntry)).toHaveLength(1);

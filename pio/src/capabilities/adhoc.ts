@@ -29,8 +29,6 @@ export const ADHOC_BURST_MAX_RUNS = 30;
 export const DESCRIPTION =
   "Describe what you need in plain language and it matches your request against the registered built-ins, confirms the pick with you, runs the chosen capability right here in this conversation, and reports the result - staying available for follow-ups until you exit.";
 
-const GREETING_TEMPLATE = `You are the adhoc dispatcher for this conversation. Describe anything you need and this loop will match it against the listed built-in capabilities, recommend one, confirm the pick with you, run the chosen capability right here in this conversation, report the result, and stay available for follow-ups until you exit. Press ESC at any time to cancel the currently running operation; the conversation stays alive. Greet the operator now, then end your turn right after (no tools, no questions).`;
-
 const CATALOG_HEADER = "Available capabilities:";
 
 function renderCatalogListing(outcomes: readonly CatalogOutcome[]): string {
@@ -52,24 +50,16 @@ function renderCatalogListing(outcomes: readonly CatalogOutcome[]): string {
   return lines.join("\n");
 }
 
-const GATHER_LEAD = `Cycle protocol for the adhoc dispatcher:
-1. REVIEW the conversation since the last cycle. If a decided-and-stored request is already visible and still stands, skip straight to step 4 (STORE) below. If nothing is pending or actionable this cycle, say briefly what you can help with and end WITHOUT defining the variable (leave it at the sentinel {}).`;
-
-const GATHER_TAIL = `2. CHECK: match the request against the listed capabilities and their declared inputs. If nothing fits, say so plainly and leave the variable at the sentinel.
-3. RECOMMEND: in your reply, name which capability you would call, which inputs you would pass, and why. Use the provisioned ask_user tool to gather whatever is missing (including the concrete input values) until you are confident.
-4. STORE: when determined, define the variable '${DISPATCH_REQUEST_VAR}' with the setVar tool holding EXACTLY the JSON string {"name": "<capability>", "inputs": {...}} (values plain strings; inputs may be empty). When nothing dispatches, leave the variable at the sentinel ${NO_DISPATCH_VALUE}.
-5. END right after storing (or deciding not to). The program side validates between turns, confirms with the operator, and runs the confirmed capability between turns; its outcome appears in the transcript before your next engagement. If you store a request and ask a question in the same final run, the loop simply continues and the last settled state wins.
-Work autonomously between any ask_user exchange and the turn end.`;
+const GATHER_INSTRUCTIONS = `When the conversation has no context yet, open by asking how you can help, then ask targeted follow-up questions until you know what the user wants - use the ask_user tool for anything that is missing, including concrete input values, and stay at it until there is enough context. Never pull up the full list and ask what they want: the list below is reference material for matching, not a menu to hand over. Match the request against the capabilities and their declared inputs: if one capability obviously fits, tell the user which capability you will call, which inputs you will pass, and why - no choice to make; if several could fit, offer only the narrowed shortlist of candidates for the user to pick from; if nothing fits, say so plainly. When you are ready, define the variable '${DISPATCH_REQUEST_VAR}' with the setVar tool holding EXACTLY the JSON string {"name": "<capability>", "inputs": {...}} (values are plain strings; inputs may be empty), and end your reply right after storing; if nothing applies, leave the variable at ${NO_DISPATCH_VALUE} and end without storing. Don't do anything except what is said here - you are just gathering input.`;
 
 function renderGatherInstructions(
   listing: string,
   carriedRefusal: string | undefined,
 ): string {
-  const parts: string[] = [GATHER_LEAD, listing];
+  const parts: string[] = [GATHER_INSTRUCTIONS, listing];
   if (carriedRefusal !== undefined) {
     parts.push(carriedRefusal);
   }
-  parts.push(GATHER_TAIL);
   return parts.join("\n\n");
 }
 
@@ -287,13 +277,6 @@ export default class AdhocCapability extends PioCapability {
     const listing = renderCatalogListing(await listCapabilities());
     session.vars.declare(DISPATCH_REQUEST_VAR, "string");
     session.vars.set(DISPATCH_REQUEST_VAR, NO_DISPATCH_VALUE);
-    // Out of the interruption catch on purpose: an ESC during the bookend
-    // propagates through the base catch-all instead of re-arming gather.
-    await this.execute_phase("greeting", {
-      instructions: GREETING_TEMPLATE,
-      min: 1,
-      max: 1,
-    });
     for (;;) {
       try {
         const decision = await this.determineDecision(session, listing);
@@ -331,7 +314,6 @@ export default class AdhocCapability extends PioCapability {
         vars: [DISPATCH_REQUEST_VAR],
         min: 1,
         max: ADHOC_BURST_MAX_RUNS,
-        shouldStopLoop: (ctx) => Promise.resolve(ctx.askUserCalls === 0),
       });
       carriedRefusal = undefined;
       const raw = session.vars.get(DISPATCH_REQUEST_VAR);

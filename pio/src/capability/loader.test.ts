@@ -8,9 +8,10 @@
 // runtime values cross a parse boundary or an assign-widening instead of an
 // annotation (the checkers assert shapes at runtime; the annotation
 // documents shape, not protection). Mechanical source guards pin the import
-// surface and the five-entry table literal.
+// surface and the six-entry table literal.
 
 import { readFileSync } from "node:fs";
+import * as adhocNamespace from "../capabilities/adhoc.ts";
 import ComposeNewSessionDemoCapability, * as composeNewSessionDemoModule from "../capabilities/compose-new-session-demo.ts";
 import ComposeSameSessionDemoCapability, * as composeSameSessionDemoModule from "../capabilities/compose-same-session-demo.ts";
 import GuardsDemoCapability, * as guardsDemoModule from "../capabilities/guards-demo.ts";
@@ -87,13 +88,14 @@ const FIXTURE_GAMMA = class extends PioCapability {
 };
 
 describe("miss path (default table)", () => {
-  it("the registration table ships EXACTLY the five entries in INSERTION order ('research' first, then the temporary demo, the permanent same-session demo, the PERMANENT guard-demonstration home 'guards-demo', and the PERMANENT variable-store home 'vars-demo' last)", () => {
+  it("the registration table ships EXACTLY the six entries in INSERTION order ('research' first, then the temporary demo, the permanent same-session demo, the PERMANENT guard-demonstration home 'guards-demo', the PERMANENT variable-store home 'vars-demo', and the PERMANENT universal dispatcher 'adhoc' last)", () => {
     expect(Object.keys(CAPABILITY_TABLE)).toEqual([
       "research",
       "compose-new-session-demo",
       "compose-same-session-demo",
       "guards-demo",
       "vars-demo",
+      "adhoc",
     ]);
   });
 
@@ -678,7 +680,7 @@ describe("lazy discipline and structural guards", () => {
     expect(src.includes("@earendil-works/pi-coding-agent")).toBe(false);
   });
 
-  it("dynamic-import literal specifier set is EXACTLY the five shipped entries in table order AND total import( count equals the literal-set length (no interpolation)", () => {
+  it("dynamic-import literal specifier set is EXACTLY the six shipped entries in table order AND total import( count equals the literal-set length (no interpolation)", () => {
     const literalSet = [
       ...src.matchAll(/import\(\s*["']([^"']*)["']\s*\)/g),
     ].map((match) => match[1]);
@@ -689,6 +691,7 @@ describe("lazy discipline and structural guards", () => {
       "../capabilities/compose-same-session-demo.ts",
       "../capabilities/guards-demo.ts",
       "../capabilities/vars-demo.ts",
+      "../capabilities/adhoc.ts",
     ]);
     expect(totalImportCalls).toBe(literalSet.length);
   });
@@ -722,10 +725,12 @@ const DESCRIPTION_REPLICAS: Readonly<Record<string, string>> = {
     "Demonstration of missing-deliverable protection: a run deliberately skips writing its required file, the engine forces a corrected retry until the file exists, and the outcome is stated.",
   "vars-demo":
     "Demonstration of the shared variable store: within one run, the AI and the program code set and read the same variables, one step is deliberately retried, and a value written by a nested sub-run is read back in the main run.",
+  adhoc:
+    "Describe what you need in plain language and it matches your request against the registered built-ins, confirms the pick with you, runs the chosen capability right here in this conversation, and reports the result - staying available for follow-ups until you exit.",
 };
 
 describe("on-demand catalog walk (listCapabilities)", () => {
-  it("walking the SHIPPED table resolves EXACTLY the five entries as ok:true in INSERTION order, each carrying the co-located DESCRIPTION bytes AND the REAL declared input specs", async () => {
+  it("walking the SHIPPED table resolves EXACTLY the six entries as ok:true in INSERTION order, each carrying the co-located DESCRIPTION bytes AND the REAL declared input specs", async () => {
     const outcomes: CatalogOutcome[] = await listCapabilities();
     expect(
       outcomes.map((outcome) => (outcome.ok ? outcome.name : null)),
@@ -735,6 +740,7 @@ describe("on-demand catalog walk (listCapabilities)", () => {
       "compose-same-session-demo",
       "guards-demo",
       "vars-demo",
+      "adhoc",
     ]);
     const pinnedInputs: Readonly<Record<string, readonly unknown[]>> = {
       research: [{ name: "topic" }],
@@ -742,6 +748,7 @@ describe("on-demand catalog walk (listCapabilities)", () => {
       "compose-same-session-demo": [],
       "guards-demo": [],
       "vars-demo": [],
+      adhoc: [],
     };
     for (const outcome of outcomes) {
       if (!outcome.ok)
@@ -760,6 +767,7 @@ describe("on-demand catalog walk (listCapabilities)", () => {
       ["compose-same-session-demo", composeSameSessionDemoModule],
       ["guards-demo", guardsDemoModule],
       ["vars-demo", varsDemoModule],
+      ["adhoc", adhocNamespace],
     ];
     for (const [name, mod] of carriers) {
       expect(mod.DESCRIPTION).toBe(DESCRIPTION_REPLICAS[name]);

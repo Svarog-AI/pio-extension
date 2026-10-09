@@ -5,14 +5,15 @@
 // issuing a literal dynamic import of the capability module — so nothing
 // registered evaluates until its exact name resolves. Registration is a
 // static edit of the literal below; there is no mutation API. The table
-// ships FIVE entries — `research`, the first registered built-in; the
+// ships SIX entries — `research`, the first registered built-in; the
 // temporary `compose-new-session-demo` demonstration (removal scheduled at
 // the bulk-migration cutover); the permanent `compose-same-session-demo`
 // demonstration; the PERMANENT `guards-demo` guard-demonstration home
-// (future guard tests accumulate there); and the PERMANENT `vars-demo`
+// (future guard tests accumulate there); the PERMANENT `vars-demo`
 // variable-store demonstration home (setting, composition, and the manual
-// quality-gate leg) — all resolving through the dedicated capabilities/
-// subpackage.
+// quality-gate leg); and the PERMANENT `adhoc` universal dispatcher (the
+// singular open-ended sitting over the whole table) — all resolving through
+// the dedicated capabilities/ subpackage.
 //
 // Resolution is UI-neutral and never rejects: every outcome, including
 // every fault class, RESOLVES as a discriminated result — a success
@@ -51,7 +52,7 @@ export interface CapabilityModule {
 /** Lazy factory: resolves one registered capability module (literal dynamic import). */
 export type CapabilityFactory = () => Promise<CapabilityModule>;
 
-/** name → factory. Hardcoded, static, in-artifact. Ships the `research`, the temporary `compose-new-session-demo`, the permanent `compose-same-session-demo`, the PERMANENT `guards-demo` guard-demonstration-home, and the PERMANENT `vars-demo` variable-store-home entries. */
+/** name → factory. Hardcoded, static, in-artifact. Ships the `research`, the temporary `compose-new-session-demo`, the permanent `compose-same-session-demo`, the PERMANENT `guards-demo` guard-demonstration-home, the PERMANENT `vars-demo` variable-store-home, and the PERMANENT `adhoc` universal-dispatcher entries. */
 export type CapabilityTable = Readonly<Record<string, CapabilityFactory>>;
 export const CAPABILITY_TABLE: CapabilityTable = {
   research: () => import("../capabilities/research.ts"),
@@ -61,6 +62,7 @@ export const CAPABILITY_TABLE: CapabilityTable = {
     import("../capabilities/compose-same-session-demo.ts"),
   "guards-demo": () => import("../capabilities/guards-demo.ts"),
   "vars-demo": () => import("../capabilities/vars-demo.ts"),
+  adhoc: () => import("../capabilities/adhoc.ts"),
 };
 
 export interface ResolvedCapability {

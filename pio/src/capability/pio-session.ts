@@ -401,6 +401,8 @@ export interface IterationCtx {
   readonly counters: SessionCounters;
   /** Committed paths of the just-settled run — stable under repeated reads. */
   readonly filesWritten: string[];
+  /** Per-run settled-run delta of started ask-user tool executions (this run only; contrast counters.askUserCalls, session-cumulative). */
+  readonly askUserCalls: number;
   /** The session variable store, passed by reference: the SAME instance the
    * model's variable tools write during the run — a hook reading it mid-run
    * observes the LIVE values, including writes landed during the
@@ -915,6 +917,7 @@ interface UsageTotals {
 class SessionObserver {
   #toolUses: Record<string, number> = {};
   #askUserCalls = 0;
+  #askUserBaseline = 0;
   #pendingPaths: Map<string, string> = new Map();
   #masterList: string[] = [];
   #pathBaseline = 0;
@@ -1028,6 +1031,19 @@ class SessionObserver {
   /** Move the payload baseline past every recorded observation. */
   resetMessageBaseline(): void {
     this.#messageBaseline = this.#payloadMaster.length;
+  }
+
+  /** Non-consuming take of started ask-user executions since the last
+   * baseline advance — this run's window (failures included; near-names
+   * excluded by the exact-match constant). */
+  askUserCallsDelta(): number {
+    return this.#askUserCalls - this.#askUserBaseline;
+  }
+
+  /** Move the ask-user baseline past every observed start; the cumulative
+   * counter is untouched. */
+  resetAskUserCallsBaseline(): void {
+    this.#askUserBaseline = this.#askUserCalls;
   }
 
   /** Consume-once take of the current window's aborted mark: returns the
@@ -1402,6 +1418,7 @@ export class PioSession {
       for (;;) {
         // Close the previous run's window before this run's can open.
         this.resetFilesWrittenDelta();
+        this.#observer.resetAskUserCallsBaseline();
         iterations += 1;
         const outgoing =
           pendingNote !== undefined ? `${text}\n${pendingNote}` : text;
@@ -1416,12 +1433,14 @@ export class PioSession {
         }
         const counters = this.counters();
         const filesWritten = this.getFilesWrittenDelta();
+        const askUserCalls = this.#observer.askUserCallsDelta();
         let proceed = iterations < min;
         const shouldStopLoop = opts?.shouldStopLoop;
         if (shouldStopLoop) {
           const verdict = await shouldStopLoop({
             counters,
             filesWritten,
+            askUserCalls,
             vars: this.vars,
           });
           proceed = proceed || !verdict;
@@ -1502,6 +1521,7 @@ export class PioSession {
     } finally {
       // Windows never leak into the next phase regardless of the exit cause.
       this.resetFilesWrittenDelta();
+      this.#observer.resetAskUserCallsBaseline();
       this.resetRunMessages();
       if (attached) this.#executionState?.detachPhase();
     }

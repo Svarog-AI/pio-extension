@@ -2455,6 +2455,114 @@ describe("PioSession — hook context", () => {
     ]);
   });
 
+  it("attributes ask-user starts to the just-settled run as a per-run delta while the cumulative counter keeps growing across runs (failed starts count; near-names stay excluded)", async () => {
+    const { instance, round } = await host();
+    // Hand-computed: run 1 opens two ask_user exchanges (one failing) plus
+    // a near-name probe that never counts; run 2 opens exactly one more.
+    // Deltas [2, 1] vs cumulative [2, 3].
+    scriptRuns(
+      round,
+      [
+        agentStart(),
+        start("u1", "ask_user", {}),
+        end("u1", "ask_user", false),
+        start("u2", "ask_user", {}),
+        end("u2", "ask_user", true),
+        start("n1", "ask-user", {}),
+        end("n1", "ask-user", false),
+        agentEnd([], false),
+      ],
+      [
+        agentStart(),
+        start("u3", "ask_user", {}),
+        end("u3", "ask_user", false),
+        agentEnd([], false),
+      ],
+    );
+    const seen: Array<{ delta: number; cumulative: number }> = [];
+    let n = 0;
+    await instance.execute_phase("ask-delta", {
+      shouldStopLoop: async (ctx) => {
+        n += 1;
+        seen.push({
+          delta: ctx.askUserCalls,
+          cumulative: ctx.counters.askUserCalls,
+        });
+        return n === 2;
+      },
+    });
+    expect(seen).toEqual([
+      { delta: 2, cumulative: 2 },
+      { delta: 1, cumulative: 3 },
+    ]);
+    // Near-names ride the exact-match constant: present in toolUses, absent
+    // from both ask-user faces.
+    expect(instance.counters().toolUses).toEqual({
+      ask_user: 3,
+      "ask-user": 1,
+    });
+    expect(instance.counters().askUserCalls).toBe(3);
+  });
+
+  it("keeps ask-user windows isolated between phases: prior-phase starts stay out of the next phase's first-run delta, and a phase interrupted on the throw path closes its window behind it", async () => {
+    const { instance, round } = await host();
+    // Phase A settles its sole run with two ask-user starts inside it.
+    scriptRuns(round, [
+      agentStart(),
+      start("a1", "ask_user", {}),
+      end("a1", "ask_user", false),
+      start("a2", "ask_user", {}),
+      end("a2", "ask_user", false),
+      agentEnd([], false),
+    ]);
+    let a: number | undefined;
+    await instance.execute_phase("window-a", {
+      shouldStopLoop: async (ctx) => {
+        a = ctx.askUserCalls;
+        return true;
+      },
+    });
+    expect(a).toBe(2);
+    // Phase B's first run emits none: nothing leaked from A.
+    scriptRuns(round, quietRun());
+    let b: number | undefined;
+    await instance.execute_phase("window-b", {
+      shouldStopLoop: async (ctx) => {
+        b = ctx.askUserCalls;
+        return true;
+      },
+    });
+    expect(b).toBe(0);
+    // Phase C opens one ask then aborts settling: the typed interruption
+    // must close the window through the finally side.
+    scriptRuns(round, [
+      agentStart(),
+      start("c1", "ask_user", {}),
+      end("c1", "ask_user", false),
+      messageEnd(abortedAssistant(usage(1, 1, 1, 1))),
+      agentEnd([], false),
+    ]);
+    let thrownC: unknown;
+    try {
+      await instance.execute_phase("window-c");
+    } catch (error) {
+      thrownC = error;
+    }
+    expect(thrownC).toBeInstanceOf(PhaseInterruptionError);
+    // Phase D sees a clean window despite C's unconsulted start.
+    scriptRuns(round, quietRun());
+    let d: number | undefined;
+    await instance.execute_phase("window-d", {
+      shouldStopLoop: async (ctx) => {
+        d = ctx.askUserCalls;
+        return true;
+      },
+    });
+    expect(d).toBe(0);
+    // The cumulative counter survives every window closeout untouched.
+    expect(instance.counters().askUserCalls).toBe(3);
+  });
+
   it("hands the hook the variable store by reference identity", async () => {
     const { instance, round } = await host();
     scriptRuns(round, quietRun(), quietRun());
@@ -2469,7 +2577,7 @@ describe("PioSession — hook context", () => {
     expect(n).toBe(2);
   });
 
-  it("materializes a fresh counter snapshot per invocation with exactly the three keys", async () => {
+  it("materializes a fresh counter snapshot per invocation with exactly the four keys", async () => {
     const { instance, round } = await host();
     scriptRuns(round, quietRun(), quietRun());
     const contexts: IterationCtx[] = [];
@@ -2483,11 +2591,13 @@ describe("PioSession — hook context", () => {
     });
     expect(contexts[0].counters).not.toBe(contexts[1].counters);
     expect(Object.keys(contexts[0]).sort()).toEqual([
+      "askUserCalls",
       "counters",
       "filesWritten",
       "vars",
     ]);
     expect(Object.keys(contexts[1]).sort()).toEqual([
+      "askUserCalls",
       "counters",
       "filesWritten",
       "vars",

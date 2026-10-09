@@ -50,24 +50,16 @@ function renderCatalogListing(outcomes: readonly CatalogOutcome[]): string {
   return lines.join("\n");
 }
 
-const GATHER_LEAD = `Cycle protocol for the adhoc dispatcher:
-1. REVIEW the conversation since the last cycle. If a decided-and-stored request is already visible and still stands, skip straight to step 4 (STORE) below. If there is nothing pending or actionable this cycle, keep getting information from the user about what they want next - ask anything that is missing within the delivered channels, and stay at it until you are certain what the next step is. When you have exhausted what you can ask, end your turn WITHOUT defining the variable (leave it at the sentinel {}).`;
-
-const GATHER_TAIL = `2. CHECK: match the request against the listed capabilities and their declared inputs. If nothing fits, say so plainly and leave the variable at the sentinel.
-3. RECOMMEND: in your reply, name which capability you would call, which inputs you would pass, and why. Use the provisioned ask_user tool to gather whatever is missing (including the concrete input values) until you are confident.
-4. STORE: when determined, define the variable '${DISPATCH_REQUEST_VAR}' with the setVar tool holding EXACTLY the JSON string {"name": "<capability>", "inputs": {...}} (values plain strings; inputs may be empty). When nothing dispatches, leave the variable at the sentinel ${NO_DISPATCH_VALUE}.
-5. END right after storing (or deciding not to). The program side validates between turns, confirms with the operator, and runs the confirmed capability between turns; its outcome appears in the transcript before your next engagement. If you store a request and ask a question in the same final run, the loop simply continues and the last settled state wins.
-Work autonomously between any ask_user exchange and the turn end.`;
+const GATHER_INSTRUCTIONS = `Find out what the user wants next and choose the capability from the list below that does it. Compare what you know so far with the capabilities and their declared inputs, and if nothing fits, say so plainly. Tell the user which capability you will call, which inputs you will pass, and why. Use the ask_user tool to get anything that is missing, including concrete input values, and keep going until you are confident. If nothing is decided yet, keep asking until you know what to do; when the conversation has no context at all, a simple "How can I help you?" is enough. When you are ready, define the variable 'dispatch_request' with the setVar tool holding EXACTLY the JSON string {"name": "<capability>", "inputs": {...}} (values are plain strings; inputs may be empty), and end your reply right after storing; if nothing applies, leave the variable at {} and end without storing. After that the program checks the stored request, confirms it with the user, and runs the chosen capability; its result comes back into the conversation for you to see. If you store a request and still ask a question in the same reply, the loop continues and the last value you stored is the one that is read. Keep working on your own between ask_user questions and the end of your reply.`;
 
 function renderGatherInstructions(
   listing: string,
   carriedRefusal: string | undefined,
 ): string {
-  const parts: string[] = [GATHER_LEAD, listing];
+  const parts: string[] = [GATHER_INSTRUCTIONS, listing];
   if (carriedRefusal !== undefined) {
     parts.push(carriedRefusal);
   }
-  parts.push(GATHER_TAIL);
   return parts.join("\n\n");
 }
 

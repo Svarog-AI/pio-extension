@@ -1393,11 +1393,11 @@ describe("result-variant coverage (physics world)", () => {
 });
 
 describe("bound (R12 — top world)", () => {
-  it("endless ask continuation in gather settles PLAINLY at the cap (done at ADHOC_BURST_MAX_RUNS - bound-behavior, NO throw, NO annotation duty); the body proceeds on the sentinel and the loop stays alive", async () => {
+  it("endless asking with nothing stored costs EXACTLY one gather prompt per reconcile (thirty quiescent-with-ask cycles pinned by prompt count/text; the valve closes the sitting; the loop stays alive)", async () => {
     const root = newTempRoot();
     const world = await setupWorld({ root, env: "set" });
     for (let run = 0; run < ADHOC_BURST_MAX_RUNS; run++) {
-      scriptAsk(world.round.session); // every run: delta > 0, nothing stored
+      scriptAsk(world.round.session); // each cycle asks and stores nothing
     }
     scriptValve(world.round.session); // the fresh burst's prompt = valve
     const adhoc = new AdhocCapability({ session: world.instance });

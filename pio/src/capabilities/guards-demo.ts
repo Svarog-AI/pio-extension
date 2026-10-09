@@ -115,6 +115,11 @@ import {
 import type { Contract } from "../capability/contract.ts";
 import { deriveProjectKey } from "../sandbox/layout.ts";
 
+/** One-line catalog description (SOLE OWNER of the pinned bytes; the loader
+ * suite replica names this owner). Surfaced by the on-demand catalog walk. */
+export const DESCRIPTION =
+  "Demonstration of missing-deliverable protection: a run deliberately skips writing its required file, the engine forces a corrected retry until the file exists, and the outcome is stated.";
+
 /** The FIXED project-slot-relative artifact token (shrink-only tunable; the
  * suite rows reference this constant, never a duplicated literal). */
 export const GUARDS_DEMO_ARTIFACT = "guards-demo/guard-probe.md";

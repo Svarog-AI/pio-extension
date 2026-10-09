@@ -24,6 +24,11 @@ import ResearchCapability from "./research.ts";
  * reference this constant, never a duplicated literal). */
 export const DEMO_TOPIC = "Gnosticism in Belgrade, Serbia";
 
+/** One-line catalog description (SOLE OWNER of the pinned bytes; the loader
+ * suite replica names this owner). Surfaced by the on-demand catalog walk. */
+export const DESCRIPTION =
+  "Demonstration of keeping everything in one session: after a greeting, research runs inside your current session without ever leaving it, and you get the top 3 findings from its report.";
+
 /** The pinned greeting template (PINNED bytes; the suite replica names this
  * owner). One settled turn: greet the operator and briefly name what comes
  * (a research run on a fixed topic starting in this same session), then

@@ -48,7 +48,7 @@
 // agent-dir baseline covers phase-driving rows and every remaining
 // PI_CODING_AGENT_DIR touch stays a row-scoped save/restore nested over it.
 import { randomUUID } from "node:crypto";
-import { readdirSync, readFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -69,7 +69,11 @@ import {
   PioCapability,
 } from "./base.ts";
 import type { Contract } from "./contract.ts";
-import { ContractViolationError, VariableRejectionError } from "./errors.ts";
+import {
+  ContractViolationError,
+  PhaseInterruptionError,
+  VariableRejectionError,
+} from "./errors.ts";
 import type { CapabilitySources } from "./guards/guard-vocabulary.ts";
 import { decideVarWrite } from "./guards/var-gate.ts";
 import { decideWrite } from "./guards/write-gate.ts";
@@ -165,6 +169,9 @@ interface FakeRegistration {
 interface FakePi {
   registrations: FakeRegistration[];
   on: (event: string, handler: RecordedHandler) => void;
+  /** Accept-and-ignore recorder for the factory's second member (the /exit
+   * command registration the real seam now issues beside tool_call). */
+  registerCommand: (name: string, options: unknown) => void;
 }
 
 /** Structural fake of the services options shape (erased harness typing is
@@ -467,6 +474,9 @@ async function captureToolCallHandler(
     on: (event, handler) => {
       registrations.push({ event, handler });
     },
+    // The driven factory registers /exit beside tool_call; this helper only
+    // ever drives the interceptor, so the call is accepted and ignored.
+    registerCommand: () => undefined,
   };
   await extensionFactory(pi);
   const registration = registrations.find((r) => r.event === "tool_call");
@@ -566,7 +576,6 @@ describe("PioSession — markCapability (no-turn custom-message seam)", () => {
   it("triggers NO LLM turn from the mark alone and leaves the observation state snapshot-equal across it (custom messages are observation-neutral)", async () => {
     const { instance, round } = await host();
     const before = instance.counters();
-    const payloadsBefore = instance.getRunMessages();
     await instance.markCapability("neutral");
     // Zero prompt invocations: the mark never starts a run on this plane.
     expect(round.session.prompt).toHaveBeenCalledTimes(0);
@@ -574,9 +583,11 @@ describe("PioSession — markCapability (no-turn custom-message seam)", () => {
     // byte-equal to the pre-mark one (no assistant usage fed in).
     const after = instance.counters();
     expect(after).toStrictEqual(before);
-    // The payload master list gains nothing (feeds come only from
-    // agent_end; the custom message fires none here).
-    expect(instance.getRunMessages()).toEqual(payloadsBefore);
+    // A phase driven immediately afterwards collects ONLY its own settled
+    // payloads: the custom message injected nothing into the payload feed.
+    scriptRuns(round, quietRun());
+    const result = await instance.execute_phase("post-mark");
+    expect(result.messages).toEqual([]);
     expect(round.session.sendCustomMessage).toHaveBeenCalledTimes(1);
   });
 });
@@ -671,13 +682,28 @@ function assistantMessage(usageFields: object) {
   };
 }
 
+/** Aborted-assistant variant of the fixture above (sole delta: the
+ * platform's own abort marker on the settling message). */
+function abortedAssistant(usageFields: object) {
+  return { ...assistantMessage(usageFields), stopReason: "aborted" };
+}
+
+/** One interrupted run: start, the aborted settling message, empty end.
+ * Mirrors quietRun()'s shape plus the decisive message_end. */
+function abortedRun(): object[] {
+  return [
+    agentStart(),
+    messageEnd(abortedAssistant(usage(1, 1, 1, 1))),
+    agentEnd([], false),
+  ];
+}
+
 describe("PioSession — construction & scoping", () => {
   it("subscribes exactly once, staying exactly once across API use", async () => {
     const { instance, round } = await host();
     expect(round.session.subscribe).toHaveBeenCalledTimes(1);
 
     instance.counters();
-    instance.getFilesWrittenDelta();
     const store = instance.vars;
     // W2C mechanical preambles (mandatory-type ruling): declare before
     // the first write; row intent unchanged.
@@ -686,7 +712,6 @@ describe("PioSession — construction & scoping", () => {
     store.get("a");
     store.list();
     instance.counters();
-    instance.getFilesWrittenDelta();
 
     expect(round.session.subscribe).toHaveBeenCalledTimes(1);
   });
@@ -718,7 +743,6 @@ describe("PioSession — construction & scoping", () => {
       toolUses: {},
       tokens: 0,
     });
-    expect(b.getFilesWrittenDelta()).toEqual([]);
   });
 
   it("id mirrors the settled session handle id", async () => {
@@ -748,7 +772,7 @@ describe("PioSession — construction & scoping", () => {
 });
 
 describe("PioSession — zero state", () => {
-  it("counters() before any event carries the exact zero shape; take yields empty", async () => {
+  it("counters() before any event carries the exact zero shape", async () => {
     const { instance } = await host();
     const snapshot = instance.counters();
     expect(Object.keys(snapshot).sort()).toEqual([
@@ -761,7 +785,6 @@ describe("PioSession — zero state", () => {
     expect(snapshot.askUserCalls).toBe(0);
     expect(snapshot.toolUses).toEqual({});
     expect(snapshot.tokens).toBe(0);
-    expect(instance.getFilesWrittenDelta()).toEqual([]);
   });
 });
 
@@ -812,32 +835,48 @@ describe("PioSession — toolUses counter", () => {
 });
 
 describe("PioSession — filesWritten counter", () => {
-  it("successful write and edit ends commit into count and delta; a failed edit contributes nothing", async () => {
+  it("successful write and edit ends commit into count and the run window; a failed edit contributes nothing", async () => {
     const { instance, round } = await host();
-    emit(
-      round,
+    scriptRuns(round, [
+      agentStart(),
       start("w1", "write", { path: "/out/a.md" }),
       end("w1", "write", false),
       start("e1", "edit", { path: "/out/b.md" }),
       end("e1", "edit", true),
-    );
+      agentEnd([], false),
+    ]);
+    let seen: string[] | undefined;
+    await instance.execute_phase("commit-shape", {
+      shouldStopLoop: async (ctx) => {
+        seen = [...ctx.filesWritten];
+        return true;
+      },
+    });
+    expect(seen).toEqual(["/out/a.md"]);
     expect(instance.counters().filesWritten).toBe(1);
-    expect(instance.getFilesWrittenDelta()).toEqual(["/out/a.md"]);
   });
 
   it("non-file tools never contribute regardless of success", async () => {
     const { instance, round } = await host();
-    emit(
-      round,
+    scriptRuns(round, [
+      agentStart(),
       start("r1", "read", { path: "/in/a.md" }),
       end("r1", "read", false),
       start("b1", "bash", { command: "echo hi" }),
       end("b1", "bash", false),
       start("g1", "grep", {}),
       end("g1", "grep", false),
-    );
+      agentEnd([], false),
+    ]);
+    let seen: string[] | undefined;
+    await instance.execute_phase("non-file-tools", {
+      shouldStopLoop: async (ctx) => {
+        seen = [...ctx.filesWritten];
+        return true;
+      },
+    });
+    expect(seen).toEqual([]);
     expect(instance.counters().filesWritten).toBe(0);
-    expect(instance.getFilesWrittenDelta()).toEqual([]);
     expect(instance.counters().toolUses).toEqual({
       read: 1,
       bash: 1,
@@ -847,15 +886,22 @@ describe("PioSession — filesWritten counter", () => {
 
   it("paths correlate from the matching start because the end carries no args", async () => {
     const { instance, round } = await host();
-    emit(
-      round,
+    scriptRuns(round, [
+      agentStart(),
       start("p1", "write", { path: "/correlated/deep.md" }),
       end("p1", "write", false),
-    );
-    const delta = instance.getFilesWrittenDelta();
-    expect(delta).toHaveLength(1);
+      agentEnd([], false),
+    ]);
+    let seen: string[] | undefined;
+    await instance.execute_phase("correlation", {
+      shouldStopLoop: async (ctx) => {
+        seen = [...ctx.filesWritten];
+        return true;
+      },
+    });
+    expect(seen).toHaveLength(1);
     // Byte-for-byte the start's args.path — the only source of the value.
-    expect(delta[0]).toBe("/correlated/deep.md");
+    expect(seen?.[0]).toBe("/correlated/deep.md");
     expect(instance.counters().filesWritten).toBe(1);
   });
 
@@ -868,9 +914,21 @@ describe("PioSession — filesWritten counter", () => {
   for (const row of defensiveArgRows) {
     it(`an ignored write start (${row.label}) neither commits nor registers a pending entry`, async () => {
       const { instance, round } = await host();
-      emit(round, start("d1", "write", row.args), end("d1", "write", false));
+      scriptRuns(round, [
+        agentStart(),
+        start("d1", "write", row.args),
+        end("d1", "write", false),
+        agentEnd([], false),
+      ]);
+      let seen: string[] | undefined;
+      await instance.execute_phase("ignored-start", {
+        shouldStopLoop: async (ctx) => {
+          seen = [...ctx.filesWritten];
+          return true;
+        },
+      });
+      expect(seen).toEqual([]);
       expect(instance.counters().filesWritten).toBe(0);
-      expect(instance.getFilesWrittenDelta()).toEqual([]);
       // The start itself is still observed...
       expect(instance.counters().toolUses).toEqual({ write: 1 });
     });
@@ -878,67 +936,50 @@ describe("PioSession — filesWritten counter", () => {
 
   it("interleaved parallel edits: one succeeding end and one failing end commit exactly one path", async () => {
     const { instance, round } = await host();
-    emit(
-      round,
+    scriptRuns(round, [
+      agentStart(),
       start("a1", "edit", { path: "/pa.md" }),
       start("b1", "edit", { path: "/pb.md" }),
       end("b1", "edit", true),
       end("a1", "edit", false),
-    );
-    expect(instance.counters().filesWritten).toBe(1);
-    expect(instance.getFilesWrittenDelta()).toEqual(["/pa.md"]);
-  });
-
-  it("a stale write start is drained at agent_start and never leaks into a later run", async () => {
-    const { instance, round } = await host();
-    emit(round, start("s1", "write", { path: "/stale.md" }));
-    expect(instance.getFilesWrittenDelta()).toEqual([]);
-    emit(round, agentStart());
-    expect(instance.getFilesWrittenDelta()).toEqual([]);
-    emit(
-      round,
-      start("s2", "write", { path: "/fresh.md" }),
-      end("s2", "write", false),
-    );
-    expect(instance.getFilesWrittenDelta()).toEqual(["/fresh.md"]);
+      agentEnd([], false),
+    ]);
+    let seen: string[] | undefined;
+    await instance.execute_phase("interleave-commit", {
+      shouldStopLoop: async (ctx) => {
+        seen = [...ctx.filesWritten];
+        return true;
+      },
+    });
+    expect(seen).toEqual(["/pa.md"]);
     expect(instance.counters().filesWritten).toBe(1);
   });
 
-  it("explicit resets separate per-run windows while the cumulative count grows", async () => {
+  it("a stale write start is drained at the next run start and never leaks into a later run's window", async () => {
     const { instance, round } = await host();
-    emit(
+    scriptRuns(
       round,
-      agentStart(),
-      start("r1a", "write", { path: "/run1/a.md" }),
-      end("r1a", "write", false),
-      start("r1b", "edit", { path: "/run1/b.md" }),
-      end("r1b", "edit", false),
-      agentEnd(),
+      [agentStart(), start("s1", "write", { path: "/stale.md" })],
+      [
+        agentStart(),
+        start("s2", "write", { path: "/fresh.md" }),
+        end("s2", "write", false),
+        agentEnd([], false),
+      ],
     );
-    // Repeated reads within the window are content-stable.
-    expect(instance.getFilesWrittenDelta()).toEqual([
-      "/run1/a.md",
-      "/run1/b.md",
-    ]);
-    expect(instance.getFilesWrittenDelta()).toEqual([
-      "/run1/a.md",
-      "/run1/b.md",
-    ]);
-    expect(instance.counters().filesWritten).toBe(2);
-
-    // The explicit reset closes the first run's window.
-    instance.resetFilesWrittenDelta();
-
-    emit(
-      round,
-      agentStart(),
-      start("r2a", "write", { path: "/run2/c.md" }),
-      end("r2a", "write", false),
-      agentEnd(),
-    );
-    expect(instance.getFilesWrittenDelta()).toEqual(["/run2/c.md"]);
-    expect(instance.getFilesWrittenDelta()).toEqual(["/run2/c.md"]);
-    expect(instance.counters().filesWritten).toBe(3);
+    const seen: string[][] = [];
+    let n = 0;
+    await instance.execute_phase("drain-stale", {
+      shouldStopLoop: async (ctx) => {
+        n += 1;
+        seen.push([...ctx.filesWritten]);
+        return n === 2;
+      },
+    });
+    // Run 1 saw nothing committed (the dangling start has no end); run 2's
+    // own agent_start drained it, so only the fresh path lands.
+    expect(seen).toEqual([[], ["/fresh.md"]]);
+    expect(instance.counters().filesWritten).toBe(1);
   });
 });
 
@@ -2435,6 +2476,114 @@ describe("PioSession — hook context", () => {
     ]);
   });
 
+  it("attributes ask-user starts to the just-settled run as a per-run delta while the cumulative counter keeps growing across runs (failed starts count; near-names stay excluded)", async () => {
+    const { instance, round } = await host();
+    // Hand-computed: run 1 opens two ask_user exchanges (one failing) plus
+    // a near-name probe that never counts; run 2 opens exactly one more.
+    // Deltas [2, 1] vs cumulative [2, 3].
+    scriptRuns(
+      round,
+      [
+        agentStart(),
+        start("u1", "ask_user", {}),
+        end("u1", "ask_user", false),
+        start("u2", "ask_user", {}),
+        end("u2", "ask_user", true),
+        start("n1", "ask-user", {}),
+        end("n1", "ask-user", false),
+        agentEnd([], false),
+      ],
+      [
+        agentStart(),
+        start("u3", "ask_user", {}),
+        end("u3", "ask_user", false),
+        agentEnd([], false),
+      ],
+    );
+    const seen: Array<{ delta: number; cumulative: number }> = [];
+    let n = 0;
+    await instance.execute_phase("ask-delta", {
+      shouldStopLoop: async (ctx) => {
+        n += 1;
+        seen.push({
+          delta: ctx.askUserCalls,
+          cumulative: ctx.counters.askUserCalls,
+        });
+        return n === 2;
+      },
+    });
+    expect(seen).toEqual([
+      { delta: 2, cumulative: 2 },
+      { delta: 1, cumulative: 3 },
+    ]);
+    // Near-names ride the exact-match constant: present in toolUses, absent
+    // from both ask-user faces.
+    expect(instance.counters().toolUses).toEqual({
+      ask_user: 3,
+      "ask-user": 1,
+    });
+    expect(instance.counters().askUserCalls).toBe(3);
+  });
+
+  it("keeps ask-user windows isolated between phases: prior-phase starts stay out of the next phase's first-run delta, and a phase interrupted on the throw path closes its window behind it", async () => {
+    const { instance, round } = await host();
+    // Phase A settles its sole run with two ask-user starts inside it.
+    scriptRuns(round, [
+      agentStart(),
+      start("a1", "ask_user", {}),
+      end("a1", "ask_user", false),
+      start("a2", "ask_user", {}),
+      end("a2", "ask_user", false),
+      agentEnd([], false),
+    ]);
+    let a: number | undefined;
+    await instance.execute_phase("window-a", {
+      shouldStopLoop: async (ctx) => {
+        a = ctx.askUserCalls;
+        return true;
+      },
+    });
+    expect(a).toBe(2);
+    // Phase B's first run emits none: nothing leaked from A.
+    scriptRuns(round, quietRun());
+    let b: number | undefined;
+    await instance.execute_phase("window-b", {
+      shouldStopLoop: async (ctx) => {
+        b = ctx.askUserCalls;
+        return true;
+      },
+    });
+    expect(b).toBe(0);
+    // Phase C opens one ask then aborts settling: the typed interruption
+    // must close the window through the finally side.
+    scriptRuns(round, [
+      agentStart(),
+      start("c1", "ask_user", {}),
+      end("c1", "ask_user", false),
+      messageEnd(abortedAssistant(usage(1, 1, 1, 1))),
+      agentEnd([], false),
+    ]);
+    let thrownC: unknown;
+    try {
+      await instance.execute_phase("window-c");
+    } catch (error) {
+      thrownC = error;
+    }
+    expect(thrownC).toBeInstanceOf(PhaseInterruptionError);
+    // Phase D sees a clean window despite C's unconsulted start.
+    scriptRuns(round, quietRun());
+    let d: number | undefined;
+    await instance.execute_phase("window-d", {
+      shouldStopLoop: async (ctx) => {
+        d = ctx.askUserCalls;
+        return true;
+      },
+    });
+    expect(d).toBe(0);
+    // The cumulative counter survives every window closeout untouched.
+    expect(instance.counters().askUserCalls).toBe(3);
+  });
+
   it("hands the hook the variable store by reference identity", async () => {
     const { instance, round } = await host();
     scriptRuns(round, quietRun(), quietRun());
@@ -2449,7 +2598,7 @@ describe("PioSession — hook context", () => {
     expect(n).toBe(2);
   });
 
-  it("materializes a fresh counter snapshot per invocation with exactly the three keys", async () => {
+  it("materializes a fresh counter snapshot per invocation with exactly the four keys", async () => {
     const { instance, round } = await host();
     scriptRuns(round, quietRun(), quietRun());
     const contexts: IterationCtx[] = [];
@@ -2463,11 +2612,13 @@ describe("PioSession — hook context", () => {
     });
     expect(contexts[0].counters).not.toBe(contexts[1].counters);
     expect(Object.keys(contexts[0]).sort()).toEqual([
+      "askUserCalls",
       "counters",
       "filesWritten",
       "vars",
     ]);
     expect(Object.keys(contexts[1]).sort()).toEqual([
+      "askUserCalls",
       "counters",
       "filesWritten",
       "vars",
@@ -2518,75 +2669,39 @@ describe("PioSession — run messages", () => {
   });
 });
 
-describe("PioSession — read/reset contract", () => {
-  it("keeps the window content-stable across repeated reads within a pass", async () => {
+describe("PioSession — hook window snapshot semantics", () => {
+  it("hands the hook stable per-invocation window views: retained references survive later runs unchanged (fresh copies, not a live buffer)", async () => {
     const { instance, round } = await host();
-    scriptRuns(round, [
-      agentStart(),
-      start("w1", "write", { path: "/r1/a.md" }),
-      end("w1", "write", false),
-      start("w2", "edit", { path: "/r1/b.md" }),
-      end("w2", "edit", false),
-      agentEnd([], false),
-    ]);
-    const reads: string[][] = [];
-    await instance.execute_phase("stable-window", {
-      shouldStopLoop: async (ctx) => {
-        reads.push([...ctx.filesWritten]);
-        reads.push([...instance.getFilesWrittenDelta()]);
-        reads.push([...instance.getFilesWrittenDelta()]);
-        return true;
-      },
-    });
-    expect(reads).toEqual([
-      ["/r1/a.md", "/r1/b.md"],
-      ["/r1/a.md", "/r1/b.md"],
-      ["/r1/a.md", "/r1/b.md"],
-    ]);
-  });
-
-  it("advances the baseline on reset while the cumulative count survives", async () => {
-    const { instance, round } = await host();
-    emit(
-      round,
-      agentStart(),
-      start("w1", "write", { path: "/r1/a.md" }),
-      end("w1", "write", false),
-      start("w2", "edit", { path: "/r1/b.md" }),
-      end("w2", "edit", false),
-      agentEnd([], false),
-    );
-    expect(instance.getFilesWrittenDelta()).toEqual(["/r1/a.md", "/r1/b.md"]);
-    expect(instance.counters().filesWritten).toBe(2);
-    instance.resetFilesWrittenDelta();
-    expect(instance.getFilesWrittenDelta()).toEqual([]);
-    expect(instance.counters().filesWritten).toBe(2);
-  });
-
-  it("accumulates payloads across passes and closes the window at closeout", async () => {
-    const { instance, round } = await host();
-    const m1 = { id: "m1" };
-    const m2 = { id: "m2" };
-    const m3 = { id: "m3" };
     scriptRuns(
       round,
-      [agentStart(), agentEnd([m1], false)],
-      [agentStart(), agentEnd([m2], false)],
-      [agentStart(), agentEnd([m3], false)],
+      [
+        agentStart(),
+        start("w1", "write", { path: "/r1/a.md" }),
+        end("w1", "write", false),
+        start("w2", "edit", { path: "/r1/b.md" }),
+        end("w2", "edit", false),
+        agentEnd([], false),
+      ],
+      [
+        agentStart(),
+        start("w3", "write", { path: "/r2/c.md" }),
+        end("w3", "write", false),
+        agentEnd([], false),
+      ],
     );
-    const observed: unknown[][] = [];
-    const result = await instance.execute_phase("accumulate", {
-      shouldStopLoop: async () => {
-        const firstRead = instance.getRunMessages();
-        const secondRead = instance.getRunMessages();
-        expect(firstRead).toEqual(secondRead);
-        observed.push([...firstRead]);
-        return observed.length === 3;
+    const retained: string[][] = [];
+    let n = 0;
+    await instance.execute_phase("snapshot-semantics", {
+      shouldStopLoop: async (ctx) => {
+        n += 1;
+        retained.push(ctx.filesWritten);
+        return n === 2;
       },
     });
-    expect(observed).toEqual([[m1], [m1, m2], [m1, m2, m3]]);
-    expect(result.messages).toEqual([m1, m2, m3]);
-    expect(instance.getRunMessages()).toEqual([]);
+    // Each invocation's window view is its own copy: run 1's retained
+    // reference stays put after run 2 settles over a closed window.
+    expect(retained).toEqual([["/r1/a.md", "/r1/b.md"], ["/r2/c.md"]]);
+    expect(instance.counters().filesWritten).toBe(3);
   });
 });
 
@@ -2903,14 +3018,8 @@ describe("PioSession — composed-host surface (P-rows)", () => {
 
     // Final tokens = T_pre + T_post EXACT: 838 + 34 = 872.
     expect(H.counters().tokens).toBe(872);
-    // Master list = [pre…, post] in EVENT ORDER via count AND delta
-    // content (no resets — the open window survives the rebind).
+    // Committed-path count merges across the swap: pre 2 + post 1 = 3.
     expect(H.counters().filesWritten).toBe(3);
-    expect(H.getFilesWrittenDelta()).toEqual([
-      "/pre/a.md",
-      "/pre/b.md",
-      "/post/c.md",
-    ]);
     // toolUses merged: write 2+1=3, one new bash start, ask_user at 1.
     expect(H.counters().toolUses).toEqual({ write: 3, ask_user: 1, bash: 1 });
     expect(H.counters().askUserCalls).toBe(1);
@@ -3361,9 +3470,6 @@ describe("PioSession — expectation gate (write:)", () => {
     await expect(
       instance.execute_phase("ceiling-die", { write: [target] }),
     ).rejects.toBeInstanceOf(ContractViolationError);
-    // The finally closeout fires on the reject cause too.
-    expect(instance.getFilesWrittenDelta()).toEqual([]);
-    expect(instance.getRunMessages()).toEqual([]);
     expect(instance.counters().filesWritten).toBe(4);
 
     round.session.prompt.mockImplementationOnce(async () => {
@@ -3998,8 +4104,6 @@ describe("PioSession — variable expectation gate (vars:)", () => {
     await expect(
       instance.execute_phase("ceiling-die-vars", { vars: ["dw"] }),
     ).rejects.toBeInstanceOf(ContractViolationError);
-    expect(instance.getFilesWrittenDelta()).toEqual([]);
-    expect(instance.getRunMessages()).toEqual([]);
     expect(instance.counters().filesWritten).toBe(4);
 
     round.session.prompt.mockImplementationOnce(async () => {
@@ -4017,7 +4121,7 @@ describe("PioSession — variable expectation gate (vars:)", () => {
     expect(first?.counters.filesWritten).toBe(4);
   });
 
-  it("arm-time validation (engine-level): a listing containing an unregistered name REJECTS with the name-asserted bookkeeping class and PINNED message bytes — ZERO prompt invocations, the execution-state phase slot still NULL, both windows pristine, cumulative counters untouched (nothing armed, nothing detached, no window opened)", async () => {
+  it("arm-time validation (engine-level): a listing containing an unregistered name REJECTS with the name-asserted bookkeeping class and PINNED message bytes — ZERO prompt invocations, the execution-state phase slot still NULL, cumulative counters untouched (nothing armed, nothing detached, no window opened)", async () => {
     const { instance, round, gate } = await host();
     scriptRuns(round, quietRun());
     let thrown: unknown;
@@ -4039,8 +4143,6 @@ describe("PioSession — variable expectation gate (vars:)", () => {
     expect(Object.hasOwn(thrown as Error, "cause")).toBe(false);
     expect(round.session.prompt).toHaveBeenCalledTimes(0);
     expect(gate.state.snapshot().phase).toBeNull();
-    expect(instance.getFilesWrittenDelta()).toEqual([]);
-    expect(instance.getRunMessages()).toEqual([]);
     expect(instance.counters()).toEqual({
       filesWritten: 0,
       askUserCalls: 0,
@@ -4426,6 +4528,257 @@ describe("PioSession — variable expectation gate (vars:)", () => {
   });
 });
 
+// ---------------------------------------------------------------------
+// Between-turns interruption observability: the settling run's FINAL
+// assistant message carries the platform's own abort marker
+// (stopReason "aborted"); the engine observes it in the run window and
+// settles the active operation AS CANCELLED - a typed rejection preemptive
+// over floor/hook/budget and both gate faces, riding the standard
+// containment channels. Filesystem-scoped rows (the gate-face and
+// survival rows) drive real node:fs against per-row mkdtemp tmpdir
+// targets; every other row remains fs/env-free.
+// ---------------------------------------------------------------------
+
+describe("PioSession \u2014 interrupted-run observability (between-turns)", () => {
+  let tmp: string;
+
+  /** Replica of the pinned one-form interruption message (SOLE OWNER: the
+   * PhaseInterruptionError construction in ./errors.ts) - U+2014 escapes
+   * identically on both sides (never a literal em dash). */
+  const INTERRUPTION_REPLICA =
+    "Phase interruption: the settling run ended on a user abort \u2014 the phase settles as cancelled";
+
+  /** Fixture capability driving ONE bare interrupted phase through the
+   * FULL chain (real base run() -> real emitter). */
+  class InterruptedFixture extends PioCapability {
+    readonly contract: Contract = {
+      name: "interrupted-fixture",
+      version: "0.1.0",
+      inputs: [],
+      outputs: [],
+      writes: [],
+    };
+    async call(
+      _inputs: Record<string, unknown>,
+    ): Promise<Record<string, unknown>> {
+      await this.execute_phase("interrupted", { instructions: "keep going" });
+      return {};
+    }
+  }
+
+  beforeEach(async () => {
+    tmp = await mkdtemp(path.join(tmpdir(), "pio-interrupted-"));
+  });
+
+  afterEach(async () => {
+    await rm(tmp, { recursive: true, force: true });
+  });
+
+  it("engine-level typed interruption: a continuation-demanding state (floor + hook) scripts EXACTLY ONE aborted run - the phase REJECTS with the pinned PhaseInterruptionError (instanceof, name, replica bytes) and NO second iteration is issued", async () => {
+    const { instance, round } = await host();
+    scriptRuns(round, abortedRun());
+    let thrown: unknown;
+    try {
+      await instance.execute_phase("interrupted", {
+        instructions: "keep iterating",
+        min: 2,
+        max: 2,
+        shouldStopLoop: async () => false,
+      });
+    } catch (error) {
+      thrown = error;
+    }
+    expect(thrown).toBeInstanceOf(PhaseInterruptionError);
+    expect((thrown as Error).name).toBe("PhaseInterruptionError");
+    expect((thrown as Error).message).toBe(INTERRUPTION_REPLICA);
+    expect(round.session.prompt).toHaveBeenCalledTimes(1);
+  });
+
+  it("preemption over the min-floor explicitly: min: 3 cannot force a continuation past an aborted FIRST (and only) run - one prompt, the typed rejection", async () => {
+    const { instance, round } = await host();
+    scriptRuns(round, abortedRun());
+    let thrown: unknown;
+    try {
+      await instance.execute_phase("floor-preempted", {
+        instructions: "keep iterating",
+        min: 3,
+        max: 3,
+      });
+    } catch (error) {
+      thrown = error;
+    }
+    expect(thrown).toBeInstanceOf(PhaseInterruptionError);
+    expect(round.session.prompt).toHaveBeenCalledTimes(1);
+  });
+
+  it("preemption over BOTH expectation-gate faces: a never-landing declared file AND a registered-but-never-set declared variable burn ZERO corrective retries on an aborted first run - PhaseInterruptionError (explicitly NOT ContractViolationError), exactly one prompt (contrast the gate's four-prompt ceiling trajectory)", async () => {
+    const { instance, round } = await host();
+    const ghost = path.join(tmp, "interrupted-ghost.md");
+    instance.vars.declare("verdict", "string");
+    scriptRuns(round, abortedRun());
+    let thrown: unknown;
+    try {
+      await instance.execute_phase("gated-interrupted", {
+        instructions: "Write the thing",
+        write: [ghost],
+        vars: ["verdict"],
+      });
+    } catch (error) {
+      thrown = error;
+    }
+    expect(thrown).toBeInstanceOf(PhaseInterruptionError);
+    expect(thrown).not.toBeInstanceOf(ContractViolationError);
+    expect(round.session.prompt).toHaveBeenCalledTimes(1);
+  });
+
+  it("multi-turn interrupted run (final-message decisive): an intermediate NON-aborted assistant message (stopReason 'toolUse') neither masks nor fakes the flag - the aborted final message drives the rejection", async () => {
+    const { instance, round } = await host();
+    scriptRuns(round, [
+      agentStart(),
+      messageEnd({
+        ...assistantMessage(usage(2, 2, 2, 2)),
+        stopReason: "toolUse",
+      }),
+      messageEnd(abortedAssistant(usage(3, 3, 3, 3))),
+      agentEnd([], false),
+    ]);
+    let thrown: unknown;
+    try {
+      await instance.execute_phase("multi-turn", {
+        instructions: "keep going",
+      });
+    } catch (error) {
+      thrown = error;
+    }
+    expect(thrown).toBeInstanceOf(PhaseInterruptionError);
+    expect(round.session.prompt).toHaveBeenCalledTimes(1);
+  });
+
+  it("positive control - a non-aborted assistant message_end (stopReason 'stop') settles done EXACTLY as baseline: no over-triggering on normal settlements (the untouched legacy suite is the full proof alongside)", async () => {
+    const { instance, round } = await host();
+    scriptRuns(round, [
+      agentStart(),
+      messageEnd(assistantMessage(usage(4, 5, 6, 7))),
+      agentEnd([], false),
+    ]);
+    const result = await instance.execute_phase("calm", {
+      instructions: "steady",
+    });
+    expect(result.done).toBe(true);
+    expect(result.iterations).toBe(1);
+    expect(round.session.prompt).toHaveBeenCalledTimes(1);
+  });
+
+  it("consecutive runs - no flag leak across phases: phase A (one aborted run) REJECTS, then phase B (one quiet run) on the SAME host RESOLVES done with iterations 1 (consume-once + window anchoring end-to-end across the settle boundary)", async () => {
+    const { instance, round } = await host();
+    scriptRuns(round, abortedRun(), quietRun());
+    let thrownA: unknown;
+    try {
+      await instance.execute_phase("phase-a", { instructions: "a" });
+    } catch (error) {
+      thrownA = error;
+    }
+    expect(thrownA).toBeInstanceOf(PhaseInterruptionError);
+    const b = await instance.execute_phase("phase-b", { instructions: "b" });
+    expect(b.done).toBe(true);
+    expect(b.iterations).toBe(1);
+    expect(round.session.prompt).toHaveBeenCalledTimes(2);
+  });
+
+  it("window anchoring vs an out-of-band stale flag: an aborted message_end planted WITHOUT any prompt leaves the next quiet phase UNTOUCHED - the run's own agent_start clears the window strictly before the post-settlement consult (independent of the consume-once path)", async () => {
+    const { instance, round } = await host();
+    emit(round, messageEnd(abortedAssistant(usage(8, 8, 8, 8))));
+    scriptRuns(round, quietRun());
+    const result = await instance.execute_phase("untainted", {
+      instructions: "steady",
+    });
+    expect(result.done).toBe(true);
+    expect(result.iterations).toBe(1);
+  });
+
+  it("swap adjacency - cross-frame isolation under REAL teardown physics: after an interrupted phase's rejection, simulateSwap to a fresh zero-listener handle (same session identity, dispose-first order) + rebind leaves a subsequent quiet phase RESOLVING normally (the very swap order the compose-* demos exercise)", async () => {
+    const { instance, round } = await host();
+    scriptRuns(round, abortedRun(), quietRun());
+    let thrownA: unknown;
+    try {
+      await instance.execute_phase("pre-swap", { instructions: "a" });
+    } catch (error) {
+      thrownA = error;
+    }
+    expect(thrownA).toBeInstanceOf(PhaseInterruptionError);
+    // The real swap order: DISPOSE the outgoing handle first, apply the
+    // FRESH zero-listener incoming handle, then re-arm the observer.
+    const h1 = harness.mintFakeHandle(harness.sessionId);
+    simulateSwap(round, h1);
+    instance.rebind(asHandle(h1));
+    const b = await instance.execute_phase("post-swap", { instructions: "b" });
+    expect(b.done).toBe(true);
+    expect(b.iterations).toBe(1);
+    // Post-swap targeting of the REBOUND handle: phase A's prompt landed on
+    // the disposed outgoing handle, phase B's on the fresh incoming one.
+    expect(round.session.prompt).toHaveBeenCalledTimes(1);
+    expect(h1.prompt).toHaveBeenCalledTimes(1);
+  });
+
+  it("partial durable outputs survive the interrupt: the aborted run's committed write-tool pair still counts in the cumulative counters AND the file still exists on disk AFTER the typed rejection (light by design: survival asserted, not re-adjudicated)", async () => {
+    const committed = path.join(tmp, "committed.md");
+    const { instance, round } = await host();
+    await writeFile(committed, "committed before the abort\n");
+    scriptRuns(round, [
+      agentStart(),
+      start("tc-commit", "write", { path: committed }),
+      end("tc-commit", "write", false),
+      messageEnd(abortedAssistant(usage(5, 5, 5, 5))),
+      agentEnd([], false),
+    ]);
+    let thrown: unknown;
+    try {
+      await instance.execute_phase("partial", {
+        instructions: "Write the thing",
+        write: [committed],
+      });
+    } catch (error) {
+      thrown = error;
+    }
+    expect(thrown).toBeInstanceOf(PhaseInterruptionError);
+    expect(instance.counters().filesWritten).toBe(1);
+    expect(existsSync(committed)).toBe(true);
+  });
+
+  it("BINDING leg (mirror of the gate's leg-2 pattern): the FULL chain (fixture call() -> real base run() -> real emitter) settles {ok:false, errors:[BARE-IDENTITY interruption capture]} with exit code 1 - toStrictEqual pins the ABSENCE of cause and violations keys; the written status.json record carries the interruption type (the exact detection channel the adhoc coordinator consumes)", async () => {
+    const { instance, round } = await host();
+    scriptRuns(round, abortedRun());
+    const cap = new InterruptedFixture({ session: instance });
+    const sessionsRoot = path.join(tmp, ".sessions");
+    const emitter = createStatusEmitter({
+      sessionsRoot,
+      capability: { name: cap.contract.name, version: cap.contract.version },
+      tokens: () => instance.counters().tokens,
+      sessionFile: () => undefined,
+    });
+    const result = await cap.run({});
+    expect(round.session.prompt).toHaveBeenCalledTimes(1);
+    expect(result.ok).toBe(false);
+    if (result.ok) throw new Error("unreachable");
+    expect(result.errors?.[0]).toStrictEqual({
+      type: "PhaseInterruptionError",
+      message: INTERRUPTION_REPLICA,
+    });
+    const emission = await emitter.emit(result);
+    expect(emission.status.ok).toBe(false);
+    expect(emission.exitCode).toBe(1);
+    expect(exitCodeFor(emission.status)).toBe(1);
+    const record = JSON.parse(
+      readFileSync(statusPath(sessionsRoot), "utf8"),
+    ) as {
+      ok: boolean;
+      errors?: Array<{ type: string; message?: string }>;
+    };
+    expect(record.ok).toBe(false);
+    expect(record.errors?.[0]?.type).toBe("PhaseInterruptionError");
+  });
+});
+
 describe("export surface", () => {
   it("runtime export surface is EXACTLY ['PioSession', 'SessionHandleRefusalError', 'SessionVariableStore', 'renderCapabilityMarker', 'renderPhaseMarker', 'renderPhasePermissionDisclosure'] sorted (types erase under erasable syntax)", async () => {
     expect(Object.keys(await import("./pio-session.ts")).sort()).toEqual(
@@ -4480,6 +4833,9 @@ describe("source guards (composed-host edge discipline over pio-session.ts)", ()
         /^\s*import\s+(?!type\b)[^\n;]*?from\s+["']([^"']+)["']/gm,
       ),
     ].map((match) => match[1]);
+    // ./errors.ts EXEMPT: its clause is formatter-wrapped (the joined
+    // three-name brace list exceeds the width limit) and this regex
+    // observes single-line statements only.
     expect(valueClauses).toEqual([
       "node:fs",
       "node:path",
@@ -4490,7 +4846,6 @@ describe("source guards (composed-host edge discipline over pio-session.ts)", ()
       "../tools/bash/landlock-bash.ts",
       "../tools/vars/var-tools.ts",
       "./base.ts",
-      "./errors.ts",
       "./guards/var-gate.ts",
       "./guards/write-gate.ts",
     ]);
@@ -4553,6 +4908,12 @@ describe("source guards (composed-host edge discipline over pio-session.ts)", ()
           "Unreported by design in v1: the store IS the live state every reader can consult directly; the change-record rationale was retired by owner ruling.",
         ),
     ).toBe(true);
+  });
+
+  it("EXACTLY ONE interruption throw site in the module (normalized bytes, needle fragment-assembled so this suite never carries the raw identifier)", () => {
+    const normalized = src.replace(/\s+/g, " ");
+    const needle = `throw new ${["PhaseInterruption", "Error"].join("")}();`;
+    expect(normalized.split(needle).length - 1).toBe(1);
   });
 });
 
@@ -5077,10 +5438,19 @@ describe("PioSession \u2014 gate phase feeding (attach/detach lifecycle)", () =>
       await expect(
         instance.execute_phase("ceiling-leg", { write: ["/absent/x.md"] }),
       ).rejects.toBeInstanceOf(ContractViolationError);
-      // Windows closed (the standing invariant) AND the phase detached.
-      expect(instance.getFilesWrittenDelta()).toEqual([]);
-      expect(instance.getRunMessages()).toEqual([]);
       expect(gate.state.snapshot().phase).toBeNull();
+      // Windows closed (the standing invariant) - observed through the very
+      // next phase's clean first-run view and fresh message list.
+      scriptRuns(round, [agentStart(), agentEnd(["n1"], false)]);
+      let first: IterationCtx | undefined;
+      const next = await instance.execute_phase("after-leg", {
+        shouldStopLoop: async (ctx) => {
+          first = ctx;
+          return true;
+        },
+      });
+      expect(next.messages).toEqual(["n1"]);
+      expect(first?.filesWritten).toEqual([]);
     });
   });
 
@@ -5257,10 +5627,19 @@ describe("PioSession \u2014 gate phase feeding (attach/detach lifecycle)", () =>
           allowProjectWrites: true,
         }),
       ).rejects.toBeInstanceOf(ContractViolationError);
-      // Windows closed (the standing invariant) AND the phase detached.
-      expect(instance.getFilesWrittenDelta()).toEqual([]);
-      expect(instance.getRunMessages()).toEqual([]);
       expect(gate.state.snapshot().phase).toBeNull();
+      // Windows closed (the standing invariant) - observed through the very
+      // next phase's clean first-run view and fresh message list.
+      scriptRuns(round, [agentStart(), agentEnd(["n1"], false)]);
+      let first: IterationCtx | undefined;
+      const next = await instance.execute_phase("after-two-dim", {
+        shouldStopLoop: async (ctx) => {
+          first = ctx;
+          return true;
+        },
+      });
+      expect(next.messages).toEqual(["n1"]);
+      expect(first?.filesWritten).toEqual([]);
     });
   });
 });

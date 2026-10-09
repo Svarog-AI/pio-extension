@@ -96,6 +96,11 @@ import { PioCapability } from "../capability/base.ts";
 import type { Contract } from "../capability/contract.ts";
 import { ContractViolationError } from "../capability/errors.ts";
 
+/** One-line catalog description (SOLE OWNER of the pinned bytes; the loader
+ * suite replica names this owner). Surfaced by the on-demand catalog walk. */
+export const DESCRIPTION =
+  "Demonstration of the shared variable store: within one run, the AI and the program code set and read the same variables, one step is deliberately retried, and a value written by a nested sub-run is read back in the main run.";
+
 /** The private inline callee's contract name + span-marker label (SOLE
  * OWNER of the pinned literal; shrink-only tunable - the suite rows
  * reference this constant, never a duplicated literal). */

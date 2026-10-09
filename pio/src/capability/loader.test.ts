@@ -8,13 +8,15 @@
 // runtime values cross a parse boundary or an assign-widening instead of an
 // annotation (the checkers assert shapes at runtime; the annotation
 // documents shape, not protection). Mechanical source guards pin the import
-// surface and the five-entry table literal.
+// surface and the six-entry table literal.
 
 import { readFileSync } from "node:fs";
-import ComposeNewSessionDemoCapability from "../capabilities/compose-new-session-demo.ts";
-import ComposeSameSessionDemoCapability from "../capabilities/compose-same-session-demo.ts";
-import GuardsDemoCapability from "../capabilities/guards-demo.ts";
-import ResearchCapability from "../capabilities/research.ts";
+import * as adhocNamespace from "../capabilities/adhoc.ts";
+import ComposeNewSessionDemoCapability, * as composeNewSessionDemoModule from "../capabilities/compose-new-session-demo.ts";
+import ComposeSameSessionDemoCapability, * as composeSameSessionDemoModule from "../capabilities/compose-same-session-demo.ts";
+import GuardsDemoCapability, * as guardsDemoModule from "../capabilities/guards-demo.ts";
+import ResearchCapability, * as researchModule from "../capabilities/research.ts";
+import * as varsDemoModule from "../capabilities/vars-demo.ts";
 import type { CapabilityParams } from "./base.ts";
 import { PioCapability } from "./base.ts";
 import type { Contract } from "./contract.ts";
@@ -22,11 +24,13 @@ import type {
   CapabilityConstructor,
   CapabilityResolution,
   CapabilityTable,
+  CatalogOutcome,
   ResolvedCapability,
 } from "./loader.ts";
 import {
   CAPABILITY_TABLE,
   capabilityRefusalLine,
+  listCapabilities,
   resolveCapability,
 } from "./loader.ts";
 
@@ -84,13 +88,14 @@ const FIXTURE_GAMMA = class extends PioCapability {
 };
 
 describe("miss path (default table)", () => {
-  it("the registration table ships EXACTLY the five entries in INSERTION order ('research' first, then the temporary demo, the permanent same-session demo, the PERMANENT guard-demonstration home 'guards-demo', and the PERMANENT variable-store home 'vars-demo' last)", () => {
+  it("the registration table ships EXACTLY the six entries in INSERTION order ('research' first, then the temporary demo, the permanent same-session demo, the PERMANENT guard-demonstration home 'guards-demo', the PERMANENT variable-store home 'vars-demo', and the PERMANENT universal dispatcher 'adhoc' last)", () => {
     expect(Object.keys(CAPABILITY_TABLE)).toEqual([
       "research",
       "compose-new-session-demo",
       "compose-same-session-demo",
       "guards-demo",
       "vars-demo",
+      "adhoc",
     ]);
   });
 
@@ -675,7 +680,7 @@ describe("lazy discipline and structural guards", () => {
     expect(src.includes("@earendil-works/pi-coding-agent")).toBe(false);
   });
 
-  it("dynamic-import literal specifier set is EXACTLY the five shipped entries in table order AND total import( count equals the literal-set length (no interpolation)", () => {
+  it("dynamic-import literal specifier set is EXACTLY the six shipped entries in table order AND total import( count equals the literal-set length (no interpolation)", () => {
     const literalSet = [
       ...src.matchAll(/import\(\s*["']([^"']*)["']\s*\)/g),
     ].map((match) => match[1]);
@@ -686,6 +691,7 @@ describe("lazy discipline and structural guards", () => {
       "../capabilities/compose-same-session-demo.ts",
       "../capabilities/guards-demo.ts",
       "../capabilities/vars-demo.ts",
+      "../capabilities/adhoc.ts",
     ]);
     expect(totalImportCalls).toBe(literalSet.length);
   });
@@ -694,12 +700,185 @@ describe("lazy discipline and structural guards", () => {
     expect(/\bpty\b/.test(src)).toBe(false);
   });
 
-  it("runtime export surface is EXACTLY the three value exports (types and interfaces erase under erasable syntax)", async () => {
+  it("runtime export surface is EXACTLY the four value exports (types and interfaces erase under erasable syntax)", async () => {
     const mod = await import("./loader.ts");
     expect(Object.keys(mod).sort()).toEqual([
       "CAPABILITY_TABLE",
       "capabilityRefusalLine",
+      "listCapabilities",
       "resolveCapability",
     ]);
+  });
+});
+
+// Authored DESCRIPTION replicas — SOLE OWNERS are the same-named exports on
+// the co-shipping built-in modules; the copies keep rows A/B's byte pins
+// meaningful (either side drifting fails loudly).
+const DESCRIPTION_REPLICAS: Readonly<Record<string, string>> = {
+  research:
+    "Researches whatever topic you give it: searches the web and writes the findings into a readable markdown report saved in the project workspace.",
+  "compose-new-session-demo":
+    "Temporary demonstration of handing the terminal between sessions: after a greeting, a brand-new session takes over your terminal to research a fixed topic, and you get the top 3 findings from its report once control comes back.",
+  "compose-same-session-demo":
+    "Demonstration of keeping everything in one session: after a greeting, research runs inside your current session without ever leaving it, and you get the top 3 findings from its report.",
+  "guards-demo":
+    "Demonstration of missing-deliverable protection: a run deliberately skips writing its required file, the engine forces a corrected retry until the file exists, and the outcome is stated.",
+  "vars-demo":
+    "Demonstration of the shared variable store: within one run, the AI and the program code set and read the same variables, one step is deliberately retried, and a value written by a nested sub-run is read back in the main run.",
+  adhoc:
+    "Describe what you need in plain language and it matches your request against the registered built-ins, confirms the pick with you, runs the chosen capability right here in this conversation, and reports the result - staying available for follow-ups until you exit.",
+};
+
+describe("on-demand catalog walk (listCapabilities)", () => {
+  it("walking the SHIPPED table resolves EXACTLY the six entries as ok:true in INSERTION order, each carrying the co-located DESCRIPTION bytes AND the REAL declared input specs", async () => {
+    const outcomes: CatalogOutcome[] = await listCapabilities();
+    expect(
+      outcomes.map((outcome) => (outcome.ok ? outcome.name : null)),
+    ).toEqual([
+      "research",
+      "compose-new-session-demo",
+      "compose-same-session-demo",
+      "guards-demo",
+      "vars-demo",
+      "adhoc",
+    ]);
+    const pinnedInputs: Readonly<Record<string, readonly unknown[]>> = {
+      research: [{ name: "topic" }],
+      "compose-new-session-demo": [],
+      "compose-same-session-demo": [],
+      "guards-demo": [],
+      "vars-demo": [],
+      adhoc: [],
+    };
+    for (const outcome of outcomes) {
+      if (!outcome.ok)
+        throw new Error(`unexpected refusal: ${outcome.refusal}`);
+      expect(outcome.description).toBe(DESCRIPTION_REPLICAS[outcome.name]);
+      expect(outcome.inputs).toStrictEqual(pinnedInputs[outcome.name]);
+    }
+  });
+
+  it("SOLE OWNER: each built-in module carries the SAME authored DESCRIPTION bytes the walk surfaces (byte equality against the replica proves the surfaced value IS the module export)", () => {
+    const carriers: Array<
+      readonly [string, { readonly DESCRIPTION?: string }]
+    > = [
+      ["research", researchModule],
+      ["compose-new-session-demo", composeNewSessionDemoModule],
+      ["compose-same-session-demo", composeSameSessionDemoModule],
+      ["guards-demo", guardsDemoModule],
+      ["vars-demo", varsDemoModule],
+      ["adhoc", adhocNamespace],
+    ];
+    for (const [name, mod] of carriers) {
+      expect(mod.DESCRIPTION).toBe(DESCRIPTION_REPLICAS[name]);
+    }
+  });
+
+  it("a fixture-table walk fires EXACTLY each entry's own factory (post-walk flags all-set), renders outputs in table order with the fixture descriptions, and never rejects", async () => {
+    const fixtureDescriptions: Readonly<Record<string, string>> = {
+      alpha: "alpha description",
+      beta: "beta description",
+      gamma: "gamma description",
+    };
+    const table: CapabilityTable = {
+      alpha: async () => {
+        harness.flags.alpha = true;
+        return { default: FIXTURE_ALPHA, DESCRIPTION: "alpha description" };
+      },
+      beta: async () => {
+        harness.flags.beta = true;
+        return { default: FIXTURE_BETA, DESCRIPTION: "beta description" };
+      },
+      gamma: async () => {
+        harness.flags.gamma = true;
+        return { default: FIXTURE_GAMMA, DESCRIPTION: "gamma description" };
+      },
+    };
+    const outcomes: CatalogOutcome[] = await listCapabilities(table);
+    expect(harness.flags).toEqual({ alpha: true, beta: true, gamma: true });
+    expect(
+      outcomes.map((outcome) => (outcome.ok ? outcome.name : null)),
+    ).toEqual(["alpha", "beta", "gamma"]);
+    for (const outcome of outcomes) {
+      if (!outcome.ok)
+        throw new Error(`unexpected refusal: ${outcome.refusal}`);
+      expect(outcome.description).toBe(fixtureDescriptions[outcome.name]);
+      expect(outcome.inputs).toStrictEqual([]);
+    }
+  });
+
+  it("collect-all: a throwing entry degrades to its pipeline load-fault line VERBATIM while interleaved healthy neighbors render ok:true unaffected (order == table insertion order; the walk RESOLVES)", async () => {
+    const table: CapabilityTable = {
+      alpha: async () => ({ default: FIXTURE_ALPHA }),
+      boom: async () => {
+        throw new Error("boom");
+      },
+      gamma: async () => ({ default: FIXTURE_GAMMA }),
+    };
+    const outcomes: CatalogOutcome[] = await listCapabilities(table);
+    expect(outcomes).toHaveLength(3);
+    const [alpha, boom, gamma] = outcomes;
+    expect(alpha.name).toBe("alpha");
+    expect(alpha.ok).toBe(true);
+    if (!alpha.ok) throw new Error("expected alpha ok");
+    expect(alpha.description).toBeUndefined();
+    expect(alpha.inputs).toStrictEqual([]);
+    expect(boom.name).toBe("boom");
+    expect(boom.ok).toBe(false);
+    if (boom.ok) throw new Error("expected boom refusal");
+    expect(boom.refusal).toBe(`pio: capability 'boom' failed to load: boom`);
+    expect(gamma.name).toBe("gamma");
+    expect(gamma.ok).toBe(true);
+    if (!gamma.ok) throw new Error("expected gamma ok");
+    expect(gamma.description).toBeUndefined();
+    expect(gamma.inputs).toStrictEqual([]);
+  });
+
+  it("a module WITHOUT a default export degrades through the EXISTING fixed no-default phrase (no crash, no new refusal bytes)", async () => {
+    const table: CapabilityTable = {
+      bare: async () => JSON.parse("{}"),
+    };
+    const outcomes: CatalogOutcome[] = await listCapabilities(table);
+    expect(outcomes).toHaveLength(1);
+    const [bare] = outcomes;
+    expect(bare.name).toBe("bare");
+    expect(bare.ok).toBe(false);
+    if (bare.ok) throw new Error("expected bare refusal");
+    expect(bare.refusal).toBe(
+      `pio: capability 'bare' failed to load: module has no class default export`,
+    );
+  });
+
+  it("a foreign-base impostor entry degrades through the EXISTING identity line (no crash, no new refusal bytes)", async () => {
+    const ImpostorCap = class extends PioCapability {
+      readonly contract: Contract = wellFormed("impostor");
+      async call(): Promise<Record<string, unknown>> {
+        return {};
+      }
+    };
+    severChain(ImpostorCap, FakeBase.prototype);
+    const table: CapabilityTable = {
+      impostor: async () => ({ default: ImpostorCap }),
+    };
+    const outcomes: CatalogOutcome[] = await listCapabilities(table);
+    expect(outcomes).toHaveLength(1);
+    const [impostor] = outcomes;
+    expect(impostor.name).toBe("impostor");
+    expect(impostor.ok).toBe(false);
+    if (impostor.ok) throw new Error("expected impostor refusal");
+    expect(impostor.refusal).toBe(IDENTITY_LINE("impostor"));
+  });
+
+  it("a well-formed module WITHOUT a DESCRIPTION tolerates to ok:true with description undefined and correct inputs (tolerated, never refused)", async () => {
+    const ctor = withContract(wellFormed("plain"));
+    const table: CapabilityTable = { plain: async () => ({ default: ctor }) };
+    const outcomes: CatalogOutcome[] = await listCapabilities(table);
+    expect(outcomes).toHaveLength(1);
+    const [plain] = outcomes;
+    expect(plain.name).toBe("plain");
+    expect(plain.ok).toBe(true);
+    if (!plain.ok) throw new Error("expected plain ok");
+    expect(plain.description).toBeUndefined();
+    expect(plain.inputs).toStrictEqual([]);
   });
 });

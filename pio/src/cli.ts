@@ -22,7 +22,6 @@ import { PIO_VERSION } from "./version.ts";
 export type ParsedCommand =
   | { kind: "help" }
   | { kind: "version" }
-  | { kind: "reserved" } // bare `pio` and bare `pio run`
   // `inputs`: insertion-ordered key→value map — ALWAYS present on run
   // descriptors (EMPTY `{}` by default); a plain object, so JS string-key
   // insertion order IS the declared order.
@@ -40,6 +39,11 @@ export interface CliIO {
  * trailing ellipsis is the U+2026 HORIZONTAL ELLIPSIS character — pinned
  * codepoint, never normalized to three dots. */
 const RUN_USAGE = "pio run <capability> [--input k=v …]";
+
+// The sanctioned default-capability mapping: bare `pio` / bare `pio run`
+// classify as the adhoc invocation (module-private alias - NOT a capability
+// list; no import of the capability module; the static-import guard holds).
+const ADHOC_CAPABILITY_NAME = "adhoc";
 
 const UNKNOWN_OPTION = (token: string): string =>
   `unknown option: ${token} (try: pio --help)`;
@@ -92,7 +96,7 @@ export function parse(argv: readonly string[]): ParsedCommand {
   const [first, second, ...rest] = argv;
 
   if (first === undefined) {
-    return { kind: "reserved" };
+    return { kind: "run", capability: ADHOC_CAPABILITY_NAME, inputs: {} };
   }
   // Terminal forms: everything after them is ignored by design.
   if (first === "--help" || first === "help") {
@@ -111,7 +115,7 @@ export function parse(argv: readonly string[]): ParsedCommand {
   }
   // `run <capability>`: the second token decides.
   if (second === undefined) {
-    return { kind: "reserved" };
+    return { kind: "run", capability: ADHOC_CAPABILITY_NAME, inputs: {} };
   }
   if (second === "") {
     return { kind: "error", message: MISSING_CAPABILITY };
@@ -179,9 +183,6 @@ export async function main(
       case "version":
         out.stdout(PIO_VERSION);
         return 0;
-      case "reserved":
-        out.stderr("pio: default workflow capability not available yet");
-        return 1;
       case "error":
         out.stderr(`pio: ${parsed.message}`);
         return 1;

@@ -21,10 +21,11 @@ import {
 // is routed into the engagement's fixed-name `top` slot; without one,
 // everything stays on the disk-backed defaults under the agent dir (auth,
 // provider settings, resource discovery). An optional guard install threads
-// one inline extension factory into the construction: its single tool_call
-// interceptor consults the caller's handler list, and the install stamps
-// the caller's execution state onto every created handle; no other
-// overrides are passed anywhere in this file.
+// one inline extension factory into the construction: its tool_call
+// interceptor consults the caller's handler list, and its /exit command
+// delegates the dispatch context's shutdown; the install stamps the caller's
+// execution state onto every created handle; no other overrides are passed
+// anywhere in this file.
 
 /** Guard handler consulted for every tool call. The runner forwards each
  * event's tool name and raw input verbatim and filters nothing, so handlers
@@ -100,6 +101,11 @@ export async function createPioSession(
                     const verdict = handler(event.toolName, event.input);
                     if (verdict !== undefined) return verdict;
                   }
+                });
+                pi.registerCommand("exit", {
+                  handler: async (_args, ctx) => {
+                    ctx.shutdown();
+                  },
                 });
               },
             ],

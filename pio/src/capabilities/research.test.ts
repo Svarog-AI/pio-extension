@@ -933,10 +933,11 @@ describe("research capability", () => {
       expect(new CapabilityEnvError("x").name).toBe("CapabilityEnvError");
     });
 
-    it("exposes EXACTLY the five named exports beside the default export (deriveStateRootFromAgentDir + its pinned pair's body live in capability/base.ts; CapabilityEnvError stays importable here via the consolidation re-export)", async () => {
+    it("exposes EXACTLY the six named exports beside the default export (deriveStateRootFromAgentDir + its pinned pair's body live in capability/base.ts; CapabilityEnvError stays importable here via the consolidation re-export)", async () => {
       const mod = await import("./research.ts");
       expect(Object.keys(mod).sort()).toEqual([
         "CapabilityEnvError",
+        "DESCRIPTION",
         "REPORT_FINGERPRINT_LENGTH",
         "RESEARCH_MAX_RUNS",
         "WebToolsMissingError",

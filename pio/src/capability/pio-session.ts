@@ -176,7 +176,11 @@ import { SessionExecutionState } from "../session-execution-state.ts";
 import { createLandlockBash } from "../tools/bash/landlock-bash.ts";
 import { createVarTools } from "../tools/vars/var-tools.ts";
 import { deriveStateRootFromAgentDir } from "./base.ts";
-import { ContractViolationError, VariableRejectionError } from "./errors.ts";
+import {
+  ContractViolationError,
+  PhaseInterruptionError,
+  VariableRejectionError,
+} from "./errors.ts";
 import type { CapabilitySources } from "./guards/guard-vocabulary.ts";
 import { decideVarWrite } from "./guards/var-gate.ts";
 import { decideWrite } from "./guards/write-gate.ts";
@@ -395,8 +399,10 @@ export interface PhaseOptions {
 export interface IterationCtx {
   /** Fresh session-cumulative snapshot taken after the settling run. */
   readonly counters: SessionCounters;
-  /** Committed paths of the just-settled run — stable under repeated reads. */
+  /** Committed paths of the just-settled run (fresh slice per hook invocation). */
   readonly filesWritten: string[];
+  /** Per-run settled-run delta of started ask-user tool executions (this run only; contrast counters.askUserCalls, session-cumulative). */
+  readonly askUserCalls: number;
   /** The session variable store, passed by reference: the SAME instance the
    * model's variable tools write during the run — a hook reading it mid-run
    * observes the LIVE values, including writes landed during the
@@ -905,15 +911,19 @@ interface UsageTotals {
 // toolCallId-correlated pending-path map (interrupted starts are drained at
 // each run start), the monotonic committed-path master list with its
 // baseline cursor, the monotonic settled-payload master list with its
-// baseline cursor, and the assistant usage accumulator.
+// baseline cursor, the assistant usage accumulator, and the per-run-window
+// aborted mark (an assistant message_end carrying stopReason "aborted";
+// anchored at every run start, consumed once by the settle-side consult).
 class SessionObserver {
   #toolUses: Record<string, number> = {};
   #askUserCalls = 0;
+  #askUserBaseline = 0;
   #pendingPaths: Map<string, string> = new Map();
   #masterList: string[] = [];
   #pathBaseline = 0;
   #payloadMaster: unknown[] = [];
   #messageBaseline = 0;
+  #runAborted = false;
   #usageTotals: UsageTotals = {
     input: 0,
     output: 0,
@@ -926,8 +936,10 @@ class SessionObserver {
     switch (event.type) {
       case "agent_start":
         // An interrupted execution's dangling start must not leak into a
-        // later run's committed-path partition.
+        // later run's committed-path partition - the same doctrine anchors
+        // the abort window: an unconsumed stale mark dies with the window.
         this.#pendingPaths.clear();
+        this.#runAborted = false;
         break;
       case "tool_execution_start": {
         const { toolCallId, toolName, args } = event;
@@ -961,6 +973,12 @@ class SessionObserver {
           totals.cacheRead += message.usage.cacheRead;
           totals.cacheWrite += message.usage.cacheWrite;
           totals.cost += message.usage.cost.total;
+          // Only the FINAL assistant message of a run can physically carry
+          // "aborted" (an abort terminates the whole run) - marking on any
+          // such event in the window is sound and order-independent.
+          if (message.stopReason === "aborted") {
+            this.#runAborted = true;
+          }
         }
         break;
       }
@@ -1013,6 +1031,29 @@ class SessionObserver {
   /** Move the payload baseline past every recorded observation. */
   resetMessageBaseline(): void {
     this.#messageBaseline = this.#payloadMaster.length;
+  }
+
+  /** Non-consuming take of started ask-user executions since the last
+   * baseline advance — this run's window (failures included; near-names
+   * excluded by the exact-match constant). */
+  askUserCallsDelta(): number {
+    return this.#askUserCalls - this.#askUserBaseline;
+  }
+
+  /** Move the ask-user baseline past every observed start; the cumulative
+   * counter is untouched. */
+  resetAskUserCallsBaseline(): void {
+    this.#askUserBaseline = this.#askUserCalls;
+  }
+
+  /** Consume-once take of the current window's aborted mark: returns the
+   * just-settled run's observation AND clears it (each run's mark belongs
+   * to that run; the agent_start anchor is the second protection against
+   * an unconsumed stale value). */
+  takeRunAborted(): boolean {
+    const observed = this.#runAborted;
+    this.#runAborted = false;
+    return observed;
   }
 
   #resolveEnd(toolCallId: string, isError: boolean): void {
@@ -1230,26 +1271,6 @@ export class PioSession {
     return this.#observer.snapshot();
   }
 
-  /** Committed write/edit paths since the last reset — stable under repeated calls. */
-  getFilesWrittenDelta(): string[] {
-    return this.#observer.filesWrittenDelta();
-  }
-
-  /** Advance the delta baseline past all committed paths; cumulative counter untouched. */
-  resetFilesWrittenDelta(): void {
-    this.#observer.resetPathBaseline();
-  }
-
-  /** Recorded settled-end payloads since the last reset — stable under repeated calls. */
-  getRunMessages(): unknown[] {
-    return this.#observer.runMessages();
-  }
-
-  /** Advance the message baseline past all recorded payloads. */
-  resetRunMessages(): void {
-    this.#observer.resetMessageBaseline();
-  }
-
   /**
    * Append the span's section header as a durable custom message WITHOUT
    * triggering an LLM turn (no options object = the SDK's append-only idle
@@ -1376,20 +1397,30 @@ export class PioSession {
     try {
       for (;;) {
         // Close the previous run's window before this run's can open.
-        this.resetFilesWrittenDelta();
+        this.#observer.resetPathBaseline();
+        this.#observer.resetAskUserCallsBaseline();
         iterations += 1;
         const outgoing =
           pendingNote !== undefined ? `${text}\n${pendingNote}` : text;
         pendingNote = undefined;
         await this.runtime.session.prompt(outgoing);
-        const counters = this.counters();
-        const filesWritten = this.getFilesWrittenDelta();
+        // Between-turns interruption consult - FIRST post-settlement
+        // decision, preemptive over floor/hook/budget and both gate faces:
+        // an aborted settling run ends the phase as a typed cancellation
+        // instead of resuming into further iterations.
+        if (this.#observer.takeRunAborted()) {
+          throw new PhaseInterruptionError();
+        }
+        const counters = this.#observer.snapshot();
+        const filesWritten = this.#observer.filesWrittenDelta();
+        const askUserCalls = this.#observer.askUserCallsDelta();
         let proceed = iterations < min;
         const shouldStopLoop = opts?.shouldStopLoop;
         if (shouldStopLoop) {
           const verdict = await shouldStopLoop({
             counters,
             filesWritten,
+            askUserCalls,
             vars: this.vars,
           });
           proceed = proceed || !verdict;
@@ -1457,8 +1488,8 @@ export class PioSession {
           break;
         }
       }
-      const messages = this.getRunMessages();
-      const finalSnapshot = this.counters();
+      const messages = this.#observer.runMessages();
+      const finalSnapshot = this.#observer.snapshot();
       return {
         done: true,
         iterations,
@@ -1469,8 +1500,9 @@ export class PioSession {
       };
     } finally {
       // Windows never leak into the next phase regardless of the exit cause.
-      this.resetFilesWrittenDelta();
-      this.resetRunMessages();
+      this.#observer.resetPathBaseline();
+      this.#observer.resetAskUserCallsBaseline();
+      this.#observer.resetMessageBaseline();
       if (attached) this.#executionState?.detachPhase();
     }
   }

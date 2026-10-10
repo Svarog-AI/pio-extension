@@ -1000,11 +1000,12 @@ export class SessionVariableStore {
     // RUNTIME admission decision has settled above it (fixed triage, then
     // idempotency/conflict), and the widened-view write lets the
     // well-formed spec ride into a field whose declared type stays the
-    // six-literal funnel view (byte-conservatism: the conversion core,
-    // the clause/line renderers, and set()/get()/list() keep their exact
-    // bytes until the funnel arm arrives — a spec-carrying entry has NO
-    // sanctioned settlement until then: the shared switch falls through
-    // on the spec payload as a raw fault by design).
+    // six-literal funnel view: byte-conservatism holds, with the
+    // six-type conversion core, the clause/line renderers, and the
+    // typed-read pair keeping their exact bytes, while spec payloads are
+    // adjudicated by the spec-lane arm of set(), which skips base
+    // conversion by the runtime-kind guard, so they never reach the
+    // shared switch.
     storeUnionDeclaration(this.#types, name, type);
   }
 

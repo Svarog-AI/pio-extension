@@ -305,8 +305,8 @@ export default class AdhocCapability extends PioCapability {
     for (;;) {
       try {
         const pick = await this.determineDecision(session, listing);
-        const admitted = await admitDecision(pick);
-        if (!admitted.ok) {
+        const admission = await admitDecision(pick);
+        if (!admission.ok) {
           // ADMISSION FAILURE (main-loop seat): the refused pick is
           // narrated THROUGH the report phase - no teaching burst, no
           // silent re-gather; the following outer pass re-arms the plain
@@ -314,13 +314,13 @@ export default class AdhocCapability extends PioCapability {
           await this.execute_phase("report", {
             instructions: renderAdmissionFailureInstructions(
               pick.name,
-              admitted.refusal,
+              admission.refusal,
             ),
             min: 1,
           });
           continue;
         }
-        const decision = admitted.decision;
+        const decision = admission.decision;
         // Session-absent construction: the callee's own base dispatch hops
         // the terminal-takeover frame on the same mounted TUI.
         const callee = new decision.resolution.ctor({});

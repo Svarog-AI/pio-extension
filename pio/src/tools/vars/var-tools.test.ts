@@ -20,11 +20,11 @@
 // the MODULE source alone (the sweep below), matching the sibling gate
 // suites' suite-exclusion precedent.
 //
-// Golden discipline: the claim-mismatch line and every rendering split
-// (success echo, getVar bare-string vs JSON, listVars two-key document)
-// bind the module's real output to SUITE-SIDE REPLICA BUILDERS compared by
-// byte equality (the module is each line's sole owner; U+2014 arrives
-// escaped on both sides - compare unescaped). Rejection lines OWNED BY THE
+// Golden discipline: every rendering split (success echo, getVar
+// bare-string vs JSON, listVars two-key document) binds the module's real
+// output to SUITE-SIDE REPLICA BUILDERS compared by byte equality (the
+// module is each line's sole owner; U+2014 arrives escaped on both sides -
+// compare unescaped). Rejection lines OWNED BY THE
 // STORE (undeclared-write / coercion-reject) are asserted EQUAL to the
 // REAL store-thrown VariableRejectionError message for the SAME inputs -
 // zero byte copies of store-owned bytes (identity-over-goldbytes). Failure
@@ -33,7 +33,8 @@
 
 import { readFileSync } from "node:fs";
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
-import { VariableRejectionError } from "../../capability/errors.ts";
+import { z } from "zod";
+import type { VariableRejectionError } from "../../capability/errors.ts";
 import type {
   CapabilitySources,
   PathAnchors,
@@ -118,23 +119,10 @@ function line(result: {
 
 // ---------------------------------------------------------------------------
 // Suite-side replicas of the MODULE-OWNED line shapes - SOLE OWNER of every
-// byte is ./var-tools.ts (its module-private renderers, composed THROUGH
-// the error home's family where applicable); these witnesses bind the real
-// output to the pinned bytes. U+2014 arrives escaped in the module literal
-// identically here - compare unescaped.
+// byte is ./var-tools.ts (its module-private renderers); these witnesses
+// bind the real output to the pinned bytes. U+2014 arrives escaped in the
+// module literal identically here - compare unescaped.
 // ---------------------------------------------------------------------------
-
-const replicaMismatchLine = (
-  name: string,
-  declared: string,
-  claimed: string,
-): string =>
-  `variable '${name}' is declared as type '${declared}' \u2014 claimed type '${claimed}' does not match the declaration`;
-
-/** Family-composed message over one rendered line (the module's exact
- * composition channel - read for its message bytes, never thrown). */
-const familyMessage = (lineShape: string): string =>
-  new VariableRejectionError([lineShape]).message;
 
 const replicaSuccessLine = (name: string, stored: unknown): string =>
   `variable '${name}' set to ${JSON.stringify(stored)}.`;
@@ -194,6 +182,8 @@ describe("createVarTools definition shapes", () => {
       "getVar",
       "listVars",
     ]);
+    // Erasure stays PROGRAM-OWNED (store.clear): the model never erases.
+    expect(first.map((entry) => entry.name)).not.toContain("clearVar");
     expect(second).not.toBe(first);
     for (let i = 0; i < 3; i += 1) {
       expect(second[i]).not.toBe(first[i]);
@@ -229,23 +219,13 @@ describe("createVarTools definition shapes", () => {
     }
   });
 
-  it("mirrors the legacy parameter schemas: setVar carries name/type/value (six-literal claimed-type union; six-member value union), getVar carries name alone, listVars carries the empty object", () => {
+  it("carries the name-alone parameter surface: setVar properties are EXACTLY ['name', 'value'] with NO type member (six-member value union), getVar carries name alone, listVars carries the empty object", () => {
     const [setVar, getVar, listVars] = trio(new SessionVariableStore());
     const setProps = (
       setVar.parameters as { properties: Record<string, unknown> }
     ).properties;
-    expect(Object.keys(setProps).sort()).toEqual(["name", "type", "value"]);
-    const claimedTypes = setProps.type as {
-      anyOf: Array<{ const: unknown }>;
-    };
-    expect(claimedTypes.anyOf.map((member) => member.const).sort()).toEqual([
-      "array",
-      "boolean",
-      "null",
-      "number",
-      "object",
-      "string",
-    ]);
+    expect(Object.keys(setProps).sort()).toEqual(["name", "value"]);
+    expect(setProps).not.toHaveProperty("type");
     const valueUnion = setProps.value as { anyOf: unknown[] };
     expect(valueUnion.anyOf).toHaveLength(6);
     const getProps = (
@@ -256,6 +236,13 @@ describe("createVarTools definition shapes", () => {
       listVars.parameters as { properties: Record<string, unknown> }
     ).properties;
     expect(Object.keys(listProps)).toHaveLength(0);
+  });
+
+  it("pins the setVar description to the settled name-alone doctrine bytes verbatim (module-owned golden)", () => {
+    const [setVar] = trio(new SessionVariableStore());
+    expect(setVar.description).toBe(
+      "Set a session variable by name alone. The variable MUST have been declared by the running capability first; the write settles purely against that declaration. Values arrive as JSON and are checked against the declaration before storage; the confirmation echoes the stored value.",
+    );
   });
 });
 
@@ -274,7 +261,7 @@ describe("setVar round-trips over all six declared types", () => {
       const store = new SessionVariableStore();
       store.declare("target", type);
       const [setVar, getVar] = trio(store);
-      const result = await run(setVar, { name: "target", type, value });
+      const result = await run(setVar, { name: "target", value });
       expect(line(result)).toBe(`variable 'target' set to ${echoed}.`);
       expect(result.details).toEqual({});
       expect(result.content).toHaveLength(1);
@@ -287,36 +274,14 @@ describe("setVar round-trips over all six declared types", () => {
     const store = new SessionVariableStore();
     store.declare("count", "number");
     const [setVar] = trio(store);
-    const result = await run(setVar, {
-      name: "count",
-      type: "number",
-      value: "42",
-    });
+    const result = await run(setVar, { name: "count", value: "42" });
     expect(line(result)).toBe("variable 'count' set to 42.");
     expect(store.get("count")).toBe(42);
   });
 });
 
 describe("setVar reject corners (identity over the real store throws)", () => {
-  it("claim mismatch: a present name whose claimed type differs from the declaration settles the MODULE-OWNED line (replica-builder golden) WITHOUT touching the store", async () => {
-    const store = new SessionVariableStore();
-    store.declare("flag", "boolean");
-    store.set("flag", true);
-    const [setVar] = trio(store);
-    const result = await run(setVar, {
-      name: "flag",
-      type: "number",
-      value: "1",
-    });
-    expect(line(result)).toBe(
-      familyMessage(replicaMismatchLine("flag", "boolean", "number")),
-    );
-    // The prior value stays intact - the lane resolved before any write.
-    expect(store.get("flag")).toBe(true);
-    expect(result.details).toEqual({});
-  });
-
-  it("undeclared short-circuit: an absent name skips the claim check and settles the STORE-OWNED undeclared-write fault verbatim (equality over the real store throw; zero byte copies)", async () => {
+  it("undeclared short-circuit: an absent name settles the STORE-OWNED undeclared-write fault verbatim (equality over the real store throw; zero byte copies)", async () => {
     const store = new SessionVariableStore();
     store.declare("other", "string");
     let thrown: VariableRejectionError | undefined;
@@ -327,11 +292,7 @@ describe("setVar reject corners (identity over the real store throws)", () => {
     }
     if (!thrown) throw new Error("expected the store fault");
     const [setVar] = trio(store);
-    const result = await run(setVar, {
-      name: "ghost",
-      type: "string",
-      value: "x",
-    });
+    const result = await run(setVar, { name: "ghost", value: "x" });
     expect(line(result)).toBe(thrown.message);
     expect(store.list()).toEqual([]);
   });
@@ -352,7 +313,7 @@ describe("setVar reject corners (identity over the real store throws)", () => {
       }
       if (!thrown) throw new Error("expected the store fault");
       const [setVar] = trio(store);
-      const result = await run(setVar, { name, type: declared, value });
+      const result = await run(setVar, { name, value });
       expect(line(result)).toBe(thrown.message);
       expect(store.get(name)).toBeUndefined();
     },
@@ -373,11 +334,7 @@ describe("setVar reject corners (identity over the real store throws)", () => {
     }
     if (!thrown) throw new Error("expected the store fault");
     const [setVar] = trio(store);
-    const result = await run(setVar, {
-      name: "payload",
-      type: "object",
-      value: instance,
-    });
+    const result = await run(setVar, { name: "payload", value: instance });
     expect(line(result)).toBe(thrown.message);
     expect(store.get("payload")).toBeUndefined();
   });
@@ -395,16 +352,75 @@ describe("setVar reject corners (identity over the real store throws)", () => {
     }
     if (!thrown) throw new Error("expected the store fault");
     const [setVar] = trio(store);
-    const result = await run(setVar, {
-      name: "loop",
-      type: "array",
-      value: cyclic,
-    });
+    const result = await run(setVar, { name: "loop", value: cyclic });
     expect(line(result)).toBe(thrown.message);
     expect(store.list()).toEqual([]);
     // Family-voice witness: the lane's settled text IS the family message.
     expect(line(result)).toBe(thrown.message);
     expect(thrown.violations).toHaveLength(1);
+  });
+});
+
+describe("setVar spec-lane settlements (real store x real tool bodies)", () => {
+  it("conforming transform-bearing spec write: the success line and the getVar read-back spell the PARSE OUTPUT (never the raw input) and the store deep-equals it", async () => {
+    const store = new SessionVariableStore();
+    store.declare("slug", {
+      label: "Slug Display",
+      schema: z.string().transform((raw) => raw.trim().toUpperCase()),
+    });
+    const [setVar, getVar] = trio(store);
+    const result = await run(setVar, {
+      name: "slug",
+      value: "  gnostic drift ",
+    });
+    expect(line(result)).toBe(replicaSuccessLine("slug", "GNOSTIC DRIFT"));
+    expect(result.details).toEqual({});
+    expect(line(await run(getVar, { name: "slug" }))).toBe("GNOSTIC DRIFT");
+    // Deep equality proves the stored value IS the transformed output.
+    expect(store.get("slug")).toEqual("GNOSTIC DRIFT");
+  });
+
+  it("conforming object spec write: the success line spells the compact object JSON and the store deep-equals the fresh parse output", async () => {
+    const store = new SessionVariableStore();
+    store.declare("payload", {
+      label: "Payload Shape",
+      schema: z.object({ k: z.string() }),
+    });
+    const [setVar] = trio(store);
+    const input = { k: "v" };
+    const result = await run(setVar, { name: "payload", value: input });
+    expect(line(result)).toBe(replicaSuccessLine("payload", { k: "v" }));
+    expect(result.details).toEqual({});
+    // Fresh-reference physics: assert deep equality, never identity.
+    expect(store.get("payload")).toEqual(input);
+  });
+
+  it("non-conforming spec write mid-turn: the settled text equals the REAL store throw for the same inputs (identity-over-goldbytes) and the prior value stays intact", async () => {
+    const declareRatio = (s: SessionVariableStore): void => {
+      s.declare("ratio", { label: "Ratio Display", schema: z.number() });
+    };
+    const store = new SessionVariableStore();
+    declareRatio(store);
+    // Parker: a conforming value already stored behind the refusal.
+    store.set("ratio", 1);
+    const twin = new SessionVariableStore();
+    declareRatio(twin);
+    let thrown: VariableRejectionError | undefined;
+    try {
+      twin.set("ratio", "maybe");
+    } catch (err) {
+      thrown = err as VariableRejectionError;
+    }
+    if (!thrown) throw new Error("expected the store fault");
+    const [setVar, getVar] = trio(store);
+    const result = await run(setVar, { name: "ratio", value: "maybe" });
+    expect(line(result)).toBe(thrown.message);
+    expect(result.content).toHaveLength(1);
+    expect(result.content[0].type).toBe("text");
+    expect(result.details).toEqual({});
+    // Prior value INTACT across the settled refusal (both read lanes).
+    expect(store.get("ratio")).toBe(1);
+    expect(line(await run(getVar, { name: "ratio" }))).toBe("1");
   });
 });
 
@@ -480,6 +496,33 @@ describe("listVars rendering", () => {
       ),
     );
   });
+
+  it("spec declarations display UNDER THEIR LABELS in types in DECLARATION order: the unset spec rides ONLY under types and the set spec's stored parse output rides under variables in insertion order", async () => {
+    const store = new SessionVariableStore();
+    store.declare("answer", "number");
+    store.declare("topic", { label: "Research Topic", schema: z.string() });
+    store.declare("draft", {
+      label: "Draft Findings",
+      schema: z.array(z.string()),
+    });
+    store.set("answer", 42);
+    store.set("topic", "gnosticism in belgrade");
+    const [, , listVars] = trio(store);
+    expect(line(await run(listVars, {}))).toBe(
+      JSON.stringify(
+        {
+          variables: { answer: 42, topic: "gnosticism in belgrade" },
+          types: {
+            answer: "number",
+            topic: "Research Topic",
+            draft: "Draft Findings",
+          },
+        },
+        null,
+        2,
+      ),
+    );
+  });
 });
 
 describe("composed predicate x body matrix (real guard x real tool bodies)", () => {
@@ -487,7 +530,7 @@ describe("composed predicate x body matrix (real guard x real tool bodies)", () 
     const store = new SessionVariableStore();
     store.declare("note", "string");
     const snapshot = governingSnapshot(["note"]);
-    const input = { name: "note", type: "string", value: "from model" };
+    const input = { name: "note", value: "from model" };
     // The real predicate admits (undefined verdict).
     expect(decideVarWrite(snapshot, "setVar", input)).toBeUndefined();
     const [setVar] = trio(store);
@@ -501,7 +544,7 @@ describe("composed predicate x body matrix (real guard x real tool bodies)", () 
     const store = new SessionVariableStore();
     store.declare("allowed", "string");
     const snapshot = governingSnapshot(["other"]);
-    const input = { name: "allowed", type: "string", value: "attempt" };
+    const input = { name: "allowed", value: "attempt" };
     const verdict = decideVarWrite(snapshot, "setVar", input);
     if (!verdict) throw new Error("expected the refusal");
     // Identity over the REAL predicate: the fresh evaluation agrees byte
@@ -534,7 +577,7 @@ describe("composed predicate x body matrix (real guard x real tool bodies)", () 
   it("depth-0: the universal denial lane shows the same ordering (verdict deep-equal to a fresh real-predicate evaluation; the store is never reached while the counterfactual mutates)", async () => {
     const store = new SessionVariableStore();
     store.declare("anything", "string");
-    const input = { name: "anything", type: "string", value: "x" };
+    const input = { name: "anything", value: "x" };
     const verdict = decideVarWrite(depthZeroSnapshot, "setVar", input);
     if (!verdict) throw new Error("expected the universal refusal");
     expect(verdict).toStrictEqual(
@@ -675,7 +718,7 @@ describe("mechanical island sweep - module source and suite source", () => {
   const CAST_TOKEN = ["a", "s"].join("");
   const RAW_GLYPH = String.fromCharCode(0x2014);
 
-  it("pinned import partition: value clauses EXACTLY ['@earendil-works/pi-coding-agent', 'typebox', '../../capability/errors.ts'] in source order and type-only clauses EXACTLY ['@earendil-works/pi-coding-agent', '../../capability/pio-session.ts'] - the type-only store edge keeps the runtime graph acyclic", () => {
+  it("pinned import partition: value clauses EXACTLY ['@earendil-works/pi-coding-agent', 'typebox'] in source order and type-only clauses EXACTLY ['@earendil-works/pi-coding-agent', '../../capability/pio-session.ts'] - the type-only store edge keeps the runtime graph acyclic", () => {
     expect(MODULE_SOURCE.includes("node:")).toBe(false);
     const valueClauses = [
       ...MODULE_SOURCE.matchAll(
@@ -685,7 +728,6 @@ describe("mechanical island sweep - module source and suite source", () => {
     expect(valueClauses).toEqual([
       "@earendil-works/pi-coding-agent",
       "typebox",
-      "../../capability/errors.ts",
     ]);
     const normalized = MODULE_SOURCE.replace(/\s+/g, " ");
     const typeSpecifiers = [

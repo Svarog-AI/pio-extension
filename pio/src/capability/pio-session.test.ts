@@ -4192,14 +4192,6 @@ const varViolationLineReplica = (phaseId: string, name: string): string =>
 const armFaultLineReplica = (phaseId: string, misses: string[]): string =>
   `phase '${phaseId}': variable(s) listed without a declared base type: ${misses.join(", ")}`;
 
-/** Claim-mismatch line replica (SOLE OWNER: ../tools/vars/var-tools.ts). */
-const claimMismatchLineReplica = (
-  name: string,
-  declared: string,
-  claimed: string,
-): string =>
-  `variable '${name}' is declared as type '${declared}' \u2014 claimed type '${claimed}' does not match the declaration`;
-
 /** One isolated scratch dir for the rows that touch disk; guaranteed restore. */
 async function withTmp<T>(body: (tmp: string) => Promise<T>): Promise<T> {
   const dir = await mkdtemp(path.join(tmpdir(), "pio-var-gate-"));
@@ -4227,7 +4219,7 @@ describe("PioSession — variable expectation gate (vars:)", () => {
   it("round-trip leg 1 (model -> TS): the admitted REAL setVar body writes the store during the scripted pass (guard verdict over a FRESH governing snapshot deep-equal to the threaded handler's admission), and the BETWEEN-RUNS hook reads the SAME converted value from ctx.vars in the SAME run (reference identity asserted); the gate settles on presence with zero corrective retries", async () => {
     const { instance, round, gate } = await host();
     instance.vars.declare("m", "string");
-    const input = { name: "m", type: "string", value: "model-wrote" };
+    const input = { name: "m", value: "model-wrote" };
     const tools = threadedTools();
     round.session.prompt.mockImplementationOnce(async () => {
       expect(gate.toolCallHandler(toolCall("setVar", input))).toBeUndefined();
@@ -4300,7 +4292,7 @@ describe("PioSession — variable expectation gate (vars:)", () => {
     );
   });
 
-  it("round-trip leg 3 (badly-shaped from either side): programmatic set THROWS the family with REAL-THROW replica bytes (undeclared-name corner + boolean-token reject), and the model setVar lane RENDERS the same-family failure as the failed tool RESULT (claim-mismatch module line; undeclared short-circuit rides the store's caught line verbatim); well-typed values land IDENTICALLY for both origins", async () => {
+  it("round-trip leg 3 (badly-shaped from either side): programmatic set THROWS the family with REAL-THROW replica bytes (undeclared-name corner + boolean-token reject), and the model setVar lane RENDERS the same-family failure as the failed tool RESULT (coercion-reject store line; undeclared short-circuit rides the store's caught line verbatim); well-typed values land IDENTICALLY for both origins", async () => {
     const { instance } = await host();
     instance.vars.declare("flag", "boolean");
     expectFamilyFault(
@@ -4311,23 +4303,21 @@ describe("PioSession — variable expectation gate (vars:)", () => {
       () => instance.vars.set("flag", "yes"),
       varCoercionRejectLine("flag", "boolean", "string", CLAUSE_BOOLEAN_TOKEN),
     );
-    // Model lane: the same family settles AS THE TOOL RESULT.
-    instance.vars.declare("s", "string");
+    // Model lane: the SAME family line settles AS THE TOOL RESULT - both
+    // origins (programmatic set and the model lane) settle IDENTICALLY.
     const tools = threadedTools();
-    const mismatch = await driveVarEntry(tools[1], {
-      name: "s",
-      type: "number",
-      value: 4,
+    const rejected = await driveVarEntry(tools[1], {
+      name: "flag",
+      value: "maybe",
     });
-    expect(mismatch.content).toEqual([
+    expect(rejected.content).toEqual([
       {
         type: "text",
-        text: `${VAR_REJECTION_PREFIX}${claimMismatchLineReplica("s", "string", "number")}`,
+        text: `${VAR_REJECTION_PREFIX}${varCoercionRejectLine("flag", "boolean", "string", CLAUSE_BOOLEAN_TOKEN)}`,
       },
     ]);
     const undecl = await driveVarEntry(tools[1], {
       name: "ghost",
-      type: "string",
       value: "x",
     });
     expect(undecl.content).toEqual([
@@ -4343,7 +4333,6 @@ describe("PioSession — variable expectation gate (vars:)", () => {
     instance.vars.set("p", 42);
     await driveVarEntry(tools[1], {
       name: "q",
-      type: "string",
       value: "landed",
     });
     expect(instance.vars.get("p")).toBe(42);
@@ -4780,7 +4769,6 @@ describe("PioSession — variable expectation gate (vars:)", () => {
     round.session.prompt.mockImplementationOnce(async () => {
       const settlement = await driveVarEntry(tools[1], {
         name: "demo-var",
-        type: "string",
         value: "settled-by-model",
       });
       expect(settlement.content).toEqual([
@@ -6883,7 +6871,6 @@ describe("PioSession \u2014 vars-tool customTools threading", () => {
     }
     const settlement = await driveVarEntry(tools[1], {
       name: "note",
-      type: "string",
       value: "wired",
     });
     expect(settlement.details).toEqual({});

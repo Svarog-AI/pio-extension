@@ -5,10 +5,11 @@
 // customTools slot alongside the fenced bash entry. The division of labor
 // per the owner's recorded split: THIS LANE OWNS TYPE HANDLING - every
 // write routes through the store's single validated entry point (declare-
-// then-set doctrine; claimed type must agree with the declaration), and
-// every fault settles AS THE TOOL RESULT as readable text (the SDK result
-// carries no error flag, so readability IS the failure contract); the
-// per-phase guard owns PERMISSIONS pre-execution; the store owns SHAPE.
+// then-set doctrine; admission settles purely against the declaration at
+// the funnel's single entry point), and every fault settles AS THE TOOL
+// RESULT as readable text (the SDK result carries no error flag, so
+// readability IS the failure contract); the per-phase guard owns
+// PERMISSIONS pre-execution; the store owns SHAPE.
 // The module reads no env/fs/SDK state, consults no snapshot/guard
 // machinery, mutates nothing but (through the entry point) the given
 // store, and never rejects from execute.
@@ -20,7 +21,6 @@
 import type { ToolDefinition } from "@earendil-works/pi-coding-agent";
 import { defineTool } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
-import { VariableRejectionError } from "../../capability/errors.ts";
 import type { SessionVariableStore } from "../../capability/pio-session.ts";
 
 /** Legacy value union mirrored EXACTLY (documented v1 limit: array
@@ -45,53 +45,19 @@ export function createVarTools(store: SessionVariableStore): ToolDefinition[] {
     name: "setVar",
     label: "Set Session Variable",
     description:
-      "Set a session variable. The variable MUST have been declared by the running capability first; the claimed type MUST match the declaration (mismatches are rejected readably). Values arrive as JSON and are coerced to the declared type before storage; the confirmation echoes the stored (converted) value.",
+      "Set a session variable by name alone. The variable MUST have been declared by the running capability first; the write settles purely against that declaration. Values arrive as JSON and are checked against the declaration before storage; the confirmation echoes the stored value.",
     parameters: Type.Object({
       name: Type.String({ description: "Variable name to set" }),
-      type: Type.Union(
-        [
-          Type.Literal("string"),
-          Type.Literal("number"),
-          Type.Literal("boolean"),
-          Type.Literal("array"),
-          Type.Literal("object"),
-          Type.Literal("null"),
-        ],
-        {
-          description:
-            "Declared type of the value (must match the capability's declaration)",
-        },
-      ),
       value: SET_VAR_VALUE_SCHEMA,
     }),
     async execute(_toolCallId, params, _signal, _onUpdate, _ctx) {
       try {
-        // ONE registry query per call. Absent name: skip the claim check
-        // entirely (no type exists to compare) and route straight to the
-        // entry point - the store's undeclared-write fault resolves as the
-        // failed result verbatim (its bytes stay owned by the store).
-        const declarations = store.declarations();
-        if (
-          params.name in declarations &&
-          declarations[params.name] !== params.type
-        ) {
-          // Present name, claimed type disagrees: settle the module-owned
-          // line WITHOUT touching the store (type-consistency adjudication
-          // - NOT a permission re-check; permissions remain the guard's
-          // exclusive pre-execution domain).
-          return settleText(
-            composeRejection(
-              renderClaimMismatchLine(
-                params.name,
-                declarations[params.name],
-                params.type,
-              ),
-            ),
-          );
-        }
+        // Name-alone routing: EVERY store-owned refusal (undeclared write,
+        // coercion reject, spec defect or fault line) settles VERBATIM as
+        // the tool result mid-turn.
         store.set(params.name, params.value);
-        // Success echoes the STORED conversion result (safe read-back),
-        // never the raw input.
+        // Success echoes the STORED value (safe read-back; spec lanes hold
+        // the parse output), never the raw input.
         const stored = store.get(params.name);
         return settleText(renderSuccessLine(params.name, stored));
       } catch (err) {
@@ -165,24 +131,6 @@ function settleText(text: string): SettledTextResult {
 // Module-owned line shapes - SOLE byte owners (the store owns every OTHER
 // variable-concern line). U+2014 arrives escaped per the house discipline.
 // ---------------------------------------------------------------------------
-
-/** ONE claim-mismatch line: names the attempted variable, the DECLARED
- * display (registry authority — literals display themselves), and the
- * DISAGREEING claimed type. Composed through the family below for
- * delivery. */
-function renderClaimMismatchLine(
-  name: string,
-  declared: string,
-  claimed: string,
-): string {
-  return `variable '${name}' is declared as type '${declared}' \u2014 claimed type '${claimed}' does not match the declaration`;
-}
-
-/** Family-composition helper (same inert-instance pattern as the gate
- * channel): read for its message bytes, never thrown. */
-function composeRejection(line: string): string {
-  return new VariableRejectionError([line]).message;
-}
 
 /** ONE success line echoing the STORED conversion result (never the raw
  * input) - compact JSON spelling of the settled value. */

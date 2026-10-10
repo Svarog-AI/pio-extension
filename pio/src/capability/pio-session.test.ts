@@ -1115,8 +1115,9 @@ describe("PioSession — vars store", () => {
 // ---------------------------------------------------------------------
 // Validated store core (goal session-variable-storage, landing): the
 // mandatory-type base-type registry, the single validated write entry
-// point over the D4 admission/conversion table, and the overloaded typed
-// reads. Pure-store rows construct
+// point over the D4 admission/conversion table plus its spec-lane
+// counterpart and the program-owned erasure channel, and the overloaded
+// typed reads. Pure-store rows construct
 // the EXPORTED class directly (hermetic, zero harness); the cross-
 // instance legs extend BOTH the host()/create pair pattern AND the
 // fromRuntime H/H2 pattern over the same settled runtime. Golden lines
@@ -1181,6 +1182,18 @@ const varRegistrySpecShadowLine = (name: string, label: string): string =>
  * member failed the library's own type guard; nothing echoed). */
 const varRegistrySpecSchemaLine = (name: string): string =>
   `var registry: invalid spec schema for variable '${name}': schema is not a recognizable zod schema`;
+
+/** Spec-lane defect-line frame replica (sole owner: the module-private renderer in ./pio-session.ts) — rows supply the composed problem text so order, join, and path-prefix spelling pin end-to-end. */
+const varSpecDefectLine = (name: string, problemText: string): string =>
+  `variable '${name}' does not satisfy its declared shape check \u2014 ${problemText}`;
+
+/** Dedicated check-fault line replica (sole owner: the module-private fault-line renderer). */
+const varSpecFaultLine = (name: string): string =>
+  `variable '${name}' cannot be shape-checked \u2014 the declared shape check itself faulted while checking the value`;
+
+/** Registry-voice clear fault line replica (pure ASCII, no em dash; sole owner: the module-private renderer). */
+const varRegistryClearUndeclaredLine = (name: string): string =>
+  `var registry: cannot clear variable '${name}': the variable is not declared`;
 
 // Pinned CLAUSE vocabulary (one constant per emitted clause — every
 // clause the shared conversion core can emit is goldened through these).
@@ -1537,6 +1550,271 @@ describe("SessionVariableStore — undeclared-write rejection (mandatory-type do
       varUndeclaredWriteLine("fresh2"),
     );
     expect(store.list()).toEqual([]);
+  });
+});
+
+describe("SessionVariableStore — spec-lane funnel (set, custom-spec declarations)", () => {
+  it("a CONFORMING write stores EXACTLY the parse output: the identity lane deep-equals the input (deep equality ONLY — object parse yields a fresh reference, so no reference-identity claim), and the TRANSFORM PROOF row stores the transformed output differing in value from the raw input (side-effect-free)", () => {
+    const store = new SessionVariableStore();
+    store.declare("decision", {
+      label: "decision-shape",
+      schema: z.object({ action: z.string(), count: z.number() }),
+    });
+    const input: Record<string, unknown> = { action: "proceed", count: 2 };
+    store.set("decision", input);
+    // Deep equality — under the measured physics the parse output is a
+    // FRESH reference; asserting identity would fabricate a failure.
+    expect(store.get("decision")).toEqual({ action: "proceed", count: 2 });
+    // Scalar passthrough conformance round-trips verbatim through the
+    // untyped-safe channel.
+    store.declare("count", { label: "count-shape", schema: z.number() });
+    store.set("count", 42);
+    expect(store.get("count")).toBe(42);
+    // TRANSFORM PROOF: the stored value is the TRANSFORMED output,
+    // differing in value from the raw input (raw input side-effect-
+    // free).
+    store.declare("shout", {
+      label: "shouting-text",
+      schema: z.string().transform((text) => text.toUpperCase()),
+    });
+    const rawInput = "  hi ";
+    store.set("shout", rawInput);
+    expect(store.get("shout")).toBe("  HI ");
+    expect(store.get("shout")).not.toBe(rawInput);
+    expect(rawInput).toBe("  hi ");
+  });
+
+  it("a NON-CONFORMING write settles mid-funnel with the composed defect line: single-authored findings (bare message on an EMPTY path; dot-prefixed statement on a nested path), the EXACT worked-example bytes over the multi-issue object fixture (collect-all encounter order, '; ' join), the NESTED NUMERIC-PATH statement spelling (array element dot-joined in decimal), authored wording carried VERBATIM in every line, the prior value intact in every fault case, and a faulted FIRST write mints nothing (name absent, list() empty, declarations() untouched)", () => {
+    const store = new SessionVariableStore();
+    store.declare("decision", {
+      label: "decision-shape",
+      schema: z.object({
+        a: z.number({ error: "a must be numeric" }),
+        b: z.string({ error: "b must be textual" }),
+      }),
+    });
+    // Pre-set a conforming value: it must survive the faulted
+    // overwrite.
+    store.set("decision", { a: 1, b: "two" });
+    expect(store.get("decision")).toEqual({ a: 1, b: "two" });
+    // MULTI-ISSUE worked example: EVERY finding rides, encounter
+    // order, '; ' joined, dot-prefixed — the EXACT pinned bytes.
+    expectFamilyFault(
+      () => store.set("decision", {}),
+      varSpecDefectLine(
+        "decision",
+        "a: a must be numeric; b: b must be textual",
+      ),
+    );
+    expect(store.get("decision")).toEqual({ a: 1, b: "two" });
+    // SINGLE authored finding over a NESTED path: the dot-prefix
+    // statement spelling.
+    store.declare("ratio", {
+      label: "ratio-shape",
+      schema: z.object({ n: z.number({ error: "n must be numeric" }) }),
+    });
+    store.set("ratio", { n: 0.5 });
+    expectFamilyFault(
+      () => store.set("ratio", {}),
+      varSpecDefectLine("ratio", "n: n must be numeric"),
+    );
+    expect(store.get("ratio")).toEqual({ n: 0.5 });
+    // SINGLE authored finding with an EMPTY path: the bare message
+    // rides undecorated.
+    store.declare("flag-count", {
+      label: "count-shape",
+      schema: z.number({ error: "a finite count expected" }),
+    });
+    store.set("flag-count", 3);
+    expectFamilyFault(
+      () => store.set("flag-count", "many"),
+      varSpecDefectLine("flag-count", "a finite count expected"),
+    );
+    expect(store.get("flag-count")).toBe(3);
+    // NESTED NUMERIC-PATH finding (the array element): the dot-joined
+    // decimal segment spelling.
+    store.declare("roster", {
+      label: "roster-shape",
+      schema: z.object({
+        items: z.array(z.string({ error: "element must be textual" })),
+      }),
+    });
+    store.set("roster", { items: ["one"] });
+    expectFamilyFault(
+      () => store.set("roster", { items: [1] }),
+      varSpecDefectLine("roster", "items.0: element must be textual"),
+    );
+    expect(store.get("roster")).toEqual({ items: ["one"] });
+    // FAULTED FIRST WRITE MINTS NOTHING (fresh store: the name is
+    // absent, list() is empty, and the registry snapshot is
+    // untouched).
+    const fresh = new SessionVariableStore();
+    fresh.declare("decision", {
+      label: "decision-shape",
+      schema: z.object({ a: z.number({ error: "a must be numeric" }) }),
+    });
+    expectFamilyFault(
+      () => fresh.set("decision", {}),
+      varSpecDefectLine("decision", "a: a must be numeric"),
+    );
+    expect(fresh.get("decision")).toBeUndefined();
+    expect(fresh.list()).toEqual([]);
+    expect(fresh.declarations()).toEqual({ decision: "decision-shape" });
+  });
+
+  it("NULL carries NO semantics over a spec lane: a null write settles through the EXACT ordinary-defect path (the check's OWN default-spelled line — no intercept, no erase command, no special-case branch anywhere) with the prior state — a stored object OR absence — reading back intact; contrast in the same block: a built-in 'null'-typed variable still stores null legally (byte-stable lane — the universal null rule untouched)", () => {
+    const store = new SessionVariableStore();
+    store.declare("decision", {
+      label: "decision-shape",
+      schema: z.object({ a: z.number({ error: "a must be numeric" }) }),
+    });
+    // Prior state = a stored OBJECT: the null write faults with the
+    // check's own defect line and the object reads back intact.
+    store.set("decision", { a: 7 });
+    expect(store.get("decision")).toEqual({ a: 7 });
+    expectFamilyFault(
+      () => store.set("decision", null),
+      varSpecDefectLine(
+        "decision",
+        "Invalid input: expected object, received null",
+      ),
+    );
+    expect(store.get("decision")).toEqual({ a: 7 });
+    // Prior state = ABSENCE: a faulted FIRST null write mints
+    // nothing.
+    store.declare("next", {
+      label: "decision-shape",
+      schema: z.object({ a: z.number({ error: "a must be numeric" }) }),
+    });
+    expectFamilyFault(
+      () => store.set("next", null),
+      varSpecDefectLine(
+        "next",
+        "Invalid input: expected object, received null",
+      ),
+    );
+    expect(store.get("next")).toBeUndefined();
+    // Contrast: the built-in 'null' lane is BYTE-STABLE — null REMAINS
+    // the legal value there (the universal null rule untouched).
+    store.declare("nil", "null");
+    store.set("nil", null);
+    expect(store.get("nil", "null")).toBeNull();
+  });
+
+  it("a check that THROWS while running degrades CONTAINED to the dedicated fault-category line in the SAME family voice: an Error throw and a NON-ERROR throw (a bare primitive — plain TS, no marked cast seam) settle IDENTICAL bytes, no crash escapes from author code, no silent admission, the prior value intact, and a fresh-name first write mints nothing", () => {
+    const store = new SessionVariableStore();
+    // The check throws ONLY on the fault trigger value (a throwing
+    // check settles mid-write, so the conforming baseline must park
+    // through a passing verdict first).
+    store.declare("checked", {
+      label: "checked-text",
+      schema: z.string().refine((text) => {
+        if (text === "fault") throw new Error("author boom");
+        return true;
+      }),
+    });
+    store.set("checked", "baseline");
+    expect(store.get("checked")).toBe("baseline");
+    expectFamilyFault(
+      () => store.set("checked", "fault"),
+      varSpecFaultLine("checked"),
+    );
+    expect(store.get("checked")).toBe("baseline"); // prior value intact
+    // NON-ERROR-THROW: a bare primitive escapes the safe-parse entry
+    // point as itself — the swallow-all catch settles the IDENTICAL
+    // fault line, and the fresh-name first write mints NOTHING.
+    store.declare("prim", {
+      label: "primitive-checked",
+      schema: z.string().refine(() => {
+        throw 42;
+      }),
+    });
+    expectFamilyFault(
+      () => store.set("prim", "anything"),
+      varSpecFaultLine("prim"),
+    );
+    // No silent admission: no value landed on either faulted name.
+    expect(store.get("prim")).toBeUndefined();
+    expect(store.list()).toEqual(["checked"]);
+  });
+});
+
+describe("SessionVariableStore — program-owned erasure (clear)", () => {
+  it("empties the entry while the DECLARATION SURVIVES: untyped get reads back undefined, list() drops the name, the declarations() snapshot stays BYTE-IDENTICAL pre/post and declarationDisplay() is unchanged, and post-clear writes re-enter the funnel from scratch (conforming admits AND non-conforming faults again — the check is alive)", () => {
+    const store = new SessionVariableStore();
+    store.declare("decision", {
+      label: "decision-shape",
+      schema: z.object({ a: z.number({ error: "a must be numeric" }) }),
+    });
+    store.set("decision", { a: 1 });
+    const beforeDeclarations = store.declarations();
+    const beforeDisplay = store.declarationDisplay("decision");
+    store.clear("decision");
+    // Erasure: absence through the untyped-safe channel, list() drop,
+    // registry SURVIVAL (declaration byte-identical).
+    expect(store.get("decision")).toBeUndefined();
+    expect(store.list()).toEqual([]);
+    expect(store.declarations()).toEqual(beforeDeclarations);
+    expect(store.declarations()).toEqual({ decision: "decision-shape" });
+    expect(store.declarationDisplay("decision")).toBe(beforeDisplay);
+    // The check is ALIVE post-clear: conforming admits again AND
+    // non-conforming faults again through the SAME composed line (with
+    // the just-stored value surviving the fault).
+    store.set("decision", { a: 2 });
+    expect(store.get("decision")).toEqual({ a: 2 });
+    expectFamilyFault(
+      () => store.set("decision", {}),
+      varSpecDefectLine("decision", "a: a must be numeric"),
+    );
+    expect(store.get("decision")).toEqual({ a: 2 });
+  });
+
+  it("is IDEMPOTENT over absent-but-declared names (a declared-unset clear is a silent no-op; deleting twice is silent) and erases over the LITERAL lane alike (lane-agnostic: the entry drops, the declaration survives, and the legacy lane re-admits afterwards)", () => {
+    const store = new SessionVariableStore();
+    store.declare("unset", {
+      label: "decision-shape",
+      schema: z.object({ a: z.number({ error: "a must be numeric" }) }),
+    });
+    store.clear("unset"); // declared, never set — silent
+    store.clear("unset"); // double-clear — silent
+    expect(store.get("unset")).toBeUndefined();
+    expect(store.declarations()).toEqual({ unset: "decision-shape" });
+    // Literal-lane leg: clear is the SOLE emptying operation over every
+    // declared lane (adjudication is name-based, not lane-based).
+    store.declare("note", "string");
+    store.set("note", "kept");
+    store.clear("note");
+    expect(store.get("note")).toBeUndefined();
+    expect(store.declarations()).toEqual({
+      unset: "decision-shape",
+      note: "string",
+    });
+    store.set("note", "again"); // legacy lane re-admits post-clear
+    expect(store.get("note", "string")).toBe("again");
+  });
+
+  it("an UNDECLARED name FAULTS the developer-facing bookkeeping voice (asserted by NAME only — the class is unexported) with the EXACT pinned registry-voice line in PURE ASCII (no raw em dash in the line bytes) and mutates NOTHING: entries AND registry survive the fault verbatim", () => {
+    const store = new SessionVariableStore();
+    store.declare("decision", {
+      label: "decision-shape",
+      schema: z.object({ a: z.number({ error: "a must be numeric" }) }),
+    });
+    store.set("decision", { a: 1 });
+    store.declare("plain", "number");
+    store.set("plain", 5);
+    const fault = captureNamedFault(() => store.clear("ghost"));
+    expect(fault.name).toBe("VarRegistryError");
+    expect(fault.message).toBe(varRegistryClearUndeclaredLine("ghost"));
+    expect(/\u2014/.test(fault.message)).toBe(false); // PURE ASCII
+    // Nothing mutated: entries AND registry survive the fault
+    // verbatim.
+    expect(store.get("decision")).toEqual({ a: 1 });
+    expect(store.get("plain")).toBe(5);
+    expect(store.list()).toEqual(["decision", "plain"]);
+    expect(store.declarations()).toEqual({
+      decision: "decision-shape",
+      plain: "number",
+    });
   });
 });
 

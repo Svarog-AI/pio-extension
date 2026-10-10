@@ -790,6 +790,35 @@ function renderVarSpecSchemaLine(name: string): string {
   return `var registry: invalid spec schema for variable '${name}': schema is not a recognizable zod schema`;
 }
 
+/** Structural issue slice (type-only, erased under erasable syntax) carrying exactly the two members the defect-line grammar consumes. */
+interface VarShapeIssue {
+  readonly message: string;
+  readonly path: readonly (string | number)[];
+}
+
+/** Sole byte owner of the spec-lane defect line: the store-owned frame over the check's findings carried verbatim, collect-all in issue-array order, '; '-joined statements with non-empty paths dot-prefixed (numeric segments in decimal). */
+function renderVarSpecDefectLine(
+  name: string,
+  issues: readonly VarShapeIssue[],
+): string {
+  const statements: string[] = issues.map((issue) =>
+    issue.path.length === 0
+      ? issue.message
+      : `${issue.path.join(".")}: ${issue.message}`,
+  );
+  return `variable '${name}' does not satisfy its declared shape check \u2014 ${statements.join("; ")}`;
+}
+
+/** Sole byte owner of the dedicated check-fault line: settlement for a declared shape check that threw while running (every thrown kind, the payload referenced nowhere), deliberately outside the closed six-type taxonomy. */
+function renderVarSpecFaultLine(name: string): string {
+  return `variable '${name}' cannot be shape-checked \u2014 the declared shape check itself faulted while checking the value`;
+}
+
+/** Registry-voice erasure fault line for clear() over an undeclared name (pure-ASCII bookkeeping voice, no em dash). */
+function renderVarClearUndeclaredLine(name: string): string {
+  return `var registry: cannot clear variable '${name}': the variable is not declared`;
+}
+
 /** THE single type-level seam of the union storage: writes an admitted
  * declaration VALUE into the registry map through its WIDENED view — the
  * six-literal annotation stays exact at every FUNNEL READ site (the shared
@@ -829,15 +858,21 @@ function isDeclaredType(type: string): boolean {
  * MANDATORY-TYPE DOCTRINE: every variable carries a declared base type —
  * declare() is the SOLE registry writer (explicit authoring-side call;
  * no inference, no engine-side minting), and set() is THE single
- * validated entry point for ALL variable writes from EVERY origin — an
- * unregistered name faults (the error home's VariableRejectionError)
- * BEFORE any conversion attempt, and a registered name stores the
- * CONVERSION RESULT of the shared table (never the raw input: what is
- * stored is the declared type). Each concern is adjudicated exactly once
- * in its own layer: set polices SHAPE only — who may write WHICH name
- * belongs to the per-phase guard (a later landing), and bookkeeping
- * corruption (registry faults) rides the module-local pure-ASCII
- * VarRegistryError, never the model-visible family.
+ * validated entry point for ALL variable writes from EVERY origin, where
+ * an unregistered name faults before any shape work, a built-in literal
+ * stores the shared table's CONVERSION RESULT, and a custom spec skips
+ * base conversion entirely — parsing through the schema's safe-parse
+ * entry point, storing the PARSE OUTPUT on conformance, and settling a
+ * contained refusal (composed defect line, or the dedicated check-fault
+ * line behind the parse-only containment wrap) with the prior value
+ * intact. Set polices SHAPE only, and bookkeeping corruption (registry
+ * faults) rides the module-local pure-ASCII VarRegistryError, never the
+ * model-visible family.
+ *
+ * ERASURE CHANNEL: clear(name) is the SOLE program-owned emptying
+ * operation (the model lane never erases) — it bypasses set() entirely,
+ * keeps the declaration while dropping a declared name's entry, and
+ * faults an undeclared name in the pure-ASCII bookkeeping voice.
  *
  * READ SURFACE: get(name) stays the SAFE channel (stored value or
  * undefined; never throws); the overloaded typed read get(name, type)
@@ -850,14 +885,7 @@ function isDeclaredType(type: string): boolean {
  */
 export class SessionVariableStore {
   #entries: Map<string, unknown> = new Map();
-  /** Union-value registry (name to declaration VALUE, insertion-ordered):
-   * written ONLY by declare — the mandatory-type sole-writer invariant.
-   * Six literals store VERBATIM; well-formed SPECs store BY REFERENCE —
-   * the DECLARED TYPE stays the six-literal FUNNEL VIEW across this step
-   * (set()/get()/list() and the conversion core keep their EXACT bytes;
-   * the funnel arm is where the stored union value gets adjudicated),
-   * so the spec insert rides THE MARKED SEAM inside declare().
-   * Deep-equality over schema objects is deliberately never consulted. */
+  /** Union-value registry (name to declaration VALUE, insertion-ordered), written ONLY by declare: six literals store VERBATIM and well-formed specs BY REFERENCE under the UNCHANGED six-literal annotation — the spec-lane arm of set() binds them cast-free via bottom-type assignment over the typeof-guarded never branch, and deep-equality over schema objects is deliberately never consulted. */
   #types: Map<string, VarType> = new Map();
 
   /** Safe channel: the stored value, or undefined when the name is
@@ -980,26 +1008,59 @@ export class SessionVariableStore {
     storeUnionDeclaration(this.#types, name, type);
   }
 
-  /** THE single validated entry point for ALL variable writes (polices
-   * SHAPE only — no name/permission adjudication; that is the guard's
-   * exclusive concern). A name WITHOUT a registered type THROWS the
-   * family's undeclared-write line before any conversion attempt (there
-   * is NO admission lane for unregistered names); a registered name
-   * converts the incoming value against the declared type via the shared
-   * table and stores the CONVERSION RESULT — a fault throws the family's
-   * pinned coercion-reject line and leaves the prior value intact. */
+  /** THE single validated write entry point for ALL origins (shape policing only — permission belongs to the per-phase guard): an unregistered name faults first with the pinned undeclared-write line; a literal-declared name converts via the shared table and stores the CONVERSION RESULT; a spec-declared name skips base conversion, parses through the schema's safeParse, stores the PARSE OUTPUT on success, settles a structured failure as the composed defect line and a throwing check as the dedicated fault line behind the parse-only containment wrap — always with the prior value intact, and with null flowing through the ordinary parse path like any other incoming value. */
   set(name: string, value: unknown): void {
     const type = this.#types.get(name);
     if (type === undefined) {
       throw new VariableRejectionError([renderVarUndeclaredWriteLine(name)]);
     }
-    const result = convertVarValue(value, type);
-    if ("rejected" in result) {
-      throw new VariableRejectionError([
-        renderVarCoercionRejectLine(name, type, value, result.rejected),
-      ]);
+    if (typeof type === "string") {
+      // LEGACY LITERAL LANE (preserved statement-for-statement): the
+      // shared table converts and the CONVERSION RESULT is what stores.
+      const result = convertVarValue(value, type);
+      if ("rejected" in result) {
+        throw new VariableRejectionError([
+          renderVarCoercionRejectLine(name, type, value, result.rejected),
+        ]);
+      }
+      this.#entries.set(name, result.converted);
+      return;
     }
-    this.#entries.set(name, result.converted);
+    // Bottom-type assignment: the guard narrowed this branch to never,
+    // so the payload binds cast-free (the funnel trusts the triaged
+    // registry entry).
+    const spec: CustomVarSpec = type;
+    let parsed: z.ZodSafeParseResult<unknown>;
+    // Wrapping ONLY the parse call: author schema code can throw even on
+    // merely-failing values, and every thrown kind settles the fault line.
+    try {
+      parsed = spec.schema.safeParse(value);
+    } catch {
+      throw new VariableRejectionError([renderVarSpecFaultLine(name)]);
+    }
+    if (!parsed.success) {
+      // Cast-free narrowing to the structural slice: symbol path segments
+      // filter out by type-predicate (plain array ops).
+      const issues: readonly VarShapeIssue[] = parsed.error.issues.map(
+        (issue) => ({
+          message: issue.message,
+          path: issue.path.filter(
+            (segment): segment is string | number =>
+              typeof segment !== "symbol",
+          ),
+        }),
+      );
+      throw new VariableRejectionError([renderVarSpecDefectLine(name, issues)]);
+    }
+    this.#entries.set(name, parsed.data);
+  }
+
+  /** Sole program-owned erasure (the model lane never erases): an undeclared name faults the pure-ASCII bookkeeping voice leaving entries and registry verbatim, and a declared name drops its entry — idempotent over absence — while the declaration survives, with post-clear writes re-entering the funnel from scratch (set() bypassed entirely). */
+  clear(name: string): void {
+    if (!this.#types.has(name)) {
+      throw new VarRegistryError(renderVarClearUndeclaredLine(name));
+    }
+    this.#entries.delete(name);
   }
 
   /** Insertion-ordered, deduplicated key list (stored names only; a

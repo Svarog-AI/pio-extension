@@ -24,12 +24,11 @@ import { deriveProjectKey } from "../sandbox/layout.ts";
 
 export const ADHOC_NAME = "adhoc";
 export const DISPATCH_REQUEST_VAR = "dispatch_request";
-export const DISPATCH_CONFIRM_VAR = "dispatch_confirm";
 export const ADHOC_BURST_MAX_RUNS = 30;
 
 /** Sole owner of these bytes; the loader suite replica names this export. */
 export const DESCRIPTION =
-  "Describe what you need in plain language and it matches your request against the registered built-ins, confirms the pick with you, runs the chosen capability right here in this conversation, and reports the result - staying available for follow-ups until you exit.";
+  "Describe what you need in plain language and it matches your request against the registered built-ins, runs the chosen capability right here in this conversation, and reports the result - staying available for follow-ups until you exit.";
 
 const CATALOG_HEADER = "Available capabilities:";
 
@@ -54,34 +53,12 @@ function renderCatalogListing(outcomes: readonly CatalogOutcome[]): string {
 
 const GATHER_INSTRUCTIONS = `When the conversation has no context yet, open by asking how you can help, then ask targeted follow-up questions until you know what the user wants - use the ask_user tool for anything that is missing, including concrete input values, and stay at it until there is enough context. Never pull up the full list and ask what they want: the list below is reference material for matching, not a menu to hand over. Match the request against the capabilities and their declared inputs: if one capability obviously fits, tell the user which capability you will call, which inputs you will pass, and why - no choice to make; if several could fit, offer only the narrowed shortlist of candidates for the user to pick from; if nothing fits, say so plainly. When you are ready, define the variable '${DISPATCH_REQUEST_VAR}' with the setVar tool, passing the decision as an object value with the keys "name" (the capability name) and "inputs" (a plain object of string values; may be empty), and end your reply right after storing. If there is nothing to dispatch, store nothing and end your turn by asking the operator if there is anything else you can help them with. Don't do anything except what is said here - you are just gathering input.`;
 
-function renderGatherInstructions(
-  listing: string,
-  carriedRefusal: string | undefined,
-): string {
-  const parts: string[] = [GATHER_INSTRUCTIONS, listing];
-  if (carriedRefusal !== undefined) {
-    parts.push(carriedRefusal);
-  }
-  return parts.join("\n\n");
-}
-
-const CONFIRM_GRAMMAR = `Confirm this exact decision with the operator using the ask_user tool in ONE single call, offering: Yes / No / free-form custom feedback. Act on the reply exactly:
-- YES: store the value true in the variable '${DISPATCH_CONFIRM_VAR}' with the setVar tool, then end your turn immediately.
-- NO: store the value false in the variable '${DISPATCH_CONFIRM_VAR}' with the setVar tool, then end your turn.
-- CUSTOM FEEDBACK: store the value false in the variable '${DISPATCH_CONFIRM_VAR}' with the setVar tool, whether the feedback would change or kill the request - the flow returns to gathering, where you will hear the operator's requested changes directly; write NO other variable during this round, then end your turn.
-Work autonomously; the program side re-validates and runs the confirmed capability between turns.`;
-
-function renderConfirmInstructions(
-  capability: ResolvedCapability,
-  decision: DispatchDecision,
-): string {
-  const description = capability.description ?? "(no description)";
-  return [
-    "The gathering phase determined a validated dispatch decision:",
-    `Capability: ${capability.contract.name} - ${description}`,
-    `Inputs to pass: ${JSON.stringify(decision.inputs)}`,
-    CONFIRM_GRAMMAR,
-  ].join("\n");
+/** THE single gather-instruction composer: settled B8 bytes over the
+ * catalog listing. NO teaching channel rides any prompt (owner-directed
+ * full removal) - refusals settle in-conversation (schema defects) or ride
+ * THE failure report (admission faults). */
+function renderGatherInstructions(listing: string): string {
+  return [GATHER_INSTRUCTIONS, listing].join("\n\n");
 }
 
 const REPORT_TRAILER = `State these facts plainly and briefly in your reply. Do not re-run or dispatch anything yourself, and do not ask the user anything. End your turn right after stating them.`;
@@ -149,6 +126,22 @@ function renderReportInstructions(
   }
   lines.push(REPORT_TRAILER);
   return lines.join("\n");
+}
+
+/** THE admission-failure composer (SOLE OWNER of these bytes): the
+ * owner-directed full-removal narrative - an unadmitted pick neither
+ * re-teaches nor re-gathers silently; it is NARRATED through the report
+ * phase and the sit re-arms on the plain baseline. Pure ASCII. */
+function renderAdmissionFailureInstructions(
+  name: string,
+  refusal: string,
+): string {
+  return [
+    "Facts for the report:",
+    `The gathered decision names '${name}' but the program side did not admit it: ${refusal}`,
+    "No capability was run.",
+    REPORT_TRAILER,
+  ].join("\n");
 }
 
 const REFUSAL_RECURSION_LINE =
@@ -232,13 +225,20 @@ interface ValidatedDecision {
   readonly decision: DispatchDecision;
 }
 
-type GateOutcome =
+type AdmissionOutcome =
   | { ok: true; decision: ValidatedDecision }
   | { ok: false; refusal: string };
 
-async function gateStoredRequest(
+/** THE program-side adjudicator of a settled stored pick (main-loop seat,
+ * owner-directed full removal): three checks in pinned order - recursion
+ * guard, existence (loader table authority), inputs conformance against
+ * the RESOLVED callee contract (per-callee specs - the shared static schema
+ * can only assert structure). Byte-behavior-unchanged from the retired
+ * between-turn gate; the refusal voice now feeds the failure report
+ * instead of a teaching burst. */
+async function admitDecision(
   decision: DispatchDecision,
-): Promise<GateOutcome> {
+): Promise<AdmissionOutcome> {
   // Roles retained byte-behavior-unchanged, same order: recursion guard,
   // existence check, inputs conformance.
   if (decision.name === ADHOC_NAME) {
@@ -292,20 +292,35 @@ export default class AdhocCapability extends PioCapability {
       );
     }
     const listing = renderCatalogListing(await listCapabilities());
-    // DUAL UNSEEDED typed lanes: the request lane carries the authored
-    // object schema (displays its label), the answer lane rides the
-    // built-in boolean type (displays the built-in spelling). Both are
-    // naturally absent on a fresh session - the round-top clear inside
-    // determineDecision is the sole erasure site and re-establishes
-    // absence at every round head (incl. repeat-invocation residue).
+    // SINGLE UNSEEDED typed lane (owner-directed full removal): the request
+    // lane carries the authored object schema (displays its label); the
+    // retired answer lane is gone. The lane is naturally absent on a fresh
+    // session - the round-top clear inside determineDecision is the sole
+    // erasure site and re-establishes absence at every round head (incl.
+    // repeat-invocation residue).
     session.vars.declare(DISPATCH_REQUEST_VAR, {
       label: "dispatch decision",
       schema: REQUEST_SCHEMA,
     });
-    session.vars.declare(DISPATCH_CONFIRM_VAR, "boolean");
     for (;;) {
       try {
-        const decision = await this.determineDecision(session, listing);
+        const pick = await this.determineDecision(session, listing);
+        const admitted = await admitDecision(pick);
+        if (!admitted.ok) {
+          // ADMISSION FAILURE (main-loop seat): the refused pick is
+          // narrated THROUGH the report phase - no teaching burst, no
+          // silent re-gather; the following outer pass re-arms the plain
+          // baseline where the operator steers in-conversation.
+          await this.execute_phase("report", {
+            instructions: renderAdmissionFailureInstructions(
+              pick.name,
+              admitted.refusal,
+            ),
+            min: 1,
+          });
+          continue;
+        }
+        const decision = admitted.decision;
         // Session-absent construction: the callee's own base dispatch hops
         // the terminal-takeover frame on the same mounted TUI.
         const callee = new decision.resolution.ctor({});
@@ -319,16 +334,15 @@ export default class AdhocCapability extends PioCapability {
           min: 1,
         });
         // DELIBERATE WINDOW: between admission and the next round-top
-        // clear the lanes carry the consumed pick + answer across the
-        // hosted run and the report; model writes to the lanes are
-        // refused throughout (those phases list no variables) and the
-        // program reads nothing there.
+        // clear the lane carries the consumed pick across the hosted run
+        // and the report; model writes to the lane are refused throughout
+        // (those phases list no variables) and the program reads nothing
+        // there.
       } catch (error) {
         if (error instanceof PhaseInterruptionError) {
           // An aborted settling run may have left partial lane stores -
-          // the next round-top clear disarms them. The gate-verdict
-          // catches sit strictly INNER to this handler, so an abort
-          // always settles first.
+          // the next round-top clear disarms them. An interrupt always
+          // beats a gate verdict or a report settlement.
           continue;
         }
         throw error;
@@ -336,21 +350,24 @@ export default class AdhocCapability extends PioCapability {
     }
   }
 
+  /** THE interaction transaction: settle ONE stored pick via the gather
+   * burst. Returns the raw request type (owner-directed: adjudication lives
+   * in the main loop, NOT here). Silent bursts pay the ruled four-prompt
+   * physics into the dedicated verdict class; the round-top clear is the
+   * sole erasure site. */
   private async determineDecision(
     session: PioSession,
     listing: string,
-  ): Promise<ValidatedDecision> {
-    let carriedRefusal: string | undefined;
+  ): Promise<DispatchDecision> {
     for (;;) {
       // ROUND-TOP CLEAR - the SOLE erasure site: every re-entry passes
       // through here, so ONE chokepoint covers every residue class
       // (stale picks, partial abort stores, repeat-invocation leftovers);
       // clearing a declared-but-absent name is an idempotent no-op.
       session.vars.clear(DISPATCH_REQUEST_VAR);
-      session.vars.clear(DISPATCH_CONFIRM_VAR);
       try {
         await this.execute_phase("gather", {
-          instructions: renderGatherInstructions(listing, carriedRefusal),
+          instructions: renderGatherInstructions(listing),
           vars: [DISPATCH_REQUEST_VAR],
           min: 1,
           max: ADHOC_BURST_MAX_RUNS,
@@ -359,64 +376,19 @@ export default class AdhocCapability extends PioCapability {
         if (!(error instanceof MissingVariableError)) {
           throw error;
         }
-        // A silent round: nothing was stored, so the fresh burst renders
-        // the plain baseline - no fact attached (the model saw the failed
-        // exchange in context).
-        carriedRefusal = undefined;
+        // A silent round: nothing was stored - the fresh burst renders the
+        // plain baseline (in-band interpretation of the gate verdict).
         continue;
       }
-      carriedRefusal = undefined;
       const raw = session.vars.get(DISPATCH_REQUEST_VAR);
       if (!isDispatchDecision(raw)) {
         // Defensive-unreachable: the settle-time presence gate guarantees
-        // a present lane after a settled gather; bare continue, no crash.
+        // a present lane after a settled gather AND the funnel schema
+        // guarantees conformance; the narrowing is the zero-cast type
+        // boundary only. Bare continue, no crash.
         continue;
       }
-      const gate = await gateStoredRequest(raw);
-      if (gate.ok === false) {
-        carriedRefusal = gate.refusal;
-        continue; // the offending pick is disarmed by the next round-top clear
-      }
-      try {
-        await this.execute_phase("confirm", {
-          instructions: renderConfirmInstructions(
-            gate.decision.resolution,
-            gate.decision.decision,
-          ),
-          vars: [DISPATCH_CONFIRM_VAR],
-          min: 1,
-        });
-      } catch (error) {
-        if (!(error instanceof MissingVariableError)) {
-          throw error;
-        }
-        // Silence at confirm is no longer an answer: the model lived the
-        // failed round in-context and the token grammar re-sends on every
-        // confirm prompt, so nothing needs teaching.
-        carriedRefusal = undefined;
-        continue;
-      }
-      // A settled confirm guarantees a PRESENT answer value (the gate's
-      // own judgment), so the typed read back cannot fault here.
-      const answer = session.vars.get(DISPATCH_CONFIRM_VAR, "boolean");
-      if (answer !== true) {
-        // Decline or change-request: both discard the stored pick (the
-        // round-top clear disarms it) and the operator's words already
-        // reached the model in-conversation - no fact rides.
-        continue;
-      }
-      const readback = session.vars.get(DISPATCH_REQUEST_VAR);
-      if (!isDispatchDecision(readback)) {
-        // Defensive-unreachable: the answer-lane-only permission listing
-        // means the request lane cannot change mid-confirm.
-        continue;
-      }
-      const verified = await gateStoredRequest(readback);
-      if (verified.ok === false) {
-        carriedRefusal = verified.refusal;
-        continue;
-      }
-      return verified.decision;
+      return raw;
     }
   }
 }

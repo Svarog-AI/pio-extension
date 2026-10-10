@@ -726,7 +726,7 @@ const DESCRIPTION_REPLICAS: Readonly<Record<string, string>> = {
   "vars-demo":
     "Demonstration of the shared variable store: within one run, the AI and the program code set and read the same variables, one step is deliberately retried, and a value written by a nested sub-run is read back in the main run.",
   adhoc:
-    "Describe what you need in plain language and it matches your request against the registered built-ins, confirms the pick with you, runs the chosen capability right here in this conversation, and reports the result - staying available for follow-ups until you exit.",
+    "Describe what you need in plain language and it matches your request against the registered built-ins, runs the chosen capability right here in this conversation, and reports the result - staying available for follow-ups until you exit.",
 };
 
 describe("on-demand catalog walk (listCapabilities)", () => {

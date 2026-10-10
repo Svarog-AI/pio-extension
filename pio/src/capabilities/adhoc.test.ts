@@ -6,8 +6,8 @@
 // real terminal-takeover hop (non-hopping rows pin zero switchSession
 // calls). Replicated product bytes name their SOLE OWNER export in
 // ./adhoc.ts or the named co-shipping module; identity-over-goldens. The
-// two-lane encoding settles decisions natively (object onto the request
-// spec lane, boolean onto the answer lane), malformed writes fail visibly
+// single request lane settles decisions natively (the decision object onto
+// the request lane), malformed writes fail visibly
 // MID-TURN via twin-store capture, and fully-silent rounds pay the ruled
 // four-prompt cost into the dedicated verdict class before the next fresh
 // round begins.

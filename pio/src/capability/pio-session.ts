@@ -93,7 +93,11 @@
 // COLLECTING ALL still-missing violations — file lines first (declaration
 // order) followed by variable lines (effective-listing order; a satisfied
 // face contributes zero lines) — unwrapped through the finally closeout into
-// the standard containment channels on both placements.
+// the standard containment channels on both placements. The one side-aware
+// refinement: a VARIABLES-ONLY exhaustion settles the dedicated
+// MissingVariableError subclass over the same composed line bytes (structured
+// names datum alongside the inherited violations); the file-only and
+// combined corners keep the plain parent byte-frozen.
 //
 // Arm-time registry validation: BEFORE the first turn issues, the phase
 // validates that every listed variable name carries a base-type registration
@@ -179,6 +183,7 @@ import { createVarTools } from "../tools/vars/var-tools.ts";
 import { deriveStateRootFromAgentDir } from "./base.ts";
 import {
   ContractViolationError,
+  MissingVariableError,
   PhaseInterruptionError,
   VariableRejectionError,
 } from "./errors.ts";
@@ -1654,18 +1659,23 @@ export class PioSession {
               // Collect-all: file lines first (declaration order), then
               // variable lines (effective-listing order); satisfied faces
               // contribute zero lines.
-              throw new ContractViolationError([
-                ...missing.map((declaration) =>
-                  renderMissingOutputLine(
-                    id,
-                    declaration.entry,
-                    declaration.resolved,
-                  ),
+              const fileLines = missing.map((declaration) =>
+                renderMissingOutputLine(
+                  id,
+                  declaration.entry,
+                  declaration.resolved,
                 ),
-                ...missingVars.map((name) =>
-                  renderMissingVariableLine(id, name),
-                ),
-              ]);
+              );
+              const varLines = missingVars.map((name) =>
+                renderMissingVariableLine(id, name),
+              );
+              if (missing.length === 0) {
+                // Variables-only exhaustion settles the DEDICATED verdict
+                // class (structured names datum; default message composes
+                // the same line bytes as the legacy throw).
+                throw new MissingVariableError(varLines, missingVars);
+              }
+              throw new ContractViolationError([...fileLines, ...varLines]);
             }
             // One corrective note per denying face, FIXED ORDER (output
             // guard first, then variable guard), single LF when both

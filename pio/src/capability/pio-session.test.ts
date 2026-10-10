@@ -74,6 +74,7 @@ import {
 import type { Contract } from "./contract.ts";
 import {
   ContractViolationError,
+  MissingVariableError,
   PhaseInterruptionError,
   VariableRejectionError,
 } from "./errors.ts";
@@ -4523,6 +4524,37 @@ describe("PioSession — variable expectation gate (vars:)", () => {
     ]);
   });
 
+  it("side-aware verdict class (ADDITIVE seam row): a VARIABLES-ONLY ceiling exhaustion throws the DEDICATED MissingVariableError carrying the structured names datum - default message composes the SAME line bytes end-to-end, subclass identity over the approved CVE rows untouched; the corrective-note shape is the pure var-face replica (zero drift between thrown message and renderer output)", async () => {
+    const { instance, round } = await host();
+    instance.vars.declare("sx", "string");
+    const baseline = `\u2014\u2014 side-verdict \u2014\u2014\n\n${expectedDisclosure()}`;
+    scriptRuns(round, quietRun(), quietRun(), quietRun(), quietRun());
+    let thrown: unknown;
+    try {
+      await instance.execute_phase("side-verdict", {
+        max: 1,
+        vars: ["sx"],
+      });
+    } catch (error) {
+      thrown = error;
+    }
+    expect(thrown).toBeInstanceOf(MissingVariableError);
+    expect(thrown).toBeInstanceOf(ContractViolationError);
+    expect((thrown as MissingVariableError).names).toEqual(["sx"]);
+    expect((thrown as MissingVariableError).violations).toEqual([
+      varViolationLineReplica("side-verdict", "sx"),
+    ]);
+    expect((thrown as Error).message).toBe(
+      `Contract violation: ${varViolationLineReplica("side-verdict", "sx")}`,
+    );
+    expect(sentTexts(round)).toEqual([
+      baseline,
+      `${baseline}\n${varCorrectiveNoteReplica(1, ["sx"])}`,
+      `${baseline}\n${varCorrectiveNoteReplica(2, ["sx"])}`,
+      `${baseline}\n${varCorrectiveNoteReplica(3, ["sx"])}`,
+    ]);
+  });
+
   it("floor consumption (min: 2): with a never-landing variable the first two prompts are BOTH pure baseline (the floor-driven continuation sees no gate) and the first denial carries run count 2 (5 prompts: floor runs 2 + corrective 3)", async () => {
     const { instance, round } = await host();
     instance.vars.declare("fx", "string");
@@ -4695,7 +4727,9 @@ describe("PioSession — variable expectation gate (vars:)", () => {
     // (one initial + THREE corrective re-runs) where an arm-reject would
     // have settled with ZERO prompt invocations (the arm-miss rows).
     expect(thrown).toBeInstanceOf(ContractViolationError);
-    expect((thrown as Error).name).toBe("ContractViolationError");
+    // Side-aware refinement: variables-only exhaustion settles the dedicated
+    // verdict class (subclass identity over the family row above untouched).
+    expect((thrown as Error).name).toBe("MissingVariableError");
     expect(round.session.prompt).toHaveBeenCalledTimes(4);
     const sent = sentTexts(round);
     expect(sent[0]).toBe(
@@ -4833,7 +4867,7 @@ describe("PioSession — variable expectation gate (vars:)", () => {
     });
   });
 
-  it("BINDING leg 2 (never materializes => typed failure at the gate's OWN ceiling): four quiet passes burn the first pass + exactly 3 corrective re-runs, execute_phase REJECTS with the pinned ContractViolationError (engine-level), and through the FULL chain the captured record names the missing variable with ok:false and exit code 1", async () => {
+  it("BINDING leg 2 (never materializes => typed failure at the gate's OWN ceiling): four quiet passes burn the first pass + exactly 3 corrective re-runs, execute_phase REJECTS with the dedicated MissingVariableError verdict class (variables-only side-awareness over the frozen family), and through the FULL chain the captured record names the missing variable with ok:false and exit code 1", async () => {
     // ENGINE-LEVEL: the raw rejection shape over a dedicated host.
     const engine = await host();
     engine.instance.vars.declare("engine-var", "string");
@@ -4889,9 +4923,11 @@ describe("PioSession — variable expectation gate (vars:)", () => {
       expect(result.ok).toBe(false);
       if (result.ok) throw new Error("unreachable");
       const line = varViolationLineReplica("var-guarded", "chain-var");
+      // The narrow verdict branch settles the DISTINCT type without a cause
+      // key (three-key pinned shape); the message composes the same line
+      // bytes as the legacy throw.
       expect(result.errors?.[0]).toStrictEqual({
-        type: "ContractViolationError",
-        cause: "contract",
+        type: "MissingVariableError",
         message: `Contract violation: ${line}`,
         violations: [line],
       });

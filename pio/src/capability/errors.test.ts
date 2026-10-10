@@ -9,6 +9,7 @@
 import { readFileSync } from "node:fs";
 import {
   ContractViolationError,
+  MissingVariableError,
   PhaseInterruptionError,
   VariableRejectionError,
 } from "./errors.ts";
@@ -92,6 +93,49 @@ describe("VariableRejectionError", () => {
   });
 });
 
+describe("MissingVariableError", () => {
+  it("is an instanceof MissingVariableError, ContractViolationError AND Error (subclass identity keeps every pre-existing instanceof consumer green verbatim)", () => {
+    const err = new MissingVariableError(
+      ["phase 'p' variable 'a' missing"],
+      ["a"],
+    );
+    expect(err).toBeInstanceOf(MissingVariableError);
+    expect(err).toBeInstanceOf(ContractViolationError);
+    expect(err).toBeInstanceOf(Error);
+  });
+
+  it("has name 'MissingVariableError'", () => {
+    expect(new MissingVariableError(["l"], ["a"]).name).toBe(
+      "MissingVariableError",
+    );
+  });
+
+  it("exposes the structured names datum alongside the inherited violations (both pass through with the values given)", () => {
+    const err = new MissingVariableError(["l1", "l2"], ["a", "b"]);
+    expect(err.names).toEqual(["a", "b"]);
+    expect(err.violations).toEqual(["l1", "l2"]);
+  });
+
+  it("composes the default message from the SAME engine-owned line renderers as the legacy throw (prefix over '; '-joined lines - zero drift on the line bytes)", () => {
+    const lines = [
+      "phase 'g' variable 'a' missing \u2014 still undefined after 3 variable expectation re-run(s); the ceiling is exhausted",
+      "phase 'g' variable 'b' missing \u2014 still undefined after 3 variable expectation re-run(s); the ceiling is exhausted",
+    ];
+    expect(new MissingVariableError(lines, ["a", "b"]).message).toBe(
+      `Contract violation: ${lines.join("; ")}`,
+    );
+    expect(new MissingVariableError([lines[0]], ["a"]).message).toBe(
+      `Contract violation: ${lines[0]}`,
+    );
+  });
+
+  it("preserves an explicitly passed message through Error construction", () => {
+    expect(
+      new MissingVariableError(["l"], ["a"], "explicit verdict voice").message,
+    ).toBe("explicit verdict voice");
+  });
+});
+
 describe("PhaseInterruptionError", () => {
   it("is an instanceof PhaseInterruptionError and Error", () => {
     const err = new PhaseInterruptionError();
@@ -118,10 +162,11 @@ describe("PhaseInterruptionError", () => {
 });
 
 describe("mechanical discipline over the error-home surface", () => {
-  it("runtime export surface is EXACTLY ['ContractViolationError', 'PhaseInterruptionError', 'VariableRejectionError'] sorted (types erase under erasable syntax)", async () => {
+  it("runtime export surface is EXACTLY ['ContractViolationError', 'MissingVariableError', 'PhaseInterruptionError', 'VariableRejectionError'] sorted (types erase under erasable syntax)", async () => {
     expect(Object.keys(await import("./errors.ts")).sort()).toEqual(
       [
         "ContractViolationError",
+        "MissingVariableError",
         "PhaseInterruptionError",
         "VariableRejectionError",
       ].sort(),

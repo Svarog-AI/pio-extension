@@ -168,6 +168,7 @@ import type {
   AgentSessionEventListener,
   AgentSessionRuntime,
 } from "@earendil-works/pi-coding-agent";
+import { z } from "zod";
 import { materializeEffectiveSet } from "../permission-mechanics.ts";
 import { slugify } from "../sandbox/layout.ts";
 import { createPioSession, EXECUTION_STATE_STAMP } from "../session.ts";
@@ -450,6 +451,20 @@ export type VarType =
   | "array"
   | "object"
   | "null";
+
+/** A capability-authored NAMED SHAPE CHECK for a session variable: a
+ * human-readable LABEL (its DISPLAYED name — how the listing surfaces the
+ * shape the variable carries; nothing at write time consumes it) plus the
+ * CHECK ITSELF expressed as a zod schema (owner ruling). The loose ZodType
+ * base is the declared schema slot: authors pass CONCRETE schemas (objects,
+ * enums, refined/transformed chains, records); the store never introspects
+ * schema internals. Type-only surface: erased under erasable syntax — the
+ * runtime half is the instanceof z.ZodType recognition executed at
+ * declaration admission. */
+export interface CustomVarSpec {
+  readonly label: string;
+  readonly schema: z.ZodType;
+}
 
 /** Concrete TypeScript type per declared base type — the compile-time
  * half of the typed-read guarantee (conditional type; erased at runtime).
@@ -744,6 +759,52 @@ function renderVarReadConvertLine(
   return `read of variable '${name}' as '${type}' failed \u2014 ${description} cannot convert to '${type}'`;
 }
 
+/** THE display resolver (SOLE byte owner of the literal-self / spec-label
+ * mapping): six literals display THEMSELVES; a spec displays its LABEL.
+ * Feeds BOTH the display-valued declarations() snapshot and the
+ * declarationDisplay() companion query — zero casts on either face. */
+function displayVarDeclaration(type: VarType | CustomVarSpec): string {
+  return typeof type === "string" ? type : type.label;
+}
+
+/** ONE malformed-spec LABEL line (class 1 — a NON-STRING or EMPTY label;
+ * ONE line covering both, echoing NOTHING: the offending value fails the
+ * gate before any echo could happen). Developer-facing pure-ASCII
+ * bookkeeping voice. */
+function renderVarSpecLabelLine(name: string): string {
+  return `var registry: invalid spec label for variable '${name}': label must be a non-empty string`;
+}
+
+/** ONE built-in-SHADOWING line (class 2 — the label proved a NON-EMPTY
+ * STRING through class 1 and therefore echoes VERBATIM: house echo
+ * practice à la the legacy foreign-type echo). Developer-facing pure-ASCII
+ * bookkeeping voice. */
+function renderVarSpecShadowLine(name: string, label: string): string {
+  return `var registry: invalid spec label for variable '${name}': label '${label}' shadows a built-in type name`;
+}
+
+/** ONE unrecognized-SCHEMA line (class 3 — the schema member failed the
+ * library's own type guard for the pinned major; nothing echoed).
+ * Developer-facing pure-ASCII bookkeeping voice. */
+function renderVarSpecSchemaLine(name: string): string {
+  return `var registry: invalid spec schema for variable '${name}': schema is not a recognizable zod schema`;
+}
+
+/** THE single type-level seam of the union storage: writes an admitted
+ * declaration VALUE into the registry map through its WIDENED view — the
+ * six-literal annotation stays exact at every FUNNEL READ site (the shared
+ * conversion switch, set()/get()/list(), and the renderers all resolve
+ * against the literal-typed getter) while a well-formed SPEC rides the
+ * widened view into the ONE ordered map. Runtime behavior is identity
+ * (Map.set unchanged); zero assertions on either side of the call. */
+function storeUnionDeclaration(
+  registry: Map<string, unknown>,
+  name: string,
+  value: unknown,
+): void {
+  registry.set(name, value);
+}
+
 /** Malformed-type guard (reachable only via runtime foreignness past type
  * erasure — the union is exhaustive at compile time): the plain equality
  * chain keeps the check cast-free. */
@@ -789,8 +850,14 @@ function isDeclaredType(type: string): boolean {
  */
 export class SessionVariableStore {
   #entries: Map<string, unknown> = new Map();
-  /** Base-type registry (name to type, insertion-ordered): written ONLY
-   * by declare — the mandatory-type sole-writer invariant. */
+  /** Union-value registry (name to declaration VALUE, insertion-ordered):
+   * written ONLY by declare — the mandatory-type sole-writer invariant.
+   * Six literals store VERBATIM; well-formed SPECs store BY REFERENCE —
+   * the DECLARED TYPE stays the six-literal FUNNEL VIEW across this step
+   * (set()/get()/list() and the conversion core keep their EXACT bytes;
+   * the funnel arm is where the stored union value gets adjudicated),
+   * so the spec insert rides THE MARKED SEAM inside declare().
+   * Deep-equality over schema objects is deliberately never consulted. */
   #types: Map<string, VarType> = new Map();
 
   /** Safe channel: the stored value, or undefined when the name is
@@ -822,36 +889,95 @@ export class SessionVariableStore {
   }
 
   /** THE base-type registry writer (mandatory-type doctrine): registers
-   * the base type for a name, scoped to this session instance. Same name
-   * + SAME type re-declaration is an IDEMPOTENT no-op (declaration order
-   * is first-registration order); a DIFFERENT type over an already-
-   * declared name is a LOUD refusal in the developer-facing ASCII
-   * bookkeeping family. Registration touches the registry ONLY — an
-   * already-stored value is never retroactively revalidated (every stored
-   * value passed validation at ITS write moment; a stale-shaped value,
-   * should one ever exist, faults per the table on typed read and an
-   * overwrite replaces it). */
-  declare(name: string, type: VarType): void {
-    if (!isDeclaredType(type)) {
+   * the base type OR a capability-authored CUSTOM SPEC ({label, schema})
+   * for a name, scoped to this session instance. Runtime dispatch past
+   * type erasure (fixed): a STRING payload takes the LEGACY LITERAL LANE
+   * BYTE-STABLE (the six literals register as today; a foreign string
+   * settles the EXISTING malformed line unchanged); a NON-NULL, NON-ARRAY
+   * OBJECT payload enters the SPEC LANE under the FIXED FIRST-FAULT TRIAGE
+   * (label well-formed, no built-in shadowing, schema recognized — the
+   * first fault settles LOUDLY and mints NOTHING); EVERYTHING ELSE
+   * (numbers, booleans, null, symbols, functions, bigints, AND arrays)
+   * keeps the EXISTING line with its historical ${payload} spelling. Re-
+   * declaration over an already-registered name settles by KIND THEN
+   * DISPLAY: same-kind + same-display is an IDEMPOTENT no-op (the original
+   * registration wins inertly); ANY other mix conflicts LOUDLY in the
+   * developer-facing ASCII bookkeeping family with the UNCHANGED form, now
+   * fed with DISPLAY names (literals display themselves, specs their
+   * labels — literal-over-literal reproduces the legacy bytes exactly).
+   * Registration touches the registry ONLY — an already-stored value is
+   * never retroactively revalidated (every stored value passed validation
+   * at ITS write moment; a stale-shaped value, should one ever exist,
+   * faults per the table on typed read and an overwrite replaces it). */
+  declare(name: string, type: VarType | CustomVarSpec): void {
+    let display: string;
+    if (typeof type === "string") {
+      // LEGACY LITERAL LANE (byte-stable): the existing equality chain
+      // governs — the six literals admit; a foreign string settles the
+      // EXISTING malformed line with unchanged bytes.
+      if (!isDeclaredType(type)) {
+        throw new VarRegistryError(
+          `var registry: invalid base type '${type}' for variable '${name}'`,
+        );
+      }
+      display = type;
+    } else if (
+      typeof type !== "object" ||
+      type === null ||
+      Array.isArray(type)
+    ) {
+      // EVERYTHING ELSE (non-string primitives, null, AND arrays — an
+      // array is never a plausible spec candidate): the EXISTING legacy
+      // line with its historical ${payload} template spelling —
+      // byte-stable for every such payload that ever reached it.
       throw new VarRegistryError(
         `var registry: invalid base type '${type}' for variable '${name}'`,
       );
+    } else {
+      // SPEC LANE: fixed FIRST-FAULT triage over the runtime payload
+      // (cast-free; the interface types lie past erasure, so every member
+      // is re-adjudicated at runtime — the first fault settles, collect-
+      // all is barred; the voice is single-line single-fault). Nothing
+      // mints before the triage settles.
+      const label = type.label;
+      if (typeof label !== "string" || label === "") {
+        throw new VarRegistryError(renderVarSpecLabelLine(name));
+      }
+      if (isDeclaredType(label)) {
+        throw new VarRegistryError(renderVarSpecShadowLine(name, label));
+      }
+      if (!(type.schema instanceof z.ZodType)) {
+        throw new VarRegistryError(renderVarSpecSchemaLine(name));
+      }
+      display = label;
     }
     const existing = this.#types.get(name);
-    if (existing !== undefined && existing !== type) {
-      throw new VarRegistryError(
-        `var registry: cannot declare '${name}' as '${type}': already declared as '${existing}'`,
-      );
+    if (existing !== undefined) {
+      const existingDisplay = displayVarDeclaration(existing);
+      if (existingDisplay !== display) {
+        throw new VarRegistryError(
+          `var registry: cannot declare '${name}' as '${display}': already declared as '${existingDisplay}'`,
+        );
+      }
+      // SAME-KIND + SAME-DISPLAY: idempotent no-op — the ORIGINAL
+      // registration wins inertly (deep-equality over schema objects is
+      // deliberately NOT consulted: a same-label re-declaration with a
+      // differently-edited schema is a SILENT no-op, matching the
+      // "registration lands exactly once per name" doctrine).
+      return;
     }
     // Registration lands exactly once per name, at first declaration:
-    // the conflicting-type case has already thrown above, so what remains
-    // here is a fresh name (insert) or a same-type re-declaration (no-op).
-    // Map insertion order is first-registration order either way — even a
-    // redundant set would preserve it — so the guard expresses intent,
-    // not an ordering safeguard.
-    if (existing === undefined) {
-      this.#types.set(name, type);
-    }
+    // the conflict case has already thrown above, so what remains here is
+    // a fresh name (insert). THE MARKED SEAM of the union storage: every
+    // RUNTIME admission decision has settled above it (fixed triage, then
+    // idempotency/conflict), and the widened-view write lets the
+    // well-formed spec ride into a field whose declared type stays the
+    // six-literal funnel view (byte-conservatism: the conversion core,
+    // the clause/line renderers, and set()/get()/list() keep their exact
+    // bytes until the funnel arm arrives — a spec-carrying entry has NO
+    // sanctioned settlement until then: the shared switch falls through
+    // on the spec payload as a raw fault by design).
+    storeUnionDeclaration(this.#types, name, type);
   }
 
   /** THE single validated entry point for ALL variable writes (polices
@@ -883,16 +1009,30 @@ export class SessionVariableStore {
   }
 
   /** THE registry query surface: fresh plain object per call listing every
-   * declared name to type in DECLARATION order (independent of stored
-   * values). Callers may retain freely (counters() doctrine); derive
-   * declared-or-not AND type from this snapshot (the single registry
-   * introspection face). */
-  declarations(): Readonly<Record<string, VarType>> {
-    const snapshot: Record<string, VarType> = {};
+   * declared name to its DISPLAY name in DECLARATION order (independent of
+   * stored values): six literals display themselves, specs display their
+   * label (ONE module-private display resolver feeds this face and the
+   * declarationDisplay() companion below). Callers may retain freely
+   * (counters() doctrine); derive declared-or-not AND display from this
+   * snapshot (the single registry introspection face). */
+  declarations(): Readonly<Record<string, string>> {
+    const snapshot: Record<string, string> = {};
     for (const [name, type] of this.#types) {
-      snapshot[name] = type;
+      snapshot[name] = displayVarDeclaration(type);
     }
     return snapshot;
+  }
+
+  /** COMPANION QUERY over the registry: the DISPLAYED name of ONE
+   * declaration — a literal displays itself, a spec its label — or
+   * UNDEFINED for an undeclared name. Safe channel: introspection, not
+   * admission — never throws, mutates nothing, mints nothing (parallel to
+   * the untyped-safe get(name) channel doctrine). THE surface the
+   * model-facing lanes render listings WITHOUT spec-internals awareness. */
+  declarationDisplay(name: string): string | undefined {
+    const stored = this.#types.get(name);
+    if (stored === undefined) return undefined;
+    return displayVarDeclaration(stored);
   }
 }
 

@@ -21,10 +21,7 @@ import type { ToolDefinition } from "@earendil-works/pi-coding-agent";
 import { defineTool } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
 import { VariableRejectionError } from "../../capability/errors.ts";
-import type {
-  SessionVariableStore,
-  VarType,
-} from "../../capability/pio-session.ts";
+import type { SessionVariableStore } from "../../capability/pio-session.ts";
 
 /** Legacy value union mirrored EXACTLY (documented v1 limit: array
  * elements are string-restricted at this lane; object properties stay
@@ -170,11 +167,12 @@ function settleText(text: string): SettledTextResult {
 // ---------------------------------------------------------------------------
 
 /** ONE claim-mismatch line: names the attempted variable, the DECLARED
- * type (registry authority), and the DISAGREEING claimed type. Composed
- * through the family below for delivery. */
+ * display (registry authority — literals display themselves), and the
+ * DISAGREEING claimed type. Composed through the family below for
+ * delivery. */
 function renderClaimMismatchLine(
   name: string,
-  declared: VarType,
+  declared: string,
   claimed: string,
 ): string {
   return `variable '${name}' is declared as type '${declared}' \u2014 claimed type '${claimed}' does not match the declaration`;

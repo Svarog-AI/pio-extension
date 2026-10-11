@@ -32,6 +32,33 @@ export class ContractViolationError extends Error {
 }
 
 /**
+ * THE dedicated verdict class for variable-face ceiling exhaustion: thrown
+ * by the settlement gate ONLY when the variable face alone is still absent
+ * at its mirrored cap (the file-only and both-faces corners keep the plain
+ * parent byte-frozen). Carries the structured `names` datum alongside the
+ * inherited `violations` so consumers discriminate by CLASS + STRUCTURED
+ * FIELDS, never by message bytes; subclass identity keeps every pre-existing
+ * instanceof ContractViolationError consumer green verbatim. The default
+ * message composes from the SAME engine-owned line renderers as the legacy
+ * throw - message bytes UNCHANGED, zero drift anywhere on the line.
+ *
+ * No NEW cause taxonomy on purpose: the closed five-member vocabulary stays
+ * undisturbed (the instance rides the parent's own "contract" assignment,
+ * and the status capture's narrow branch deliberately settles the record
+ * WITHOUT a cause key).
+ */
+export class MissingVariableError extends ContractViolationError {
+  /** Exactly the listed variables still absent at the exhausted break. */
+  readonly names: string[];
+
+  constructor(violations: string[], names: string[], message?: string) {
+    super(violations, message);
+    this.name = "MissingVariableError";
+    this.names = names;
+  }
+}
+
+/**
  * The variable rejection family: one dedicated voice for every VARIABLE
  * concern — shape/coercion rejects from either origin (programmatic TS or
  * model tool), the model-side permission reject (the per-phase guard owns

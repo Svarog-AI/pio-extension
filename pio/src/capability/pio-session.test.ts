@@ -13,7 +13,9 @@
 // cast seam asEvent — the sole `as` over synthetic event payloads (the
 // handle-typing seams asHandle / asRuntime below are the only other
 // presentation seams in this file, plus the marked foreign-type seam
-// foreignVarType feeding the malformed-type registry-fault row, and the
+// foreignVarType feeding the malformed-type registry-fault row, the marked
+// declare-payload seam foreignDeclarePayload feeding the widened-dispatch
+// edge and malformed-spec rows, and the
 // trio-drive seam driveVarEntry in the vars-tool threading describe,
 // which presents the REAL var-tool definition behind the widened
 // threaded-tool view under the authored five-argument execute surface so
@@ -58,6 +60,7 @@ import type {
   AgentSessionEvent,
   AgentSessionRuntime,
 } from "@earendil-works/pi-coding-agent";
+import { z } from "zod";
 import { deriveProjectKey } from "../sandbox/layout.ts";
 import { EXECUTION_STATE_STAMP } from "../session.ts";
 import type { ExecutionSnapshot } from "../session-execution-state.ts";
@@ -71,13 +74,19 @@ import {
 import type { Contract } from "./contract.ts";
 import {
   ContractViolationError,
+  MissingVariableError,
   PhaseInterruptionError,
   VariableRejectionError,
 } from "./errors.ts";
 import type { CapabilitySources } from "./guards/guard-vocabulary.ts";
 import { decideVarWrite } from "./guards/var-gate.ts";
 import { decideWrite } from "./guards/write-gate.ts";
-import type { IterationCtx, PhaseResult, VarType } from "./pio-session.ts";
+import type {
+  CustomVarSpec,
+  IterationCtx,
+  PhaseResult,
+  VarType,
+} from "./pio-session.ts";
 import {
   PioSession,
   renderCapabilityMarker,
@@ -1107,8 +1116,9 @@ describe("PioSession — vars store", () => {
 // ---------------------------------------------------------------------
 // Validated store core (goal session-variable-storage, landing): the
 // mandatory-type base-type registry, the single validated write entry
-// point over the D4 admission/conversion table, and the overloaded typed
-// reads. Pure-store rows construct
+// point over the D4 admission/conversion table plus its spec-lane
+// counterpart and the program-owned erasure channel, and the overloaded
+// typed reads. Pure-store rows construct
 // the EXPORTED class directly (hermetic, zero harness); the cross-
 // instance legs extend BOTH the host()/create pair pattern AND the
 // fromRuntime H/H2 pattern over the same settled runtime. Golden lines
@@ -1158,6 +1168,34 @@ const varRegistryConflictLine = (
 const varRegistryMalformedLine = (type: string, name: string): string =>
   `var registry: invalid base type '${type}' for variable '${name}'`;
 
+/** Replica of the PINNED malformed-spec LABEL line (class 1: NON-STRING or
+ * EMPTY label — ONE line covering both, echoing NOTHING). PURE ASCII. */
+const varRegistrySpecLabelLine = (name: string): string =>
+  `var registry: invalid spec label for variable '${name}': label must be a non-empty string`;
+
+/** Replica of the PINNED built-in-shadowing line (class 2: the label proved
+ * a non-empty string and echoes VERBATIM per the house echo practice).
+ * PURE ASCII. */
+const varRegistrySpecShadowLine = (name: string, label: string): string =>
+  `var registry: invalid spec label for variable '${name}': label '${label}' shadows a built-in type name`;
+
+/** Replica of the PINNED unrecognized-schema line (class 3: the schema
+ * member failed the library's own type guard; nothing echoed). */
+const varRegistrySpecSchemaLine = (name: string): string =>
+  `var registry: invalid spec schema for variable '${name}': schema is not a recognizable zod schema`;
+
+/** Spec-lane defect-line frame replica (sole owner: the module-private renderer in ./pio-session.ts) — rows supply the composed problem text so order, join, and path-prefix spelling pin end-to-end. */
+const varSpecDefectLine = (name: string, problemText: string): string =>
+  `variable '${name}' does not satisfy its declared shape check \u2014 ${problemText}`;
+
+/** Dedicated check-fault line replica (sole owner: the module-private fault-line renderer). */
+const varSpecFaultLine = (name: string): string =>
+  `variable '${name}' cannot be shape-checked \u2014 the declared shape check itself faulted while checking the value`;
+
+/** Registry-voice clear fault line replica (pure ASCII, no em dash; sole owner: the module-private renderer). */
+const varRegistryClearUndeclaredLine = (name: string): string =>
+  `var registry: cannot clear variable '${name}': the variable is not declared`;
+
 // Pinned CLAUSE vocabulary (one constant per emitted clause — every
 // clause the shared conversion core can emit is goldened through these).
 const CLAUSE_UNDEFINED = "value is undefined";
@@ -1181,6 +1219,14 @@ const clauseGeneric = (type: string): string =>
 // malformed-type bookkeeping fault row (source never casts; the union
 // erases at runtime so only a foreign caller could supply this).
 const foreignVarType = "bogus" as VarType;
+
+// MARKED CAST SEAM (test-side only, house pattern à la foreignVarType):
+// a runtime-foreign declare() PAYLOAD that type erasure admits — drives
+// the widened-dispatch edge rows (non-string primitives / arrays / null
+// keep the legacy line spelling) and the class-1 / class-3 malformed-spec
+// rows (non-string labels, non-zod schema members). The source never casts.
+const foreignDeclarePayload = (value: unknown): VarType | CustomVarSpec =>
+  value as VarType | CustomVarSpec;
 
 /** Fault-capture helper for the UNEXPORTED bookkeeping class: asserts
  * Error shape by NAME only (no instanceof — the class is module-local,
@@ -1282,6 +1328,209 @@ describe("SessionVariableStore — base-type registry (declare)", () => {
     expect(store.get("obj")).toBe(retained); // same reference — untouched
     expect(store.get("obj", "object")).toBe(seed); // typed read resolves verbatim
   });
+
+  it("a WELL-FORMED custom spec (label + zod schema) registers ALONGSIDE the built-in literals and round-trips through the registry query surface: mixed store lists in DECLARATION ORDER, declarations() shows the spec UNDER ITS LABEL and the literals themselves, FRESH snapshot per call", () => {
+    const store = new SessionVariableStore();
+    store.declare("alpha", "boolean");
+    store.declare("shape", {
+      label: "decision-shape",
+      schema: z.object({ name: z.string() }),
+    });
+    store.declare("beta", "string");
+    const snapshot = store.declarations();
+    expect(Object.keys(snapshot)).toEqual(["alpha", "shape", "beta"]);
+    expect(snapshot.alpha).toBe("boolean");
+    expect(snapshot.shape).toBe("decision-shape");
+    expect(snapshot.beta).toBe("string");
+    // Declaration ≠ presence: the registry is not the stored-value record.
+    expect(store.list()).toEqual([]);
+    // Fresh object per call (counters() doctrine) with identical bytes.
+    expect(store.declarations()).not.toBe(snapshot);
+    expect(store.declarations()).toEqual(snapshot);
+  });
+
+  it("same-name SAME-LABEL spec re-declaration is an IDEMPOTENT no-op with FIRST-REGISTRATION WINS INERTLY (deep-equality over schema objects is deliberately NOT consulted — a differently-edited schema under the same label settles SILENTLY): no fault, declarations() byte-stable, pre-set entries untouched", () => {
+    const store = new SessionVariableStore();
+    store.declare("v", "string");
+    store.declare("shape", {
+      label: "decision-shape",
+      schema: z.object({ a: z.string() }),
+    });
+    store.set("v", "pre-set");
+    // Same label, DELIBERATELY differently-edited schema: silent no-op.
+    store.declare("shape", {
+      label: "decision-shape",
+      schema: z.object({ b: z.string() }),
+    });
+    expect(store.declarations()).toEqual({
+      v: "string",
+      shape: "decision-shape",
+    });
+    expect(Object.keys(store.declarations())).toEqual(["v", "shape"]);
+    expect(store.get("v")).toBe("pre-set");
+    expect(() => store.set("v", "still-valid")).not.toThrow();
+  });
+
+  it("MALFORMED spec, class 3 (NON-ZOD schema member: {} / a plain object): faults LOUDLY with the exact pinned L3 bytes; NOTHING MINTS — registry and entries survive the fault verbatim, a legal declaration afterwards still works", () => {
+    const store = new SessionVariableStore();
+    store.declare("ok", "number");
+    store.set("ok", 7);
+    const fault = captureNamedFault(() =>
+      store.declare(
+        "bad",
+        foreignDeclarePayload({ label: "custom-shape", schema: {} }),
+      ),
+    );
+    expect(fault.name).toBe("VarRegistryError");
+    expect(fault.message).toBe(varRegistrySpecSchemaLine("bad"));
+    expect(/\u2014/.test(fault.message)).toBe(false); // pure ASCII
+    // NOTHING MINTS: 'bad' absent; 'ok' intact with its stored entry.
+    expect(store.declarations()).toEqual({ ok: "number" });
+    expect(store.get("ok")).toBe(7);
+    store.declare("later", { label: "real-shape", schema: z.string() });
+    expect(store.declarations()).toEqual({ ok: "number", later: "real-shape" });
+  });
+
+  it("MALFORMED spec, class 1 (EMPTY or NON-STRING label): faults LOUDLY with the EXACT pinned L1 bytes — ONE line covering both, echoing NOTHING (the non-string label rides the marked cast seam as runtime foreignness past erasure); nothing mints", () => {
+    const store = new SessionVariableStore();
+    store.declare("ok", "string");
+    store.set("ok", "kept");
+    // Empty-string label (compiles directly; the schema slot is legal).
+    const emptyFault = captureNamedFault(() =>
+      store.declare("blank", { label: "", schema: z.string() }),
+    );
+    expect(emptyFault.name).toBe("VarRegistryError");
+    expect(emptyFault.message).toBe(varRegistrySpecLabelLine("blank"));
+    expect(/\u2014/.test(emptyFault.message)).toBe(false);
+    // NON-STRING label (marked-cast seam à la foreignVarType).
+    const nonStringFault = captureNamedFault(() =>
+      store.declare(
+        "weird",
+        foreignDeclarePayload({ label: 42, schema: z.string() }),
+      ),
+    );
+    expect(nonStringFault.name).toBe("VarRegistryError");
+    expect(nonStringFault.message).toBe(varRegistrySpecLabelLine("weird"));
+    expect(/\u2014/.test(nonStringFault.message)).toBe(false);
+    // NOTHING MINTED: registry and entries survive the faults verbatim.
+    expect(store.declarations()).toEqual({ ok: "string" });
+    expect(store.get("ok")).toBe("kept");
+  });
+
+  it("MALFORMED spec, class 2 (label shadowing a built-in literal): one explicit row pins L2 with the PROVEN non-empty string label echoed VERBATIM, plus a compact sweep asserting ALL SIX literal labels fault L2 (fresh names each) — nothing mints", () => {
+    const store = new SessionVariableStore();
+    const fault = captureNamedFault(() =>
+      store.declare("shadow", { label: "string", schema: z.string() }),
+    );
+    expect(fault.name).toBe("VarRegistryError");
+    expect(fault.message).toBe(varRegistrySpecShadowLine("shadow", "string"));
+    expect(/\u2014/.test(fault.message)).toBe(false);
+    const literals: VarType[] = [
+      "boolean",
+      "number",
+      "string",
+      "array",
+      "object",
+      "null",
+    ];
+    literals.forEach((literal, index) => {
+      const sweepName = `shadow-${index}`;
+      const sweepFault = captureNamedFault(() =>
+        store.declare(sweepName, { label: literal, schema: z.string() }),
+      );
+      expect(sweepFault.name).toBe("VarRegistryError");
+      expect(sweepFault.message).toBe(
+        varRegistrySpecShadowLine(sweepName, literal),
+      );
+      expect(/\u2014/.test(sweepFault.message)).toBe(false);
+    });
+    expect(store.declarations()).toEqual({});
+  });
+
+  it("CONFLICT (spec over literal): a spec declaration over a literal-declared name faults LOUDLY via the EXISTING conflict-line grammar now fed with DISPLAY names (the spec displays its label, the literal itself); survival asserted; nothing mints", () => {
+    const store = new SessionVariableStore();
+    store.declare("flag", "boolean");
+    store.set("flag", true);
+    const fault = captureNamedFault(() =>
+      store.declare("flag", { label: "custom-shape", schema: z.string() }),
+    );
+    expect(fault.name).toBe("VarRegistryError");
+    expect(fault.message).toBe(
+      varRegistryConflictLine("flag", "custom-shape", "boolean"),
+    );
+    expect(/\u2014/.test(fault.message)).toBe(false);
+    // Survival: the ORIGINAL registration and its stored entry stay put.
+    expect(store.declarations()).toEqual({ flag: "boolean" });
+    expect(store.get("flag", "boolean")).toBe(true);
+  });
+
+  it("CONFLICT (literal over spec): a literal declaration over a spec-declared name faults LOUDLY with the composed display-name line (the existing declaration declared AS its label); survival asserted", () => {
+    const store = new SessionVariableStore();
+    store.declare("shape", { label: "decision-shape", schema: z.string() });
+    const fault = captureNamedFault(() => store.declare("shape", "number"));
+    expect(fault.name).toBe("VarRegistryError");
+    expect(fault.message).toBe(
+      varRegistryConflictLine("shape", "number", "decision-shape"),
+    );
+    expect(store.declarations()).toEqual({ shape: "decision-shape" });
+    expect(store.declarationDisplay("shape")).toBe("decision-shape");
+  });
+
+  it("CONFLICT (differing-label spec over spec): two specs with DIFFERING labels over one name fault LOUDLY (first-registration display wins); the ORIGINAL registration survives inertly", () => {
+    const store = new SessionVariableStore();
+    store.declare("dual", { label: "first-label", schema: z.string() });
+    const fault = captureNamedFault(() =>
+      store.declare("dual", { label: "second-label", schema: z.number() }),
+    );
+    expect(fault.name).toBe("VarRegistryError");
+    expect(fault.message).toBe(
+      varRegistryConflictLine("dual", "second-label", "first-label"),
+    );
+    expect(store.declarations()).toEqual({ dual: "first-label" });
+    expect(store.declarationDisplay("dual")).toBe("first-label");
+  });
+
+  it("DISPATCH EDGE (non-string primitive, ARRAY, and NULL payloads): every such payload settles the LEGACY invalid-base-type line with its HISTORICAL PAYLOAD-INTERPOLATION SPELLING BYTE-IDENTICAL (byte-conservatism: only genuine non-null non-array object candidates gain the new spec triage); nothing mints across the whole sweep", () => {
+    const store = new SessionVariableStore();
+    const cases: Array<[name: string, payload: unknown]> = [
+      ["n-prime", 42],
+      ["b-prime", true],
+      ["a-prime", [1, 2]],
+      ["q-null", null],
+    ];
+    for (const [name, payload] of cases) {
+      const fault = captureNamedFault(() =>
+        store.declare(name, foreignDeclarePayload(payload)),
+      );
+      expect(fault.name).toBe("VarRegistryError");
+      // Historical ${payload} spelling: String(payload) interpolation.
+      expect(fault.message).toBe(
+        varRegistryMalformedLine(String(payload), name),
+      );
+      expect(/\u2014/.test(fault.message)).toBe(false);
+    }
+    expect(store.declarations()).toEqual({});
+  });
+});
+
+describe("SessionVariableStore — declaration display surface (declarationDisplay)", () => {
+  it("answers the DISPLAYED name of EVERY declared name: a spec resolves to ITS LABEL, a literal to the literal ITSELF, and an UNDECLARED name to undefined — SAFE channel (never throws, mutates nothing, mints nothing)", () => {
+    const store = new SessionVariableStore();
+    store.declare("s", "string");
+    store.declare("shape", { label: "decision-shape", schema: z.string() });
+    expect(store.declarationDisplay("s")).toBe("string");
+    expect(store.declarationDisplay("shape")).toBe("decision-shape");
+    // Undeclared name: undefined (introspection, not admission — no loud
+    // miss, parallel to the untyped-safe get() channel doctrine).
+    expect(store.declarationDisplay("ghost")).toBeUndefined();
+    expect(store.declarationDisplay("ghost")).toBeUndefined();
+    // Reads mutate nothing: the table stays byte-stable, ordered, fresh.
+    expect(store.declarations()).toEqual({
+      s: "string",
+      shape: "decision-shape",
+    });
+    expect(Object.keys(store.declarations())).toEqual(["s", "shape"]);
+  });
 });
 
 describe("SessionVariableStore — undeclared-write rejection (mandatory-type doctrine)", () => {
@@ -1302,6 +1551,338 @@ describe("SessionVariableStore — undeclared-write rejection (mandatory-type do
       varUndeclaredWriteLine("fresh2"),
     );
     expect(store.list()).toEqual([]);
+  });
+});
+
+describe("SessionVariableStore — spec-lane funnel (set, custom-spec declarations)", () => {
+  it("a CONFORMING write stores EXACTLY the parse output: the identity lane deep-equals the input (deep equality ONLY — object parse yields a fresh reference, so no reference-identity claim), and the TRANSFORM PROOF row stores the transformed output differing in value from the raw input (side-effect-free)", () => {
+    const store = new SessionVariableStore();
+    store.declare("decision", {
+      label: "decision-shape",
+      schema: z.object({ action: z.string(), count: z.number() }),
+    });
+    const input: Record<string, unknown> = { action: "proceed", count: 2 };
+    store.set("decision", input);
+    // Deep equality — under the measured physics the parse output is a
+    // FRESH reference; asserting identity would fabricate a failure.
+    expect(store.get("decision")).toEqual({ action: "proceed", count: 2 });
+    // Scalar passthrough conformance round-trips verbatim through the
+    // untyped-safe channel.
+    store.declare("count", { label: "count-shape", schema: z.number() });
+    store.set("count", 42);
+    expect(store.get("count")).toBe(42);
+    // TRANSFORM PROOF: the stored value is the TRANSFORMED output,
+    // differing in value from the raw input (raw input side-effect-
+    // free).
+    store.declare("shout", {
+      label: "shouting-text",
+      schema: z.string().transform((text) => text.toUpperCase()),
+    });
+    const rawInput = "  hi ";
+    store.set("shout", rawInput);
+    expect(store.get("shout")).toBe("  HI ");
+    expect(store.get("shout")).not.toBe(rawInput);
+    expect(rawInput).toBe("  hi ");
+  });
+
+  it("a NON-CONFORMING write settles mid-funnel with the composed defect line: single-authored findings (bare message on an EMPTY path; dot-prefixed statement on a nested path), the EXACT worked-example bytes over the multi-issue object fixture (collect-all encounter order, '; ' join), the NESTED NUMERIC-PATH statement spelling (array element dot-joined in decimal), authored wording carried VERBATIM in every line, the prior value intact in every fault case, and a faulted FIRST write mints nothing (name absent, list() empty, declarations() untouched)", () => {
+    const store = new SessionVariableStore();
+    store.declare("decision", {
+      label: "decision-shape",
+      schema: z.object({
+        a: z.number({ error: "a must be numeric" }),
+        b: z.string({ error: "b must be textual" }),
+      }),
+    });
+    // Pre-set a conforming value: it must survive the faulted
+    // overwrite.
+    store.set("decision", { a: 1, b: "two" });
+    expect(store.get("decision")).toEqual({ a: 1, b: "two" });
+    // MULTI-ISSUE worked example: EVERY finding rides, encounter
+    // order, '; ' joined, dot-prefixed — the EXACT pinned bytes.
+    expectFamilyFault(
+      () => store.set("decision", {}),
+      varSpecDefectLine(
+        "decision",
+        "a: a must be numeric; b: b must be textual",
+      ),
+    );
+    expect(store.get("decision")).toEqual({ a: 1, b: "two" });
+    // SINGLE authored finding over a NESTED path: the dot-prefix
+    // statement spelling.
+    store.declare("ratio", {
+      label: "ratio-shape",
+      schema: z.object({ n: z.number({ error: "n must be numeric" }) }),
+    });
+    store.set("ratio", { n: 0.5 });
+    expectFamilyFault(
+      () => store.set("ratio", {}),
+      varSpecDefectLine("ratio", "n: n must be numeric"),
+    );
+    expect(store.get("ratio")).toEqual({ n: 0.5 });
+    // SINGLE authored finding with an EMPTY path: the bare message
+    // rides undecorated.
+    store.declare("flag-count", {
+      label: "count-shape",
+      schema: z.number({ error: "a finite count expected" }),
+    });
+    store.set("flag-count", 3);
+    expectFamilyFault(
+      () => store.set("flag-count", "many"),
+      varSpecDefectLine("flag-count", "a finite count expected"),
+    );
+    expect(store.get("flag-count")).toBe(3);
+    // NESTED NUMERIC-PATH finding (the array element): the dot-joined
+    // decimal segment spelling.
+    store.declare("roster", {
+      label: "roster-shape",
+      schema: z.object({
+        items: z.array(z.string({ error: "element must be textual" })),
+      }),
+    });
+    store.set("roster", { items: ["one"] });
+    expectFamilyFault(
+      () => store.set("roster", { items: [1] }),
+      varSpecDefectLine("roster", "items.0: element must be textual"),
+    );
+    expect(store.get("roster")).toEqual({ items: ["one"] });
+    // FAULTED FIRST WRITE MINTS NOTHING (fresh store: the name is
+    // absent, list() is empty, and the registry snapshot is
+    // untouched).
+    const fresh = new SessionVariableStore();
+    fresh.declare("decision", {
+      label: "decision-shape",
+      schema: z.object({ a: z.number({ error: "a must be numeric" }) }),
+    });
+    expectFamilyFault(
+      () => fresh.set("decision", {}),
+      varSpecDefectLine("decision", "a: a must be numeric"),
+    );
+    expect(fresh.get("decision")).toBeUndefined();
+    expect(fresh.list()).toEqual([]);
+    expect(fresh.declarations()).toEqual({ decision: "decision-shape" });
+  });
+
+  it("NULL carries NO semantics over a spec lane: a null write settles through the EXACT ordinary-defect path (the check's OWN default-spelled line — no intercept, no erase command, no special-case branch anywhere) with the prior state — a stored object OR absence — reading back intact; contrast in the same block: a built-in 'null'-typed variable still stores null legally (byte-stable lane — the universal null rule untouched)", () => {
+    const store = new SessionVariableStore();
+    store.declare("decision", {
+      label: "decision-shape",
+      schema: z.object({ a: z.number({ error: "a must be numeric" }) }),
+    });
+    // Prior state = a stored OBJECT: the null write faults with the
+    // check's own defect line and the object reads back intact.
+    store.set("decision", { a: 7 });
+    expect(store.get("decision")).toEqual({ a: 7 });
+    expectFamilyFault(
+      () => store.set("decision", null),
+      varSpecDefectLine(
+        "decision",
+        "Invalid input: expected object, received null",
+      ),
+    );
+    expect(store.get("decision")).toEqual({ a: 7 });
+    // Prior state = ABSENCE: a faulted FIRST null write mints
+    // nothing.
+    store.declare("next", {
+      label: "decision-shape",
+      schema: z.object({ a: z.number({ error: "a must be numeric" }) }),
+    });
+    expectFamilyFault(
+      () => store.set("next", null),
+      varSpecDefectLine(
+        "next",
+        "Invalid input: expected object, received null",
+      ),
+    );
+    expect(store.get("next")).toBeUndefined();
+    // Contrast: the built-in 'null' lane is BYTE-STABLE — null REMAINS
+    // the legal value there (the universal null rule untouched).
+    store.declare("nil", "null");
+    store.set("nil", null);
+    expect(store.get("nil", "null")).toBeNull();
+  });
+
+  it("a check that THROWS while running degrades CONTAINED to the dedicated fault-category line in the SAME family voice: an Error throw and a NON-ERROR throw (a bare primitive — plain TS, no marked cast seam) settle IDENTICAL bytes, no crash escapes from author code, no silent admission, the prior value intact, and a fresh-name first write mints nothing", () => {
+    const store = new SessionVariableStore();
+    // The check throws ONLY on the fault trigger value (a throwing
+    // check settles mid-write, so the conforming baseline must park
+    // through a passing verdict first).
+    store.declare("checked", {
+      label: "checked-text",
+      schema: z.string().refine((text) => {
+        if (text === "fault") throw new Error("author boom");
+        return true;
+      }),
+    });
+    store.set("checked", "baseline");
+    expect(store.get("checked")).toBe("baseline");
+    expectFamilyFault(
+      () => store.set("checked", "fault"),
+      varSpecFaultLine("checked"),
+    );
+    expect(store.get("checked")).toBe("baseline"); // prior value intact
+    // NON-ERROR-THROW: a bare primitive escapes the safe-parse entry
+    // point as itself — the swallow-all catch settles the IDENTICAL
+    // fault line, and the fresh-name first write mints NOTHING.
+    store.declare("prim", {
+      label: "primitive-checked",
+      schema: z.string().refine(() => {
+        throw 42;
+      }),
+    });
+    expectFamilyFault(
+      () => store.set("prim", "anything"),
+      varSpecFaultLine("prim"),
+    );
+    // No silent admission: no value landed on either faulted name.
+    expect(store.get("prim")).toBeUndefined();
+    expect(store.list()).toEqual(["checked"]);
+  });
+});
+
+describe("SessionVariableStore — spec-lane text materialization (wire doctrine)", () => {
+  it("JSON-document text MATERIALIZES BEFORE the declared shape check: the quoted document stores the DECODED parse output deep-equal to the IDENTICAL native drive of the same document (twin equivalence over the real funnel - the product-regression pin for the model's quoted-JSON wire form)", () => {
+    const declareShape = (s: SessionVariableStore): void =>
+      s.declare("decision", {
+        label: "decision-shape",
+        schema: z.object({ action: z.string(), count: z.number() }),
+      });
+    // NATIVE DRIVE (oracle): the decision stored as a plain object.
+    const native = new SessionVariableStore();
+    declareShape(native);
+    native.set("decision", { action: "proceed", count: 2 });
+    expect(native.get("decision")).toEqual({ action: "proceed", count: 2 });
+    // TEXT DRIVE: the model packages the same document as quoted JSON
+    // (the advertised string-leading union makes this the wire form).
+    const document = JSON.stringify({ action: "proceed", count: 2 });
+    const store = new SessionVariableStore();
+    declareShape(store);
+    store.set("decision", document);
+    // Deep equality ONLY (fresh parse-output reference - an identity
+    // claim would fabricate a failure), twin-equivalent to the native
+    // drive by construction.
+    expect(store.get("decision")).toEqual({ action: "proceed", count: 2 });
+    expect(store.get("decision")).toEqual(native.get("decision"));
+  });
+
+  it('JSON-scalar text materializes per the DECLARED CHECK: "42" stores 42 over z.number() and "true" stores true over z.boolean() - decoded scalars settle natively exactly as their native twins do', () => {
+    const store = new SessionVariableStore();
+    store.declare("count", { label: "count-shape", schema: z.number() });
+    store.set("count", "42");
+    expect(store.get("count")).toBe(42);
+    store.declare("flag", { label: "flag-shape", schema: z.boolean() });
+    store.set("flag", "true");
+    expect(store.get("flag")).toBe(true);
+    // Native-twin parity: the identical native drive settles identically
+    // (deep equality over the scalar read-back).
+    const twin = new SessionVariableStore();
+    twin.declare("count", { label: "count-shape", schema: z.number() });
+    twin.set("count", 42);
+    expect(store.get("count")).toEqual(twin.get("count"));
+  });
+
+  it('NON-DOCUMENT text rides the schema AS-IS (decode-or-raw stability guard): a transform spec stores the transformed RAW text verbatim ("  hi " -> "  HI ") and junk text over an object spec settles the family-voice defect line MINTING NOTHING - the settled raw-text fault bytes stay byte-frozen', () => {
+    const store = new SessionVariableStore();
+    store.declare("shout", {
+      label: "shouting-text",
+      schema: z.string().transform((text) => text.toUpperCase()),
+    });
+    store.set("shout", "  hi ");
+    expect(store.get("shout")).toBe("  HI ");
+    // Family-voice fault over an object spec: no decode possible, no
+    // mint - the composed-defect bytes hold unedited.
+    store.declare("pair", {
+      label: "pair-shape",
+      schema: z.object({ k: z.string() }),
+    });
+    expectFamilyFault(
+      () => store.set("pair", "just some words"),
+      varSpecDefectLine(
+        "pair",
+        "Invalid input: expected object, received string",
+      ),
+    );
+    expect(store.get("pair")).toBeUndefined();
+    expect(store.list()).toEqual(["shout"]);
+  });
+});
+
+describe("SessionVariableStore — program-owned erasure (clear)", () => {
+  it("empties the entry while the DECLARATION SURVIVES: untyped get reads back undefined, list() drops the name, the declarations() snapshot stays BYTE-IDENTICAL pre/post and declarationDisplay() is unchanged, and post-clear writes re-enter the funnel from scratch (conforming admits AND non-conforming faults again — the check is alive)", () => {
+    const store = new SessionVariableStore();
+    store.declare("decision", {
+      label: "decision-shape",
+      schema: z.object({ a: z.number({ error: "a must be numeric" }) }),
+    });
+    store.set("decision", { a: 1 });
+    const beforeDeclarations = store.declarations();
+    const beforeDisplay = store.declarationDisplay("decision");
+    store.clear("decision");
+    // Erasure: absence through the untyped-safe channel, list() drop,
+    // registry SURVIVAL (declaration byte-identical).
+    expect(store.get("decision")).toBeUndefined();
+    expect(store.list()).toEqual([]);
+    expect(store.declarations()).toEqual(beforeDeclarations);
+    expect(store.declarations()).toEqual({ decision: "decision-shape" });
+    expect(store.declarationDisplay("decision")).toBe(beforeDisplay);
+    // The check is ALIVE post-clear: conforming admits again AND
+    // non-conforming faults again through the SAME composed line (with
+    // the just-stored value surviving the fault).
+    store.set("decision", { a: 2 });
+    expect(store.get("decision")).toEqual({ a: 2 });
+    expectFamilyFault(
+      () => store.set("decision", {}),
+      varSpecDefectLine("decision", "a: a must be numeric"),
+    );
+    expect(store.get("decision")).toEqual({ a: 2 });
+  });
+
+  it("is IDEMPOTENT over absent-but-declared names (a declared-unset clear is a silent no-op; deleting twice is silent) and erases over the LITERAL lane alike (lane-agnostic: the entry drops, the declaration survives, and the legacy lane re-admits afterwards)", () => {
+    const store = new SessionVariableStore();
+    store.declare("unset", {
+      label: "decision-shape",
+      schema: z.object({ a: z.number({ error: "a must be numeric" }) }),
+    });
+    store.clear("unset"); // declared, never set — silent
+    store.clear("unset"); // double-clear — silent
+    expect(store.get("unset")).toBeUndefined();
+    expect(store.declarations()).toEqual({ unset: "decision-shape" });
+    // Literal-lane leg: clear is the SOLE emptying operation over every
+    // declared lane (adjudication is name-based, not lane-based).
+    store.declare("note", "string");
+    store.set("note", "kept");
+    store.clear("note");
+    expect(store.get("note")).toBeUndefined();
+    expect(store.declarations()).toEqual({
+      unset: "decision-shape",
+      note: "string",
+    });
+    store.set("note", "again"); // legacy lane re-admits post-clear
+    expect(store.get("note", "string")).toBe("again");
+  });
+
+  it("an UNDECLARED name FAULTS the developer-facing bookkeeping voice (asserted by NAME only — the class is unexported) with the EXACT pinned registry-voice line in PURE ASCII (no raw em dash in the line bytes) and mutates NOTHING: entries AND registry survive the fault verbatim", () => {
+    const store = new SessionVariableStore();
+    store.declare("decision", {
+      label: "decision-shape",
+      schema: z.object({ a: z.number({ error: "a must be numeric" }) }),
+    });
+    store.set("decision", { a: 1 });
+    store.declare("plain", "number");
+    store.set("plain", 5);
+    const fault = captureNamedFault(() => store.clear("ghost"));
+    expect(fault.name).toBe("VarRegistryError");
+    expect(fault.message).toBe(varRegistryClearUndeclaredLine("ghost"));
+    expect(/\u2014/.test(fault.message)).toBe(false); // PURE ASCII
+    // Nothing mutated: entries AND registry survive the fault
+    // verbatim.
+    expect(store.get("decision")).toEqual({ a: 1 });
+    expect(store.get("plain")).toBe(5);
+    expect(store.list()).toEqual(["decision", "plain"]);
+    expect(store.declarations()).toEqual({
+      decision: "decision-shape",
+      plain: "number",
+    });
   });
 });
 
@@ -3679,14 +4260,6 @@ const varViolationLineReplica = (phaseId: string, name: string): string =>
 const armFaultLineReplica = (phaseId: string, misses: string[]): string =>
   `phase '${phaseId}': variable(s) listed without a declared base type: ${misses.join(", ")}`;
 
-/** Claim-mismatch line replica (SOLE OWNER: ../tools/vars/var-tools.ts). */
-const claimMismatchLineReplica = (
-  name: string,
-  declared: string,
-  claimed: string,
-): string =>
-  `variable '${name}' is declared as type '${declared}' \u2014 claimed type '${claimed}' does not match the declaration`;
-
 /** One isolated scratch dir for the rows that touch disk; guaranteed restore. */
 async function withTmp<T>(body: (tmp: string) => Promise<T>): Promise<T> {
   const dir = await mkdtemp(path.join(tmpdir(), "pio-var-gate-"));
@@ -3714,7 +4287,7 @@ describe("PioSession — variable expectation gate (vars:)", () => {
   it("round-trip leg 1 (model -> TS): the admitted REAL setVar body writes the store during the scripted pass (guard verdict over a FRESH governing snapshot deep-equal to the threaded handler's admission), and the BETWEEN-RUNS hook reads the SAME converted value from ctx.vars in the SAME run (reference identity asserted); the gate settles on presence with zero corrective retries", async () => {
     const { instance, round, gate } = await host();
     instance.vars.declare("m", "string");
-    const input = { name: "m", type: "string", value: "model-wrote" };
+    const input = { name: "m", value: "model-wrote" };
     const tools = threadedTools();
     round.session.prompt.mockImplementationOnce(async () => {
       expect(gate.toolCallHandler(toolCall("setVar", input))).toBeUndefined();
@@ -3787,7 +4360,7 @@ describe("PioSession — variable expectation gate (vars:)", () => {
     );
   });
 
-  it("round-trip leg 3 (badly-shaped from either side): programmatic set THROWS the family with REAL-THROW replica bytes (undeclared-name corner + boolean-token reject), and the model setVar lane RENDERS the same-family failure as the failed tool RESULT (claim-mismatch module line; undeclared short-circuit rides the store's caught line verbatim); well-typed values land IDENTICALLY for both origins", async () => {
+  it("round-trip leg 3 (badly-shaped from either side): programmatic set THROWS the family with REAL-THROW replica bytes (undeclared-name corner + boolean-token reject), and the model setVar lane RENDERS the same-family failure as the failed tool RESULT (coercion-reject store line; undeclared short-circuit rides the store's caught line verbatim); well-typed values land IDENTICALLY for both origins", async () => {
     const { instance } = await host();
     instance.vars.declare("flag", "boolean");
     expectFamilyFault(
@@ -3798,23 +4371,21 @@ describe("PioSession — variable expectation gate (vars:)", () => {
       () => instance.vars.set("flag", "yes"),
       varCoercionRejectLine("flag", "boolean", "string", CLAUSE_BOOLEAN_TOKEN),
     );
-    // Model lane: the same family settles AS THE TOOL RESULT.
-    instance.vars.declare("s", "string");
+    // Model lane: the SAME family line settles AS THE TOOL RESULT - both
+    // origins (programmatic set and the model lane) settle IDENTICALLY.
     const tools = threadedTools();
-    const mismatch = await driveVarEntry(tools[1], {
-      name: "s",
-      type: "number",
-      value: 4,
+    const rejected = await driveVarEntry(tools[1], {
+      name: "flag",
+      value: "maybe",
     });
-    expect(mismatch.content).toEqual([
+    expect(rejected.content).toEqual([
       {
         type: "text",
-        text: `${VAR_REJECTION_PREFIX}${claimMismatchLineReplica("s", "string", "number")}`,
+        text: `${VAR_REJECTION_PREFIX}${varCoercionRejectLine("flag", "boolean", "string", CLAUSE_BOOLEAN_TOKEN)}`,
       },
     ]);
     const undecl = await driveVarEntry(tools[1], {
       name: "ghost",
-      type: "string",
       value: "x",
     });
     expect(undecl.content).toEqual([
@@ -3830,7 +4401,6 @@ describe("PioSession — variable expectation gate (vars:)", () => {
     instance.vars.set("p", 42);
     await driveVarEntry(tools[1], {
       name: "q",
-      type: "string",
       value: "landed",
     });
     expect(instance.vars.get("p")).toBe(42);
@@ -4021,6 +4591,37 @@ describe("PioSession — variable expectation gate (vars:)", () => {
     ]);
   });
 
+  it("side-aware verdict class (ADDITIVE seam row): a VARIABLES-ONLY ceiling exhaustion throws the DEDICATED MissingVariableError carrying the structured names datum - default message composes the SAME line bytes end-to-end, subclass identity over the approved CVE rows untouched; the corrective-note shape is the pure var-face replica (zero drift between thrown message and renderer output)", async () => {
+    const { instance, round } = await host();
+    instance.vars.declare("sx", "string");
+    const baseline = `\u2014\u2014 side-verdict \u2014\u2014\n\n${expectedDisclosure()}`;
+    scriptRuns(round, quietRun(), quietRun(), quietRun(), quietRun());
+    let thrown: unknown;
+    try {
+      await instance.execute_phase("side-verdict", {
+        max: 1,
+        vars: ["sx"],
+      });
+    } catch (error) {
+      thrown = error;
+    }
+    expect(thrown).toBeInstanceOf(MissingVariableError);
+    expect(thrown).toBeInstanceOf(ContractViolationError);
+    expect((thrown as MissingVariableError).names).toEqual(["sx"]);
+    expect((thrown as MissingVariableError).violations).toEqual([
+      varViolationLineReplica("side-verdict", "sx"),
+    ]);
+    expect((thrown as Error).message).toBe(
+      `Contract violation: ${varViolationLineReplica("side-verdict", "sx")}`,
+    );
+    expect(sentTexts(round)).toEqual([
+      baseline,
+      `${baseline}\n${varCorrectiveNoteReplica(1, ["sx"])}`,
+      `${baseline}\n${varCorrectiveNoteReplica(2, ["sx"])}`,
+      `${baseline}\n${varCorrectiveNoteReplica(3, ["sx"])}`,
+    ]);
+  });
+
   it("floor consumption (min: 2): with a never-landing variable the first two prompts are BOTH pure baseline (the floor-driven continuation sees no gate) and the first denial carries run count 2 (5 prompts: floor runs 2 + corrective 3)", async () => {
     const { instance, round } = await host();
     instance.vars.declare("fx", "string");
@@ -4168,6 +4769,52 @@ describe("PioSession — variable expectation gate (vars:)", () => {
     );
   });
 
+  it("MECHANISM HALF (goal acceptance criterion #1): a capability-shaped flow declaring a CUSTOM SPEC ALONGSIDE BUILT-IN TYPES constructs and starts cleanly — a listing containing the spec-declared name ADMITS at arm (presence-only validation is agnostic to spec declarations: NO PhaseVarDeclarationError; the phase proceeds to turn machinery EXACTLY as a built-in-declared name does — witnessed by prompts ISSUING where an arm-reject issues ZERO) and the spec name then rides the STANDARD variable-gate channels on every face (corrective blocks name it, the ceiling collect-all lists it in effective-listing order alongside the literal)", async () => {
+    const { instance, round } = await host();
+    instance.vars.declare("plain", "string");
+    instance.vars.declare("shape", {
+      label: "decision-shape",
+      schema: z.object({ name: z.string() }),
+    });
+    // Neither value can land before the funnel arm lands (the documented
+    // inter-step window: no spec-lane writer exists yet) — so the row
+    // witnesses ARM ADMISSION via issued prompts and the gate's
+    // standard channels over BOTH names through the dead-pass chain.
+    scriptRuns(round, quietRun(), quietRun(), quietRun(), quietRun());
+    let thrown: unknown;
+    try {
+      await instance.execute_phase("spec-arm", {
+        instructions: "Define the thing",
+        vars: ["plain", "shape"],
+      });
+    } catch (error) {
+      thrown = error;
+    }
+    // Admitted at arm AND proceeded to turn machinery: FOUR issued runs
+    // (one initial + THREE corrective re-runs) where an arm-reject would
+    // have settled with ZERO prompt invocations (the arm-miss rows).
+    expect(thrown).toBeInstanceOf(ContractViolationError);
+    // Side-aware refinement: variables-only exhaustion settles the dedicated
+    // verdict class (subclass identity over the family row above untouched).
+    expect((thrown as Error).name).toBe("MissingVariableError");
+    expect(round.session.prompt).toHaveBeenCalledTimes(4);
+    const sent = sentTexts(round);
+    expect(sent[0]).toBe(
+      `\u2014\u2014 spec-arm \u2014\u2014\nDefine the thing\n\n${expectedDisclosure()}`,
+    );
+    // The corrective block names BOTH variables fresh per retry — the
+    // spec-declared name is indistinguishable from the built-in one.
+    expect(sent[3]).toBe(
+      `\u2014\u2014 spec-arm \u2014\u2014\nDefine the thing\n\n${expectedDisclosure()}\n${varCorrectiveNoteReplica(3, ["plain", "shape"])}`,
+    );
+    // Ceiling collect-all: one line per still-missing variable, effective-
+    // listing order (spec included) — NEVER an arm-time fault.
+    expect((thrown as ContractViolationError).violations).toEqual([
+      varViolationLineReplica("spec-arm", "plain"),
+      varViolationLineReplica("spec-arm", "shape"),
+    ]);
+  });
+
   it("complementarity: a REGISTERED-but-UNDEFINED name does NOT fault at arm — the phase proceeds to the gate (which then settles normally once the value lands): unsatisfiable declarations die at arm, satisfiable-but-unmet ones live to the gate", async () => {
     const { instance, round } = await host();
     instance.vars.declare("complementary", "string");
@@ -4223,7 +4870,6 @@ describe("PioSession — variable expectation gate (vars:)", () => {
     round.session.prompt.mockImplementationOnce(async () => {
       const settlement = await driveVarEntry(tools[1], {
         name: "demo-var",
-        type: "string",
         value: "settled-by-model",
       });
       expect(settlement.content).toEqual([
@@ -4288,7 +4934,7 @@ describe("PioSession — variable expectation gate (vars:)", () => {
     });
   });
 
-  it("BINDING leg 2 (never materializes => typed failure at the gate's OWN ceiling): four quiet passes burn the first pass + exactly 3 corrective re-runs, execute_phase REJECTS with the pinned ContractViolationError (engine-level), and through the FULL chain the captured record names the missing variable with ok:false and exit code 1", async () => {
+  it("BINDING leg 2 (never materializes => typed failure at the gate's OWN ceiling): four quiet passes burn the first pass + exactly 3 corrective re-runs, execute_phase REJECTS with the dedicated MissingVariableError verdict class (variables-only side-awareness over the frozen family), and through the FULL chain the captured record names the missing variable with ok:false and exit code 1", async () => {
     // ENGINE-LEVEL: the raw rejection shape over a dedicated host.
     const engine = await host();
     engine.instance.vars.declare("engine-var", "string");
@@ -4344,9 +4990,11 @@ describe("PioSession — variable expectation gate (vars:)", () => {
       expect(result.ok).toBe(false);
       if (result.ok) throw new Error("unreachable");
       const line = varViolationLineReplica("var-guarded", "chain-var");
+      // The narrow verdict branch settles the DISTINCT type without a cause
+      // key (three-key pinned shape); the message composes the same line
+      // bytes as the legacy throw.
       expect(result.errors?.[0]).toStrictEqual({
-        type: "ContractViolationError",
-        cause: "contract",
+        type: "MissingVariableError",
         message: `Contract violation: ${line}`,
         violations: [line],
       });
@@ -4839,6 +5487,7 @@ describe("source guards (composed-host edge discipline over pio-session.ts)", ()
     expect(valueClauses).toEqual([
       "node:fs",
       "node:path",
+      "zod",
       "../permission-mechanics.ts",
       "../sandbox/layout.ts",
       "../session.ts",
@@ -6325,7 +6974,6 @@ describe("PioSession \u2014 vars-tool customTools threading", () => {
     }
     const settlement = await driveVarEntry(tools[1], {
       name: "note",
-      type: "string",
       value: "wired",
     });
     expect(settlement.details).toEqual({});

@@ -17,7 +17,7 @@ import {
 import os from "node:os";
 import { join } from "node:path";
 import type { CapabilityErrorCause } from "./errors.ts";
-import { ContractViolationError } from "./errors.ts";
+import { ContractViolationError, MissingVariableError } from "./errors.ts";
 import type { SessionStatus, StatusEmitter } from "./status.ts";
 import {
   captureError,
@@ -426,6 +426,29 @@ describe("captureError (ladder table)", () => {
     );
     expect(captured.message).toBe("custom msg");
     expect(captured.violations).toEqual(["v"]);
+  });
+
+  it("missing-variable verdict: the NARROW branch catches the dedicated type AHEAD of the plain parent (distinct type observable downstream; three-key pinned shape with NO cause key; violations passthrough by identity)", () => {
+    const err = new MissingVariableError(
+      ["phase 'g' variable 'a' missing"],
+      ["a"],
+    );
+    const captured = captureError(err);
+    expect(captured).toStrictEqual({
+      type: "MissingVariableError",
+      message: "Contract violation: phase 'g' variable 'a' missing",
+      violations: ["phase 'g' variable 'a' missing"],
+    });
+    expect(Object.keys(captured)).toEqual(["type", "message", "violations"]);
+    expect(captured.violations).toBe(err.violations);
+  });
+
+  it("plain contract violation over a NON-subclass instance still settles the PARENT branch byte-frozen (ladder order unchanged below the narrow branch)", () => {
+    const captured = captureError(new ContractViolationError(["v1", "v2"]));
+    expect(captured.type).toBe("ContractViolationError");
+    expect(captured.cause).toBe("contract");
+    expect(captured.message).toBe("Contract violation: v1; v2");
+    expect(captured.violations).toEqual(["v1", "v2"]);
   });
 
   it("budget cause via standard Error.cause: closed-vocabulary adoption, no violations key", () => {

@@ -255,14 +255,6 @@ function composeWriteInstructions(): string {
 // caller's pre-minted cells BY REFERENCE - cross-boundary sharing rests on
 // cell identity, and the caller's construction is the HARD precondition.
 
-/** Local params extension (unexported, additive): the cross-boundary cells
- * pass BY REFERENCE into the callee's phases - the framework base stays
- * untouched. */
-interface VarsDemoCalleeParams extends CapabilityParams {
-  readonly noteCell: VarCell;
-  readonly calleeNoteCell: VarCell;
-}
-
 class VarsDemoCallee extends PioCapability {
   readonly contract: Contract = {
     name: CALLEE_NAME,
@@ -275,10 +267,17 @@ class VarsDemoCallee extends PioCapability {
   #noteCell: VarCell;
   #calleeNoteCell: VarCell;
 
-  constructor(params: VarsDemoCalleeParams) {
+  /** Extra ctor args (module-local): the cross-boundary cells pass BY
+   * REFERENCE as first-class parameters - the base ctor sees ONLY the
+   * standard params, so the framework surface stays untouched. */
+  constructor(
+    params: CapabilityParams,
+    noteCell: VarCell,
+    calleeNoteCell: VarCell,
+  ) {
     super(params);
-    this.#noteCell = params.noteCell;
-    this.#calleeNoteCell = params.calleeNoteCell;
+    this.#noteCell = noteCell;
+    this.#calleeNoteCell = calleeNoteCell;
   }
 
   async call(
@@ -415,15 +414,15 @@ export default class VarsDemoCapability extends PioCapability {
     });
 
     // 6. Composition (row-1): constructed WITH the caller's session
-    // instance AND its TWO cross-boundary cells BY REFERENCE - nothing
-    // else crosses the boundary; the callee's OWN base dispatch stamps ITS
-    // span marker on the shared transcript and runs its phases in-process
-    // (no spawn, no terminal change).
-    const child = new VarsDemoCallee({
-      session: s,
-      noteCell: this.modelNoteCell,
-      calleeNoteCell: this.calleeNoteCell,
-    });
+    // instance AND its TWO cross-boundary cells BY REFERENCE (explicit ctor
+    // args) - nothing else crosses the boundary; the callee's OWN base
+    // dispatch stamps ITS span marker on the shared transcript and runs its
+    // phases in-process (no spawn, no terminal change).
+    const child = new VarsDemoCallee(
+      { session: s },
+      this.modelNoteCell,
+      this.calleeNoteCell,
+    );
     const outcome = await child.run();
 
     // 7. VERBATIM FAULT FORWARDING (success gate): a failed child re-

@@ -24,7 +24,6 @@ import {
 import { tmpdir } from "node:os";
 import { basename, dirname, join } from "node:path";
 import type { AgentSessionEvent } from "@earendil-works/pi-coding-agent";
-import { z } from "zod";
 import type { CapabilityParams } from "../capability/base.ts";
 import {
   CapabilityEnvError,
@@ -58,6 +57,7 @@ import AdhocCapability, {
   ADHOC_BURST_MAX_RUNS,
   ADHOC_NAME,
   DISPATCH_REQUEST_VAR,
+  REQUEST_SCHEMA,
 } from "./adhoc.ts";
 
 type Listener = (event: AgentSessionEvent) => void;
@@ -461,51 +461,6 @@ const varCeilingLineReplica = (phaseId: string, name: string): string =>
 const setSuccessReplica = (name: string, value: unknown): string =>
   `variable '${name}' set to ${JSON.stringify(value)}.`;
 
-/** Suite-mirrored plain-object predicate (SOLE owner: isPlainObject in
- * ./adhoc.ts). */
-function suiteIsPlainObject(value: unknown): value is Record<string, unknown> {
-  if (typeof value !== "object" || value === null || Array.isArray(value)) {
-    return false;
-  }
-  const proto: unknown = Object.getPrototypeOf(value);
-  return proto === Object.prototype || proto === null;
-}
-
-/** Suite-mirrored all-string entries predicate (SOLE owner:
- * areStringEntries in ./adhoc.ts). */
-function suiteAreStringEntries(value: unknown): boolean {
-  if (!suiteIsPlainObject(value)) return false;
-  return Object.values(value).every((entry) => typeof entry === "string");
-}
-
-/** Suite-mirrored request schema (SOLE owner: REQUEST_SCHEMA in
- * ./adhoc.ts) - the authored messages are the contract, so the twin drive
- * composes the IDENTICAL issue bytes. */
-const SUITE_REQUEST_SCHEMA = z
-  .custom<Record<string, unknown>>(suiteIsPlainObject, {
-    message: "the stored dispatch request is not a plain object",
-  })
-  .superRefine((decision, ctx) => {
-    if (typeof decision.name !== "string" || decision.name.length === 0) {
-      ctx.addIssue({
-        code: "custom",
-        path: ["name"],
-        message: "the stored dispatch request has no non-empty capability name",
-      });
-    }
-    if (
-      Object.hasOwn(decision, "inputs") &&
-      !suiteAreStringEntries(decision.inputs)
-    ) {
-      ctx.addIssue({
-        code: "custom",
-        path: ["inputs"],
-        message:
-          "the stored dispatch request inputs must be a plain object of string values",
-      });
-    }
-  });
-
 /** THE twin-cell drive (identity-over-goldens over cell-owned settlement
  * bytes): a FRESH cell carrying the SAME authored spec settles the SAME
  * value; when a prior value is seeded the defect write leaves it INTACT
@@ -515,7 +470,7 @@ const SUITE_REQUEST_SCHEMA = z
 function twinDefectLine(opts: { prior?: unknown; value: unknown }): string {
   const twin = declareVar(DISPATCH_REQUEST_VAR, {
     label: REQUEST_SPEC_LABEL_REPLICA,
-    schema: SUITE_REQUEST_SCHEMA,
+    schema: REQUEST_SCHEMA,
   });
   if (opts.prior !== undefined) {
     twin.set(opts.prior);
@@ -887,19 +842,22 @@ const VALVE_RESULT = {
 const TOPIC = "Stained glass in Rouen";
 const DECISION_OBJECT = { name: "research", inputs: { topic: TOPIC } };
 
-describe("lane arming (unseeded request lane)", () => {
-  it("the request lane armed BEFORE the first gather on the REAL store: the spec displays its label, the stored value absent, NO confirm lane exists anywhere (full removal), and a driven sitting starts normally (valve-only row witnesses the live half)", async () => {
+describe("lane arming (freshly minted request lane)", () => {
+  it("the AUTHORED request spec witnessed through a fresh twin cell on the OWNER'S public schema constant: the label displays, the value is naturally absent, NO confirm lane exists anywhere (full removal), and a driven sitting starts normally (valve-only row witnesses the live half)", async () => {
     const root = newTempRoot();
     const world = await setupWorld({ root, env: "set" });
     scriptValve(world.round.session);
     const adhoc = new AdhocCapability({ session: world.instance });
     const result = await adhoc.run();
     expect(result).toStrictEqual(VALVE_RESULT);
-    // THE single request cell: minted once per capability instance with the
-    // authored spec (label display) and naturally absent on a fresh one.
-    expect(adhoc.requestCell.displayName).toBe(REQUEST_SPEC_LABEL_REPLICA);
-    expect(adhoc.requestCell.isEmpty()).toBe(true);
-    expect(adhoc.requestCell.read()).toBeUndefined();
+    // THE authored request spec: a FRESH twin cell on the owner's public
+    // schema constant shows the label display and natural absence.
+    const laneTwin = declareVar(DISPATCH_REQUEST_VAR, {
+      label: REQUEST_SPEC_LABEL_REPLICA,
+      schema: REQUEST_SCHEMA,
+    });
+    expect(laneTwin.displayName).toBe(REQUEST_SPEC_LABEL_REPLICA);
+    expect(laneTwin.isEmpty()).toBe(true);
     const prompts = topPrompts(world);
     expect(prompts).toHaveLength(1);
     expect(sentText(prompts, 0)).toBe(
@@ -952,7 +910,6 @@ describe("happy chain (R1 - binding leg, physics world)", () => {
       `Outputs: ${JSON.stringify({ report: abs })}`,
     );
     expect(sentText(prompts, 2)).toBe(baseline);
-    expect(adhoc.requestCell.read()).toBeUndefined();
     expect(results[0]?.content[0]?.text).toBe(
       setSuccessReplica(DISPATCH_REQUEST_VAR, DECISION_OBJECT),
     );
@@ -1060,7 +1017,6 @@ describe("wire doctrine (model text arrives quoted - product regression)", () =>
     expect(sentText(prompts, 2)).toBe(baseline);
     // The lane reads back ABSENT: the re-arm's round-top clear disarmed the
     // consumed pick (deliberate-window rule).
-    expect(adhoc.requestCell.read()).toBeUndefined();
     // SUCCESS ECHO over the DECODED value: compact JSON, byte-identical to
     // the native drive's echo (identity-over-goldens over the settled bytes).
     expect(results[0]?.content[0]?.text).toBe(
@@ -1105,7 +1061,6 @@ describe("quiet-cycle shape (R2 - top world, ruled silent-round cost)", () => {
       expect(record.text).not.toContain(renderPhaseMarker("confirm"));
       expect(record.text).not.toContain(renderPhaseMarker("report"));
     }
-    expect(adhoc.requestCell.read()).toBeUndefined();
     expect(world.runtime.switchSession).toHaveBeenCalledTimes(0);
     expect(stubKit.state.bag).toEqual({});
     expect(sdkKit.state.customMessages).toHaveLength(1);
@@ -1155,7 +1110,6 @@ describe("flow independence (R3 - physics world)", () => {
     expect(sentText(prompts, 2)).toBe(
       promptOf("gather", gatherBaselineReplica()),
     );
-    expect(adhoc.requestCell.read()).toBeUndefined();
     expect(stderrText()).toBe("");
     expect(stdoutText()).toBe("");
   });
@@ -1208,7 +1162,6 @@ describe("store-on-retry (emergent property, top world)", () => {
     expect(stubKit.state.bag).toEqual({});
     expect(stubKit.state.inputs).toStrictEqual({ topic: TOPIC });
     expect(world.runtime.switchSession).toHaveBeenCalledTimes(2);
-    expect(adhoc.requestCell.read()).toBeUndefined();
     expect(stderrText()).toBe("");
     expect(stdoutText()).toBe("");
   });
@@ -1225,7 +1178,6 @@ describe("ESC mid-gather (R4 - top world)", () => {
     const result = await adhoc.run();
     expect(result).toStrictEqual(VALVE_RESULT);
     expect(result.errors?.[0]?.type).not.toBe("PhaseInterruptionError");
-    expect(adhoc.requestCell.read()).toBeUndefined();
     const prompts = topPrompts(world);
     expect(prompts).toHaveLength(2);
     expect(sentText(prompts, 1)).toBe(sentText(prompts, 0));
@@ -1297,7 +1249,6 @@ describe("ESC mid-hosted-run (R5 - physics world)", () => {
     expect(reportText.indexOf(survivorReport)).toBeLessThan(
       reportText.indexOf(survivorArchive),
     );
-    expect(adhoc.requestCell.read()).toBeUndefined();
     expect(sentText(prompts, 2)).toBe(
       promptOf("gather", gatherBaselineReplica()),
     );
@@ -1378,7 +1329,6 @@ describe("admission failures settle as failure reports (owner-directed full remo
         expect(row.fact).toBe(capabilityRefusalLine("doesnotexist"));
       }
       expect(sentText(prompts, 2)).toBe(baseline);
-      expect(adhoc.requestCell.read()).toBeUndefined();
       expect(world.runtime.switchSession).toHaveBeenCalledTimes(0);
       expect(stubKit.state.bag).toEqual({});
       expect(stderrText()).toBe("");
@@ -1435,7 +1385,6 @@ describe("mid-turn settlement (replaces the retired malformed-defect class)", ()
     // THE contrast pin: mid-turn settlements leave NO carried fact - the
     // following burst is the plain baseline byte-exact.
     expect(sentText(prompts, 4)).toBe(baseline);
-    expect(adhoc.requestCell.read()).toBeUndefined();
     expect(world.runtime.switchSession).toHaveBeenCalledTimes(0);
     expect(stubKit.state.bag).toEqual({});
     expect(stderrText()).toBe("");
@@ -1480,42 +1429,12 @@ describe("mid-turn settlement (replaces the retired malformed-defect class)", ()
 // reject mechanic stays covered by the var-tools/vars-demo suites, and the
 // silent-confirm physics dies with the confirm phase itself.
 
-describe("stale residue erasure (R10 - top world)", () => {
-  it("a PRE-SEEDED valid decision left in the request lane neither dispatches nor reaches any prompt: the round-top reset erases it BEFORE the first burst (plain baseline, four silent-cycle shapes + valve = five prompts; no hop; the callee bag empty); the lane ends absent", async () => {
-    const root = newTempRoot();
-    const world = await setupWorld({ root, env: "set" });
-    // Same-instance residue: an EARLIER sitting's pick survives inside the
-    // very cell THIS sitting will own - the round-top reset erases it
-    // before the first burst issues.
-    const adhoc = new AdhocCapability({ session: world.instance });
-    adhoc.requestCell.set(DECISION_OBJECT);
-    for (let run = 0; run < 4; run += 1) {
-      scriptQuiet(world.round.session); // silent cycle 1 (four prompts)
-    }
-    scriptValve(world.round.session); // row-end valve (silent cycle 2's first prompt)
-    const result = await adhoc.run();
-    expect(result).toStrictEqual(VALVE_RESULT);
-    const prompts = topPrompts(world);
-    expect(prompts).toHaveLength(5);
-    const baseline = promptOf("gather", gatherBaselineReplica());
-    expect(sentText(prompts, 0)).toBe(baseline);
-    expect(sentText(prompts, 1)).toBe(
-      `${baseline}\n${varGuardNoteReplica(1, [DISPATCH_REQUEST_VAR])}`,
-    );
-    expect(sentText(prompts, 2)).toBe(
-      `${baseline}\n${varGuardNoteReplica(2, [DISPATCH_REQUEST_VAR])}`,
-    );
-    expect(sentText(prompts, 3)).toBe(
-      `${baseline}\n${varGuardNoteReplica(3, [DISPATCH_REQUEST_VAR])}`,
-    );
-    expect(sentText(prompts, 4)).toBe(baseline);
-    expect(world.runtime.switchSession).toHaveBeenCalledTimes(0);
-    expect(stubKit.state.bag).toEqual({});
-    expect(adhoc.requestCell.read()).toBeUndefined();
-    expect(stderrText()).toBe("");
-    expect(stdoutText()).toBe("");
-  });
-});
+// NOTE the retired pre-seeded stale-residue row: with per-call lane minting
+// a cross-sitting residue is UNREPRESENTABLE (each sitting mints its own
+// fresh cell - staleness impossible by construction); the intra-sitting
+// listing isolation the round-top reset guards stays covered behaviorally by
+// the multi-burst rows (a surviving stale pick would mis-dispatch and break
+// their prompt/hop counts).
 
 describe("env defect (R11 - physics world)", () => {
   it("the settle seam NEVER consults placement for already-absolute values (throwing provider uncalled; relative tokens still pay the derivation) and deriveStateRootFromAgentDir THROWS LOUDLY on the absent channel (no silent fallback)", () => {
@@ -1690,7 +1609,6 @@ describe("result-variant coverage (physics world)", () => {
     expect(parsed.errors).toStrictEqual([
       { type: "WebToolsMissingError", message: stubKit.BARE_ERROR_MESSAGE },
     ]);
-    expect(adhoc.requestCell.read()).toBeUndefined();
     expect(sentText(prompts, 2)).toBe(
       promptOf("gather", gatherBaselineReplica()),
     );
@@ -1775,7 +1693,6 @@ describe("bound (R12 - top world)", () => {
       cycleShapes[3],
     );
     expect(sentText(prompts, ADHOC_BURST_MAX_RUNS * 4)).toBe(cycleShapes[0]);
-    expect(adhoc.requestCell.read()).toBeUndefined();
     expect(world.runtime.switchSession).toHaveBeenCalledTimes(0);
     expect(stderrText()).toBe("");
     expect(stdoutText()).toBe("");
@@ -1802,13 +1719,14 @@ describe("module surface and mechanical source guards (R13)", () => {
     });
   });
 
-  it("runtime export surface is EXACTLY the five pinned names (types erase under erasable syntax; the retired sentinel AND the retired answer-lane variable are ABSENT)", async () => {
+  it("runtime export surface is EXACTLY the six pinned names (types erase under erasable syntax; the retired sentinel AND the retired answer-lane variable are ABSENT)", async () => {
     const mod = await import("./adhoc.ts");
     expect(Object.keys(mod).sort()).toEqual([
       "ADHOC_BURST_MAX_RUNS",
       "ADHOC_NAME",
       "DESCRIPTION",
       "DISPATCH_REQUEST_VAR",
+      "REQUEST_SCHEMA",
       "default",
     ]);
   });
@@ -1884,7 +1802,7 @@ describe("module surface and mechanical source guards (R13)", () => {
     const PROBE_VAR = "probe_lane";
     const probeCell = declareVar(PROBE_VAR, {
       label: "probe shape",
-      schema: SUITE_REQUEST_SCHEMA,
+      schema: REQUEST_SCHEMA,
     });
     for (let run = 0; run < 4; run += 1) {
       scriptQuiet(world.round.session);

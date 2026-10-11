@@ -19,6 +19,7 @@ import type {
 } from "../capability/loader.ts";
 import { listCapabilities, resolveCapability } from "../capability/loader.ts";
 import type { CapabilityResult } from "../capability/status.ts";
+import type { VarCell } from "../capability/var-cell.ts";
 import { declareVar } from "../capability/var-cell.ts";
 import { deriveProjectKey } from "../sandbox/layout.ts";
 
@@ -178,7 +179,7 @@ function areStringEntries(value: unknown): boolean {
  * pathology). Foreign keys are PRESERVED in the stored object (recorded
  * conformance delta: the retired decoder reconstructed two-key objects).
  * Authoring messages are the contract - zero native-message drift. */
-const REQUEST_SCHEMA = z
+export const REQUEST_SCHEMA = z
   .custom<Record<string, unknown>>(isPlainObject, {
     message: "the stored dispatch request is not a plain object",
   })
@@ -277,18 +278,6 @@ export default class AdhocCapability extends PioCapability {
     writes: [],
   };
 
-  /** THE single unseeded request cell (owner-directed full removal):
-   * mints ONCE per capability instance; the request lane carries the
-   * authored object schema (displays its label) and is naturally absent on
-   * a fresh instance - absence = no dispatch ground truth, and the
-   * round-top reset inside determineDecision is the SOLE erasure site that
-   * re-establishes absence at every round head (incl. repeat-invocation
-   * residue). */
-  readonly requestCell = declareVar(DISPATCH_REQUEST_VAR, {
-    label: "dispatch decision",
-    schema: REQUEST_SCHEMA,
-  });
-
   constructor(params: CapabilityParams) {
     super(params);
   }
@@ -303,10 +292,18 @@ export default class AdhocCapability extends PioCapability {
         "no session available: adhoc requires in-process placement",
       );
     }
+    // THE single request lane: minted FRESH PER SITTING - stale residue is
+    // unrepresentable by construction; the round-top reset inside
+    // determineDecision stays the sole erasure site across the sitting's
+    // repeated listings.
+    const requestCell = declareVar(DISPATCH_REQUEST_VAR, {
+      label: "dispatch decision",
+      schema: REQUEST_SCHEMA,
+    });
     const listing = renderCatalogListing(await listCapabilities());
     for (;;) {
       try {
-        const pick = await this.determineDecision(listing);
+        const pick = await this.determineDecision(listing, requestCell);
         const admission = await admitDecision(pick);
         if (!admission.ok) {
           // ADMISSION FAILURE (main-loop seat): the refused pick is
@@ -358,18 +355,21 @@ export default class AdhocCapability extends PioCapability {
    * in the main loop, NOT here). Silent bursts pay the ruled four-prompt
    * physics into the dedicated verdict class; the round-top clear is the
    * sole erasure site. */
-  private async determineDecision(listing: string): Promise<DispatchDecision> {
+  private async determineDecision(
+    listing: string,
+    requestCell: VarCell,
+  ): Promise<DispatchDecision> {
     for (;;) {
       // ROUND-TOP RESET - the SOLE erasure site: every re-entry passes
       // through here, so ONE chokepoint covers every residue class
       // (stale picks, partial abort stores, repeat-invocation leftovers);
       // resetting a set-but-absent cell is a silent no-op (idempotent over
       // absence), and post-reset writes re-enter the same settle path.
-      this.requestCell.reset();
+      requestCell.reset();
       try {
         await this.execute_phase("gather", {
           instructions: renderGatherInstructions(listing),
-          vars: [{ cell: this.requestCell, write: true }],
+          vars: [{ cell: requestCell, write: true }],
           min: 1,
           max: ADHOC_BURST_MAX_RUNS,
         });
@@ -381,7 +381,7 @@ export default class AdhocCapability extends PioCapability {
         // plain baseline (in-band interpretation of the gate verdict).
         continue;
       }
-      const raw = this.requestCell.read();
+      const raw = requestCell.read();
       if (!isDispatchDecision(raw)) {
         // Defensive-unreachable: the settle-time presence gate guarantees
         // a present cell after a settled gather AND the funnel schema

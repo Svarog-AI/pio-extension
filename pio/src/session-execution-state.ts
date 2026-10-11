@@ -10,8 +10,8 @@
 // call (NO caching anywhere — the first fault escapes verbatim, half-
 // application impossible) and hands PLAIN VALUES downstream: nothing past this
 // module ever sees a closure. Stores PLAIN DATA only (sources by reference,
-// the phase's full raw record verbatim - resolved paths, both flags, and
-// the variable-name list, zero-copy trust boundary; caller mutation is
+// the phase's full raw record verbatim - resolved paths, both flags, and the
+// phase's binding list, zero-copy trust boundary; caller mutation is
 // documented, not defended against). Bookkeeping corruption is deterministic
 // and LOUD: the unexported ExecutionStateError carries the four fault forms;
 // silent tolerance is forbidden.
@@ -26,6 +26,7 @@ import type {
   PathAnchors,
   PhasePermission,
 } from "./capability/guards/guard-vocabulary.ts";
+import type { PhaseVarBinding } from "./capability/var-cell.ts";
 
 /** THE ONE frozen per-call reading: WHAT IS EXECUTING RIGHT NOW plus the
  * session's invariant paths — the execution state's `snapshot()` output,
@@ -114,7 +115,8 @@ export class SessionExecutionState {
 
   /** Store the current phase as the record { id, declared,
    * allowProjectWrites, tmpDirAllowed, vars } verbatim in the top layer's
-   * scalar slot - no filtering, validation, or copy-transformation.
+   * scalar slot (the fifth member is the phase's binding list, carried by
+   * reference) - no filtering, validation, or copy-transformation.
    * Attaching overwrites an attached slot (last-wins); an all-empty record
    * is a valid no-op attachment. Sole fault: depth 0. */
   attachPhase(
@@ -122,7 +124,7 @@ export class SessionExecutionState {
     declaredPaths: readonly string[],
     allowProjectWrites: boolean,
     tmpDirAllowed: boolean,
-    vars: readonly string[],
+    vars: readonly PhaseVarBinding[],
   ): void {
     const top = this.layers.at(-1);
     if (top === undefined) {

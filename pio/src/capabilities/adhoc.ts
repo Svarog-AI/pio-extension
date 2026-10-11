@@ -18,8 +18,8 @@ import type {
   ResolvedCapability,
 } from "../capability/loader.ts";
 import { listCapabilities, resolveCapability } from "../capability/loader.ts";
-import type { PioSession } from "../capability/pio-session.ts";
 import type { CapabilityResult } from "../capability/status.ts";
+import { declareVar } from "../capability/var-cell.ts";
 import { deriveProjectKey } from "../sandbox/layout.ts";
 
 export const ADHOC_NAME = "adhoc";
@@ -277,6 +277,18 @@ export default class AdhocCapability extends PioCapability {
     writes: [],
   };
 
+  /** THE single unseeded request cell (owner-directed full removal):
+   * mints ONCE per capability instance; the request lane carries the
+   * authored object schema (displays its label) and is naturally absent on
+   * a fresh instance - absence = no dispatch ground truth, and the
+   * round-top reset inside determineDecision is the SOLE erasure site that
+   * re-establishes absence at every round head (incl. repeat-invocation
+   * residue). */
+  readonly requestCell = declareVar(DISPATCH_REQUEST_VAR, {
+    label: "dispatch decision",
+    schema: REQUEST_SCHEMA,
+  });
+
   constructor(params: CapabilityParams) {
     super(params);
   }
@@ -292,19 +304,9 @@ export default class AdhocCapability extends PioCapability {
       );
     }
     const listing = renderCatalogListing(await listCapabilities());
-    // SINGLE UNSEEDED typed lane (owner-directed full removal): the request
-    // lane carries the authored object schema (displays its label); the
-    // retired answer lane is gone. The lane is naturally absent on a fresh
-    // session - the round-top clear inside determineDecision is the sole
-    // erasure site and re-establishes absence at every round head (incl.
-    // repeat-invocation residue).
-    session.vars.declare(DISPATCH_REQUEST_VAR, {
-      label: "dispatch decision",
-      schema: REQUEST_SCHEMA,
-    });
     for (;;) {
       try {
-        const pick = await this.determineDecision(session, listing);
+        const pick = await this.determineDecision(listing);
         const admission = await admitDecision(pick);
         if (!admission.ok) {
           // ADMISSION FAILURE (main-loop seat): the refused pick is
@@ -334,10 +336,11 @@ export default class AdhocCapability extends PioCapability {
           min: 1,
         });
         // DELIBERATE WINDOW: between admission and the next round-top
-        // clear the lane carries the consumed pick across the hosted run
+        // reset the lane carries the consumed pick across the hosted run
         // and the report; model writes to the lane are refused throughout
-        // (those phases list no variables) and the program reads nothing
-        // there.
+        // (those phases bind nothing - no write grant anywhere in those
+        // windows settles the universal line) and the program reads
+        // nothing there.
       } catch (error) {
         if (error instanceof PhaseInterruptionError) {
           // An aborted settling run may have left partial lane stores -
@@ -355,20 +358,18 @@ export default class AdhocCapability extends PioCapability {
    * in the main loop, NOT here). Silent bursts pay the ruled four-prompt
    * physics into the dedicated verdict class; the round-top clear is the
    * sole erasure site. */
-  private async determineDecision(
-    session: PioSession,
-    listing: string,
-  ): Promise<DispatchDecision> {
+  private async determineDecision(listing: string): Promise<DispatchDecision> {
     for (;;) {
-      // ROUND-TOP CLEAR - the SOLE erasure site: every re-entry passes
+      // ROUND-TOP RESET - the SOLE erasure site: every re-entry passes
       // through here, so ONE chokepoint covers every residue class
       // (stale picks, partial abort stores, repeat-invocation leftovers);
-      // clearing a declared-but-absent name is an idempotent no-op.
-      session.vars.clear(DISPATCH_REQUEST_VAR);
+      // resetting a set-but-absent cell is a silent no-op (idempotent over
+      // absence), and post-reset writes re-enter the same settle path.
+      this.requestCell.reset();
       try {
         await this.execute_phase("gather", {
           instructions: renderGatherInstructions(listing),
-          vars: [DISPATCH_REQUEST_VAR],
+          vars: [{ cell: this.requestCell, write: true }],
           min: 1,
           max: ADHOC_BURST_MAX_RUNS,
         });
@@ -380,10 +381,10 @@ export default class AdhocCapability extends PioCapability {
         // plain baseline (in-band interpretation of the gate verdict).
         continue;
       }
-      const raw = session.vars.get(DISPATCH_REQUEST_VAR);
+      const raw = this.requestCell.read();
       if (!isDispatchDecision(raw)) {
         // Defensive-unreachable: the settle-time presence gate guarantees
-        // a present lane after a settled gather AND the funnel schema
+        // a present cell after a settled gather AND the funnel schema
         // guarantees conformance; the narrowing is the zero-cast type
         // boundary only. Bare continue, no crash.
         continue;

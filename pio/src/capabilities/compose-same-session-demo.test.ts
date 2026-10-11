@@ -63,6 +63,8 @@ import {
   renderCapabilityMarker,
   renderPhaseMarker,
 } from "../capability/pio-session.ts";
+import type { VarCell } from "../capability/var-cell.ts";
+import { declareVar } from "../capability/var-cell.ts";
 import { deriveProjectKey } from "../sandbox/layout.ts";
 import ComposeSameSessionDemoCapability, {
   DEMO_TOPIC,
@@ -256,11 +258,9 @@ const stubKit = vi.hoisted(() => {
     /** The stub's OWN declared contract (introspected at construction — the
      * callee-isolation pin observes exactly this). */
     contract: undefined as unknown,
-    /** The single store object reached from the CALLEE'S vantage point
-     * (recorded inside its span). */
-    varsRef: undefined as unknown,
-    /** Caller-side seed read FROM the shared store during the callee's span. */
-    seenCallerVar: undefined as unknown,
+    /** The cell minted INSIDE THE CALLEE'S SPAN (recorded by reference -
+     * the same-instance share observable after the run). */
+    calleeNoteCell: undefined as VarCell | undefined,
     /** The absolute path the bound-success stop rule observes per run (set
      * by the row; the observer plane only — nothing lands on disk). */
     boundReportPath: undefined as string | undefined,
@@ -270,8 +270,7 @@ const stubKit = vi.hoisted(() => {
     state.inputs = undefined;
     state.mode = "success";
     state.contract = undefined;
-    state.varsRef = undefined;
-    state.seenCallerVar = undefined;
+    state.calleeNoteCell = undefined;
     state.boundReportPath = undefined;
   };
   return {
@@ -314,16 +313,13 @@ vi.mock("../capabilities/research.ts", async () => {
       inputs: Record<string, unknown>,
     ): Promise<Record<string, unknown>> {
       stubKit.state.inputs = inputs;
-      // Vars vantage points (AC#3 evidence): the shared store is reached
-      // THROUGH the inherited handle's public surface — one object from
-      // both sides.
+      // W2C mechanical preamble: the callee-side write mints ITS OWN cell
+      // and settles it inside its own span - captured BY REFERENCE for the
+      // post-run observation (no bridging/coercion/validation probed).
+      const noteCell = declareVar("callee-written", "string");
+      noteCell.set("from-callee-span");
       if (this.s !== undefined) {
-        stubKit.state.varsRef = this.s.vars;
-        stubKit.state.seenCallerVar = this.s.vars.get("caller-seeded");
-        // W2C mechanical preamble (mandatory-type ruling): declare before
-        // the first write; row intent unchanged.
-        this.s.vars.declare("callee-written", "string");
-        this.s.vars.set("callee-written", "from-callee-span");
+        stubKit.state.calleeNoteCell = noteCell;
       }
       switch (stubKit.state.mode) {
         case "kill": {
@@ -936,26 +932,21 @@ describe("frame governance and resume (AC#2 evidence)", () => {
 });
 
 describe("sharing (AC#3 evidence)", () => {
-  it("A2 VAR-FREE store identity: under D1 (one instance ⇒ one store, one observer) the single instance's .vars store is ONE object reachable from BOTH vantage points — the caller-side seed is visible INSIDE the callee's span and the callee-side write is visible AFTER the run (no bridging/coercion/validation probed or added)", async () => {
+  it("A2 VAR-FREE identity: under D1 (one instance ⇒ one observer, one process) the callee's span settles a value into a cell minted INSIDE ITS OWN body, and the CALLER side reads that cell back AFTER the run through the CAPTURED reference (same-instance share at process level - nothing bridged, coerced, or validated)", async () => {
     const tmp = newTempRoot();
     enterWorkTree(tmp);
     const { instance, round } = await host();
-    // W2C mechanical preamble (mandatory-type ruling): declare before the
-    // first write; row intent unchanged.
-    instance.vars.declare("caller-seeded", "string");
-    instance.vars.set("caller-seeded", "visible-across-spans");
     scriptRuns(round, quietSettle(), quietSettle(), quietSettle());
     const demo = new ComposeSameSessionDemoCapability({ session: instance });
     const result = await demo.run();
     expect(result.ok).toBe(true);
     if (!result.ok) throw new Error("unreachable");
-    // ONE store object from both vantage points (reference identity): the
-    // callee reached the SAME instance's store through the inherited handle.
-    expect(stubKit.state.varsRef).toBe(instance.vars);
-    // Caller-side set visible INSIDE the callee's span.
-    expect(stubKit.state.seenCallerVar).toBe("visible-across-spans");
-    // Callee-side write visible AFTER the run, on the caller's instance.
-    expect(instance.vars.get("callee-written")).toBe("from-callee-span");
+    // Callee-side write visible AFTER the run through the captured cell
+    // reference (the callee minted it by reference in its own span - the
+    // caller observes it without any bridge of its own).
+    const noteCell = stubKit.state.calleeNoteCell;
+    expect(noteCell).toBeDefined();
+    expect(noteCell?.read()).toBe("from-callee-span");
     // The shared handle served both spans: exactly one mint.
     expect(sdkKit.state.rounds).toHaveLength(1);
     expect(stderrText()).toBe("");

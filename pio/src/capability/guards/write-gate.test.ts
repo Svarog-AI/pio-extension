@@ -1621,7 +1621,7 @@ describe("mechanical source guards - all swept files", () => {
         }
         const end = Math.min(i, source.length);
         payloads.push(source.slice(start, end));
-        code += ch + "P" + ch;
+        code += `P`;
         prevSig = ch;
         i = end + 1;
         continue;
@@ -1697,8 +1697,15 @@ describe("mechanical source guards - all swept files", () => {
     expect(partitionSource(GATE_SOURCE).code.match(/\bclass\b/g)).toBeNull();
   });
 
-  it("guard-vocabulary.ts: ZERO import lines; EXACTLY three `export interface` members, name-set pinned", () => {
-    expect(VOCAB_SOURCE.match(/^import\b/gm)).toBeNull();
+  it("guard-vocabulary.ts: EXACTLY ONE type-only import line (the substrate edge), zero VALUE imports; EXACTLY three `export interface` members, name-set pinned", () => {
+    const importLines = VOCAB_SOURCE.match(/^import\b/gm);
+    expect(importLines?.length ?? 0).toBe(1);
+    // The clause is type-only and resolves to the substrate specifier:
+    expect(
+      VOCAB_SOURCE.includes(
+        'import type { PhaseVarBinding } from "../var-cell.ts";',
+      ),
+    ).toBe(true);
     const exportLines = VOCAB_SOURCE.split("\n").filter((line) =>
       line.startsWith("export"),
     );
@@ -1714,9 +1721,11 @@ describe("mechanical source guards - all swept files", () => {
     ]);
   });
 
-  it("session-execution-state.ts: ONE type-only import clause (three names, the vocabulary specifier), the EXACTLY THREE pinned export declarations, no function declarations", () => {
+  it("session-execution-state.ts: EXACTLY TWO type-only import clauses (vocabulary specifier first, then the substrate edge), the EXACTLY THREE pinned export declarations, no function declarations", () => {
     const importStatements = STATE_SOURCE.match(/^import\b/gm);
-    expect(importStatements?.length ?? 0).toBe(1);
+    expect(importStatements?.length ?? 0).toBe(2);
+    // Zero VALUE clauses: every clause carries the type keyword.
+    expect(STATE_SOURCE.match(/^import\s+(?!type)/m)).toBeNull();
     const clause = STATE_SOURCE.match(
       /import\s+type\s*\{([\s\S]*?)\}\s*from\s+"(\.[^"]+)"/,
     );
@@ -1731,6 +1740,12 @@ describe("mechanical source guards - all swept files", () => {
       "PhasePermission",
     ]);
     expect(clause![2]).toBe("./capability/guards/guard-vocabulary.ts");
+    // The substrate clause is type-only and single-named:
+    expect(
+      STATE_SOURCE.includes(
+        'import type { PhaseVarBinding } from "./capability/var-cell.ts";',
+      ),
+    ).toBe(true);
     const exportLines = STATE_SOURCE.split("\n").filter((line) =>
       line.startsWith("export "),
     );

@@ -794,7 +794,7 @@ describe("mechanical source guards — session.ts leaf seam", () => {
         }
         const end = Math.min(i, source.length);
         payloads.push(source.slice(start, end));
-        residue += ch + "P" + ch;
+        residue += `P`;
         i = end + 1;
         continue;
       }

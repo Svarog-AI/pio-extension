@@ -1,5 +1,8 @@
 // ── guards/guard-vocabulary.ts — SHARED DECISION VOCABULARY (types only;
-// imports NOTHING; exactly THREE members — mechanically asserted) ──
+// NO RUNTIME IMPORTS - exactly ONE type-only substrate edge that erases
+// under type stripping; exactly THREE members — mechanically asserted) ──
+
+import type { PhaseVarBinding } from "../var-cell.ts";
 
 /** Plain data — the running capability's sources (contract values as-is; the
  * vocabulary deliberately does NOT import contract.ts, keeping it hermetic). */
@@ -22,7 +25,9 @@ export interface CapabilitySources {
  * absolute paths as declared; (ii) the project-files scope flag, clamped
  * against the running capability's contract flag when judged; (iii) the
  * scratch flag, never clamped (no contract-side counterpart); (iv) the
- * variable-name list - name space only, no clamping.
+ * phase's binding list - stored VERBATIM by reference (the cells are
+ * referenced; the write grant rides each entry; no clamping exists to speak
+ * of).
  *
  * The effective construction (declared intersect contract-covered, plus the
  * scope class when both flags agree, plus the scratch class when the flag is
@@ -34,9 +39,11 @@ export interface PhasePermission {
   allowProjectWrites: boolean;
   // the phase's own scratch declaration - single-flag doctrine, never clamped
   tmpDirAllowed: boolean;
-  // declared variable names: the model's setVar writes bind to these while
-  // the phase is attached; an empty list confers no variable governance
-  vars: readonly string[];
+  // the phase's binding list verbatim by reference: READ IS GRANTED BY
+  // DEFAULT over every bound cell; write === true confers the SOLE declared
+  // write permission while the phase is attached; an empty list confers no
+  // variable governance
+  vars: readonly PhaseVarBinding[];
 }
 
 /** The session's path anchors — PLAIN RESOLVED STRINGS, session-invariant.

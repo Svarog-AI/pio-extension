@@ -45,17 +45,16 @@
 // Only session-present runs are stamped, once per span (see base.ts).
 //
 // Settlement gate (dual face: write + vars expectations): a phase that
-// declares deliverable paths and/or variable names cannot settle until EVERY
+// declares deliverable paths and/or variable bindings cannot settle until EVERY
 // declared expectation holds. The gate sits strictly at the normal settlement
 // break (stop-rule verdict or budget break) — floor/hook continuations
 // pre-break see no gate. Each settlement consults BOTH faces FRESH:
 // existsSync over the resolved declared paths (directories pass mechanically;
-// non-emptiness stays a capability-local quality bar) and PRESENCE over the
-// retained effective variable listing — origin-blind by design (an inherited
-// value from an earlier phase or a programmatic mid-flight write satisfies
-// equally; permission still binds the model lane only, and the safe read
-// tested against undefined is the sound presence consult because no stored
-// value can ever BE undefined). Any missing expectation denies the settlement:
+// non-emptiness stays a capability-local quality bar) and EMPTINESS over the
+// retained binding list (flag authority over bound cells - origin-blind by
+// design: an inherited value from an earlier phase or a programmatic
+// mid-flight write satisfies equally; permission still binds the model lane
+// only). Any missing expectation denies the settlement:
 // a dedicated retry counter PER FACE (each independent of the iteration budget
 // and the stopping rule) increments and the phase re-enters the loop body;
 // iterations counts all settled runs, retries included.
@@ -67,23 +66,23 @@
 // and the execution-state feed (attached verbatim at phase start alongside
 // the phase's normalized project-files scope flag, detached on every exit
 // cause): the session's execution-state phase record rides this single
-// retained list plus the normalized class flags and the verbatim
-// variable-name list - the four declared permission dimensions. The
-// effective variable listing (declaration-order, first-occurrence dedupe)
-// computes ONCE at phase start the same way and retains for the whole
-// duration: the arm-time registry validation and the settlement gate's
-// variable face consult this same retained listing.
+// retained list plus the normalized class flags and the VERBATIM BINDING LIST
+// - the four declared permission dimensions. The binding list rides by
+// reference (no copy, no transform, no dedupe): the projection at the
+// attach point asserts its duplicate refusal FIRST, and the settlement
+// gate's variable face consults per-break emptiness over this same
+// retained list (flag authority over the bound cells).
 //
 // Corrective-note channel: gate-triggered retries alone append UP TO TWO
 // fresh deterministic MARKED BLOCKS strictly after the marker-leading
 // baseline text: the flanked em-dash delimiter line labeled output guard
 // (body sentence naming every currently-missing resolved path) and/or the
-// one labeled variable guard (body sentence naming every still-undefined
-// variable name), each with the settled-run count at that point. FIXED ORDER
+// one labeled variable guard (body sentence naming every still-empty bound
+// cell), each with the settled-run count at that point. FIXED ORDER
 // (output guard first, then variable guard) with a SINGLE LF between them
 // when both are present; a single-face denial renders exactly the pure
-// single-face shape (degradation invariant). Satisfied paths and defined
-// variables drop off fresh per retry, no history accumulates, and the
+// single-face shape (degradation invariant). Satisfied paths and non-empty
+// cells drop off fresh per retry, no history accumulates, and the
 // composition stays private to execute_phase.
 //
 // Typed failure at the ceiling: with a face's ceiling of corrective re-runs
@@ -91,7 +90,7 @@
 // MAX_VAR_EXPECTATION_RETRIES for variables) and that face's expectations
 // still unmet, the phase throws the error home's ContractViolationError
 // COLLECTING ALL still-missing violations — file lines first (declaration
-// order) followed by variable lines (effective-listing order; a satisfied
+// order) followed by variable lines (binding order; a satisfied
 // face contributes zero lines) — unwrapped through the finally closeout into
 // the standard containment channels on both placements. The one side-aware
 // refinement: a VARIABLES-ONLY exhaustion settles the dedicated
@@ -99,13 +98,13 @@
 // names datum alongside the inherited violations); the file-only and
 // combined corners keep the plain parent byte-frozen.
 //
-// Arm-time registry validation: BEFORE the first turn issues, the phase
-// validates that every listed variable name carries a base-type registration
-// (fresh declarations() snapshot consult, prototype-safe); a miss faults
-// LOUDLY at arm in the module-local ASCII bookkeeping voice — unsatisfiable
-// phases die at arm, NEVER at the ceiling. The fault fires pre-attach and
-// pre-disclosure: nothing arms, no window opens, zero prompts issue, and the
-// throw escapes VERBATIM.
+// Arm-time binding refusal: BEFORE the first turn issues, the read-set
+// projection over the retained bindings runs its shared first-check and
+// refuses any same-name duplicate LOUDLY at the phase-start attach point in
+// the substrate's bookkeeping voice — nothing arms, no window opens, zero
+// prompts issue, and the throw escapes VERBATIM. Everything else is
+// constructively impossible: a binding references minted cells, so an
+// unsatisfiable phase is inexpressible rather than detected.
 //
 // Per-session write-gate producer wiring: create mints EXACTLY ONE
 // SessionExecutionState over its two owned anchor channels (the
@@ -133,8 +132,10 @@
 // stamps - BY REFERENCE, so the instance's per-invocation fresh snapshot
 // consult tracks span and phase churn identically to the write-handler
 // closure and late binding survives handle swaps. The entries ride the
-// UNCONDITIONAL customTools slot - the fenced bash entry plus the
-// variable trio constructed ONCE over create's OWN minted variable store:
+// UNCONDITIONAL customTools slot - the fenced bash entry plus the variable
+// trio constructed ONCE over the host's EXECUTION STATE BY REFERENCE (the
+// same late-resolution doctrine as the closures above: every body consults
+// a fresh snapshot per call; an undefined state degrades to the empty view):
 // the stored-factory closure re-spreads the very same instances on every
 // session re-creation (composed frames share them within one runtime;
 // a separate process mints its own through its own create), so no
@@ -190,12 +191,14 @@ import {
 import type { CapabilitySources } from "./guards/guard-vocabulary.ts";
 import { decideVarWrite } from "./guards/var-gate.ts";
 import { decideWrite } from "./guards/write-gate.ts";
-import type { CustomVarSpec, VarType } from "./var-cell.ts";
+import type { CustomVarSpec, PhaseVarBinding, VarType } from "./var-cell.ts";
 import {
   admitVarType,
   convertVarValue,
   displayVarType,
+  emptyBindingNames,
   materializeWireJson,
+  projectReadSet,
   renderVarCoercionRejectLine,
   renderVarSpecDefectLine,
   renderVarSpecFaultLine,
@@ -265,7 +268,7 @@ const MAX_VAR_EXPECTATION_RETRIES = 3;
 
 /** One corrective MARKED BLOCK for a variable-gate denial: the flanked
  * em-dash delimiter line labeled variable guard above the body sentence —
- * every still-undefined variable name (effective-listing order) plus the
+ * every still-empty bound cell's name (binding order) plus the
  * settled-run count at the denial point; fresh per retry. Two lines joined
  * by a single LF; no trailing newline. */
 function renderVariableRetryLine(
@@ -281,32 +284,6 @@ function renderVariableRetryLine(
  * renderer's shape — never a live counter value). */
 function renderMissingVariableLine(phaseId: string, name: string): string {
   return `phase '${phaseId}' variable '${name}' missing \u2014 still undefined after ${MAX_VAR_EXPECTATION_RETRIES} variable expectation re-run(s); the ceiling is exhausted`;
-}
-
-/** ONE arm-time fault line (PURE ASCII — no em dashes; developer-facing):
- * names the phase and every listed-but-unregistered variable in
- * effective-listing order. */
-function renderPhaseVarFaultLine(
-  phaseId: string,
-  misses: readonly string[],
-): string {
-  return `phase '${phaseId}': variable(s) listed without a declared base type: ${misses.join(", ")}`;
-}
-
-/** Declaration-order, first-occurrence dedupe of the phase's variable
- * listing — identical semantics to the guard's judgment-time listing, so
- * both faces judge over the SAME set; mirrored locally, fresh array per
- * call. */
-function effectiveVarListing(list: readonly string[]): string[] {
-  const seen: Set<string> = new Set();
-  const result: string[] = [];
-  for (const entry of list) {
-    if (!seen.has(entry)) {
-      seen.add(entry);
-      result.push(entry);
-    }
-  }
-  return result;
 }
 
 /** THE phase-permission DISCLOSURE BLOCK's fixed bytes (module-private -
@@ -398,21 +375,38 @@ export interface PhaseOptions {
    * it forms the phase's four permission dimensions (all feed the
    * session's execution state verbatim); absent means false. */
   readonly tmpDirAllowed?: boolean;
-  /** Declared variable names: while the phase is attached, the model's
-   * setVar writes are admitted exactly against these names (judged at
-   * decision time over the stored listing, deduplicated to first
-   * occurrence). EXPECTATION face: every listed name must be present in the
-   * session variable store — ANY ORIGIN (an inherited value or a programmatic
-   * mid-flight write satisfies) — before the phase may settle; a missing name
-   * burns a corrective re-run on a dedicated counter independent of the budget
+  /** The phase's VARIABLE BINDINGS ({ cell, write? } entries over minted
+   * cells): every listed cell is READABLE in the phase BY DEFAULT (read is
+   * granted by default - the hook view and the model's getVar/listVars
+   * resolve it through the active phase); write === true confers the SOLE
+   * declared set grant (the gate's write-adjudication source AND the model
+   * setVar's routing). EXPECTATION face: EVERY bound cell must be non-empty
+   * (flag authority; origin-blind - an inherited or programmatic mid-flight
+   * write satisfies equally) before the phase may settle; an empty cell burns
+   * a corrective re-run on a dedicated counter independent of the budget
    * and the stopping rule, capped at the module-private default, terminating
-   * in the typed failure. ARM TIME: every listed name must carry a base-type
-   * registration before the first turn — a miss faults loudly at arm, so an
-   * unsatisfiable declaration dies at arm, never at the ceiling. Stored
-   * verbatim beside the other dimensions; absent or empty confers no variable
-   * governance. The governed tool is the registered setVar definition - the
-   * model-side write channel; the read lanes are unrestricted. */
-  readonly vars?: readonly string[];
+   * in the typed failure. ARM TIME: two bindings of the same name in one set
+   * refuse LOUDLY at the attach point (the projection's shared first-check)
+   * - nothing else can be unsatisfiable, because a binding references a
+   * minted cell. Stored verbatim by reference beside the other dimensions;
+   * absent or empty confers NO variable governance. The gated tool is the
+   * registered setVar definition - the model-side write channel; reads
+   * bypass guards by construction (view-scoped absence, not gate refusals).
+   * */
+  readonly vars?: readonly PhaseVarBinding[];
+}
+
+/** THE phase VIEW over the read-set projection (module-local - the hook's
+ * bounded safe-read facade over the phase's bound cells). Built ONCE per
+ * phase from the retained projection and handed by the SAME instance to
+ * every shouldStopLoop invocation: get resolves the BOUND CELL AT CALL TIME
+ * (live values - the reads alias the same cell objects the model tools reach
+ * through the snapshot, so a write driven in pass N is visible to a hook
+ * read in pass N+1), reports undefined for out-of-view OR unset names alike
+ * (out-of-view names are simply absent from the read set), and never throws.
+ * Hooks address their phase's variables through this facade by name alone. */
+interface PhaseVarView {
+  get(name: string): unknown;
 }
 
 /** Decision window handed to the between-runs hook. */
@@ -423,11 +417,11 @@ export interface IterationCtx {
   readonly filesWritten: string[];
   /** Per-run settled-run delta of started ask-user tool executions (this run only; contrast counters.askUserCalls, session-cumulative). */
   readonly askUserCalls: number;
-  /** The session variable store, passed by reference: the SAME instance the
-   * model's variable tools write during the run — a hook reading it mid-run
-   * observes the LIVE values, including writes landed during the
-   * just-settled run. */
-  readonly vars: SessionVariableStore;
+  /** The phase's bounded VIEW over the same cells the phase writes to
+   * (field NAME carries; the facade hands VALUES, not cells): a hook reading
+   * mid-run observes LIVE values, including writes landed during the
+   * just-settled run; out-of-view or unset names report undefined. */
+  readonly vars: PhaseVarView;
 }
 
 /** Outcome of a completed phase. */
@@ -490,22 +484,6 @@ class VarAdmissionError extends Error {
   constructor(message: string) {
     super(message);
     this.name = "VarAdmissionError";
-  }
-}
-
-/**
- * Bookkeeping corruption over the PHASE VARIABLE DECLARATION: a phase lists
- * variable names without base-type registrations. Developer-facing, PURE
- * ASCII (no em dashes), model-invisible — deliberately DISTINCT from the
- * model-visible VariableRejectionError (same doctrine as the bookkeeping admission voice /
- * ExecutionStateError). Unexported on purpose: the suite asserts by name
- * only. NO ES cause member (bare-identity capture reduces to {type,
- * message}).
- */
-class PhaseVarDeclarationError extends Error {
-  constructor(message: string) {
-    super(message);
-    this.name = "PhaseVarDeclarationError";
   }
 }
 
@@ -974,12 +952,12 @@ export class PioSession {
   readonly id: string;
   /** Constructed runtime by reference — reach path for runs and teardown. */
   readonly runtime: AgentSessionRuntime;
-  /** The per-instance variable store - minted in create() and shared BY
-   * REFERENCE with the registered model-tool trio (one identity at every
-   * hop; the single validated entry point for every variable write,
-   * declare-then-set; hooks and phases reach the LIVE values by
-   * reference). Composed hosts from fromRuntime mint their OWN stores
-   * through the constructor default (disjoint by design). */
+  /** The per-instance variable store - minted in create(). The engine and
+   * the model trio resolve variables over the EXECUTION STATE's phase-frame
+   * bindings (late, per call); this member is the host's name-addressed
+   * storage face standing beside that channel. Composed hosts from
+   * fromRuntime mint their OWN stores through the constructor default
+   * (disjoint by design). */
   readonly vars: SessionVariableStore;
 
   #observer: SessionObserver;
@@ -1013,8 +991,9 @@ export class PioSession {
    * The only standalone construction path: mints the observer and its
    * single instance-scoped listener PLUS the one per-session execution
    * state over the owned anchor channels PLUS the ONE variable store and
-   * the model-facing variable trio built over it (threaded onto the
-   * UNCONDITIONAL customTools slot behind the fenced bash entry), threads
+   * the model-facing variable trio built over the EXECUTION STATE (threaded
+   * onto the UNCONDITIONAL customTools slot behind the fenced bash entry),
+   * threads
    * the listener and the UNCONDITIONAL guard install (state + both
    * tool-call handler closures) through the construction seam (exactly
    * one live subscription at any instant), and returns the ready instance.
@@ -1053,15 +1032,18 @@ export class PioSession {
     // closure above); the instance may persist while the frames it consults
     // churn.
     const landlockBash = createLandlockBash(cwd, executionState);
-    // THE one variable store: minted HERE strictly pre-construction so
-    // the trio can bind it before the session exists - the SAME instance
-    // the finished host exposes as its vars handle (one identity at every
-    // hop; composed frames take the constructor's fresh-mint default).
+    // THE one variable store: minted HERE strictly pre-construction so the
+    // finished host exposes it as its vars handle (the name-addressed
+    // storage face standing beside the state-resolved trio channel;
+    // composed frames take the constructor's fresh-mint default).
     const vars = new SessionVariableStore();
-    // THE model-facing variable trio: constructed ONCE over the minted
-    // store and appended to the customTools slot behind the fenced bash
-    // entry (set -> get -> list; bash keeps its stable leading position).
-    const varTools = createVarTools(vars);
+    // THE model-facing variable trio: constructed ONCE over the execution
+    // state BY REFERENCE and appended to the customTools slot behind the
+    // fenced bash entry (set -> get -> list; bash keeps its stable leading
+    // position) - every body resolves the moment's world from a fresh
+    // snapshot per call (the same late-binding doctrine as the closures
+    // above).
+    const varTools = createVarTools(executionState);
     const runtime = await createPioSession(cwd, sessionsRoot, {
       sessionListener: listener,
       customTools: [landlockBash, ...varTools],
@@ -1172,15 +1154,18 @@ export class PioSession {
    * One phase = a budgeted sequence of settled agent runs driven through the
    * session's prompt channel; the once-composed marker line leads every
    * run's text and the between-runs hook observes each settling run.
-   * Declared deliverable paths (write) and declared variable names (vars)
-   * arm the dual-face settlement gate: every normal break point passes the
-   * fresh EXISTS-and-PRESENCE consults before settling — a denial burns one
+   * Declared deliverable paths (write) and variable bindings (vars) arm
+   * the dual-face settlement gate: every normal break point passes the
+   * fresh existsSync consult over the retained resolved declarations plus
+   * the FRESH emptiness consult over the retained binding list (flag
+   * authority over the bound cells) before settling — a denial burns one
    * corrective re-run per denying face (mirrored ceilings) and exhaustion
    * throws the error home's ContractViolationError collecting ALL
-   * still-missing violations (file lines first, then variable lines). Arm
-   * time: every listed variable name must carry a base-type registration
-   * before the first turn — a miss faults LOUDLY at arm (module-local ASCII
-   * bookkeeping voice) and never reaches the ceiling. Every exit closes both
+   * still-missing violations (file lines first, then variable lines).
+   * At arm time the read-set projection refuses any same-name duplicate in
+   * the binding set LOUDLY (the substrate's bookkeeping voice), strictly
+   * pre-attach; everything else unsatisfiable is unexpressible by
+   * construction (a binding references a minted cell). Every exit closes both
    * windows so the phase leaks nothing into the next one.
    */
   async execute_phase(id: string, opts?: PhaseOptions): Promise<PhaseResult> {
@@ -1194,37 +1179,39 @@ export class PioSession {
       resolved: resolve(entry),
     }));
     // Normalized primitives (absent implies false) fed VERBATIM beside the
-    // retained list: the phase's project-files scope declaration (judged
+    // retained lists: the phase's project-files scope declaration (judged
     // only at decision time - clamped there against the contract flag) and
     // its scratch declaration (judged only at decision time, never clamped
-    // - no contract-side counterpart exists); the variable-name list joins
-    // them by reference (admission is plain inclusion over the stored,
-    // deduped listing).
+    // - no contract-side counterpart exists).
     const allowProjectWrites = Boolean(opts?.allowProjectWrites);
     const tmpDirAllowed = Boolean(opts?.tmpDirAllowed);
-    // Rides by reference (verbatim carriage - no copy or transform):
-    // present-and-non-empty arms the phase's variable governance.
-    const declaredVars = opts?.vars ?? [];
-    // Retained for the whole duration, parallel to the retained write
-    // declarations: declaration-order, first-occurrence dedupe — the SAME
-    // semantics the guard applies at judgment time.
-    const effectiveVars = effectiveVarListing(declaredVars);
-    // ARM-TIME REGISTRY VALIDATION (strictly between the listing computation
-    // and the attach, pre-disclosure, pre-try): a miss FAULTS LOUDLY before
-    // the first turn — nothing is attached (no detach needed, no window
-    // opens, zero prompts issue) and the throw escapes VERBATIM through the
-    // standard containment channels.
-    const registrySnapshot = this.vars.declarations();
-    const varMisses = effectiveVars.filter(
-      (name) => !Object.hasOwn(registrySnapshot, name),
-    );
-    if (varMisses.length > 0) {
-      throw new PhaseVarDeclarationError(
-        renderPhaseVarFaultLine(id, varMisses),
-      );
-    }
-    // Paths, both class flags, and the variable-name list feed the
-    // execution state when any dimension is declared: attach STRICTLY AT PHASE START
+    // THE BINDING LIST rides by reference (verbatim carriage - no copy,
+    // no transform, no dedupe: names are unique per set under the refusal
+    // below) and retains for the whole phase duration, parallel to the
+    // retained write-declaration list: present-and-non-empty arms the
+    // phase's variable governance.
+    const bindings = opts?.vars ?? [];
+    // SOLE surviving name-conflict check, at the phase-start attach point
+    // (strictly between the retained-listing computation and the attach,
+    // pre-disclosure, outside the try): the projection runs the shared
+    // first-check FIRST and refuses any same-name duplicate LOUDLY (the
+    // substrate's developer voice) — nothing arms, no window opens, zero
+    // prompts issue, and the throw ESCAPES VERBATIM through the standard
+    // containment channels. The returned map IS the read set the view
+    // consumes (every entry, default-read grant).
+    const readSet = projectReadSet(bindings);
+    // THE phase view over the read set: built ONCE at arm and handed by the
+    // SAME instance to every shouldStopLoop invocation (live values via
+    // per-call cell reads; out-of-view or unset report undefined; never
+    // throws).
+    const varsView: PhaseVarView = {
+      get: (name: string) => {
+        const cell = readSet.get(name);
+        return cell === undefined ? undefined : cell.read();
+      },
+    };
+    // Paths, both class flags, and the BINDING LIST feed the execution
+    // state when any dimension is declared: attach STRICTLY AT PHASE START
     // (outside the try block, so a loud bookkeeping fault escapes with no
     // finally-side bookkeeping to untangle); the attached flags keep the
     // closeout detach symmetric over every exit cause. No dimension
@@ -1239,14 +1226,14 @@ export class PioSession {
       (declaredPaths.length > 0 ||
         allowProjectWrites ||
         tmpDirAllowed ||
-        declaredVars.length > 0)
+        bindings.length > 0)
     ) {
       this.#executionState.attachPhase(
         id,
         declaredPaths,
         allowProjectWrites,
         tmpDirAllowed,
-        declaredVars,
+        bindings,
       );
       attached = true;
     }
@@ -1302,23 +1289,21 @@ export class PioSession {
             counters,
             filesWritten,
             askUserCalls,
-            vars: this.vars,
+            vars: varsView,
           });
           proceed = proceed || !verdict;
         }
         if (!proceed || iterations >= max) {
           // Dual-face settlement gate — this break path only: fresh
           // existsSync over the retained resolved declarations plus FRESH
-          // PRESENCE over the retained effective variable listing
-          // (origin-blind — an inherited or programmatic value satisfies
-          // equally). A face with no declarations settles identically to
-          // the ungated case.
+          // EMPTINESS over the retained binding list (flag authority over
+          // the bound cells - origin-blind: an inherited value or a
+          // programmatic mid-flight write satisfies equally). A face with no
+          // declarations settles identically to the ungated case.
           const missing = declarations.filter(
             (declaration) => !existsSync(declaration.resolved),
           );
-          const missingVars = effectiveVars.filter(
-            (name) => this.vars.get(name) === undefined,
-          );
+          const missingVars = emptyBindingNames(bindings);
           if (missing.length > 0 || missingVars.length > 0) {
             // Cap check BEFORE any increment (mirror of the file comparison
             // order): a face at ITS OWN cap with expectations still unmet
@@ -1331,7 +1316,7 @@ export class PioSession {
               varExpectationRetries >= MAX_VAR_EXPECTATION_RETRIES;
             if (fileAtCap || varAtCap) {
               // Collect-all: file lines first (declaration order), then
-              // variable lines (effective-listing order); satisfied faces
+              // variable lines (binding order); satisfied faces
               // contribute zero lines.
               const fileLines = missing.map((declaration) =>
                 renderMissingOutputLine(

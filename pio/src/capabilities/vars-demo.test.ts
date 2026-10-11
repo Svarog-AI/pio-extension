@@ -8,13 +8,13 @@
 // construction factory instead of driving it; a row-explicit closure drive
 // then hands back the recorded from-services arg, and the real customTools
 // array (the fenced bash entry followed by the variable trio over the
-// minted store) is recovered CAST-FREE off it. The fake session's
+// real execution state) is recovered CAST-FREE off it. The fake session's
 // prompt(text) records the text FIRST on the unified per-handle TIMELINE
 // (issue order: prompt sends AND recorded sendCustomMessage appends) then
 // resolves a SCRIPTED SETTLE PASS; synthetic events ride the attached
 // listener only (quietSettle = agent_start + empty agent_end). Scripted
 // passes drive the REAL trio bodies (real var-tools.ts over the real
-// minted store) INSIDE the pass, between agent_start and agent_end - a
+// execution state) INSIDE the pass, between agent_start and agent_end - a
 // write driven in pass N therefore "lands during run N" and is observed by
 // the stop hook and the settlement gate immediately after that run settles.
 // mkdtemp tmpdir roots with PI_CODING_AGENT_DIR pointed at <tmp>/.pi/agent
@@ -706,7 +706,7 @@ describe("admission, composition, settlement (C rows)", () => {
     });
   });
 
-  it("C2 the full happy chain (the BINDING leg): EXACTLY the expected sequence on the ONE shared handle IN ORDER (demo marker, greeting, model-write, guard-retry pass 1, guard-retry pass 2 + corrective note, read-back, callee marker, compose-read, compose-write, summary variant A); the REAL trio bodies driven DURING runs (setVar echo / getVar compact JSON / getVar bare renderings); BOTH round-trips observable (mid-run hook observation quoted in the summary; the typed read-back reached - the summary ran); the store holds all FOUR pinned values post-run; ZERO demo-side filesystem writes; clean stderr; ok:true with the EMPTY outputs record", async () => {
+  it("C2 the full happy chain (the BINDING leg): EXACTLY the expected sequence on the ONE shared handle IN ORDER (demo marker, greeting, model-write, guard-retry pass 1, guard-retry pass 2 + corrective note, read-back, callee marker, compose-read, compose-write, summary variant A); the REAL trio bodies driven DURING runs (setVar echo / getVar compact JSON / getVar bare renderings); BOTH round-trips observable (mid-run hook observation quoted in the summary; the read-back reached - the summary ran); the four cells hold their pinned values post-run; ZERO demo-side filesystem writes; clean stderr; ok:true with the EMPTY outputs record", async () => {
     const tmp = newTempRoot();
     enterWorkTree(tmp);
     const { instance, round } = await host();
@@ -769,12 +769,12 @@ describe("admission, composition, settlement (C rows)", () => {
       getRenderingReplica(MODEL_NOTE_VALUE),
       setSuccessReplica(CALLEE_NOTE_VAR, CALLEE_NOTE_VALUE),
     ]);
-    // The store holds ALL FOUR pinned values post-run (by name, imported
-    // constants - by-instance-identity sharing end state).
-    expect(instance.vars.get(MODEL_NOTE_VAR)).toBe(MODEL_NOTE_VALUE);
-    expect(instance.vars.get(GATE_PROBE_VAR)).toBe(GATE_PROBE_VALUE);
-    expect(instance.vars.get(TS_FACTS_VAR)).toStrictEqual(TS_FACTS_VALUE);
-    expect(instance.vars.get(CALLEE_NOTE_VAR)).toBe(CALLEE_NOTE_VALUE);
+    // The four cells hold ALL FOUR pinned values post-run (caller-minted
+    // members by reference).
+    expect(demo.modelNoteCell.read()).toBe(MODEL_NOTE_VALUE);
+    expect(demo.gateProbeCell.read()).toBe(GATE_PROBE_VALUE);
+    expect(demo.tsFactsCell.read()).toStrictEqual(TS_FACTS_VALUE);
+    expect(demo.calleeNoteCell.read()).toBe(CALLEE_NOTE_VALUE);
     // Module-visible effect of live leg 1: the summary prompt QUOTES the
     // MID-RUN hook observation (the pinned model-set value).
     expect(sentAt(round, 7)).toContain(MODEL_NOTE_VALUE);
@@ -858,8 +858,8 @@ describe("admission, composition, settlement (C rows)", () => {
     }
     // Store holds all four pinned values post-run (the guarded variable
     // landed on pass 1).
-    expect(instance.vars.get(GATE_PROBE_VAR)).toBe(GATE_PROBE_VALUE);
-    expect(instance.vars.get(CALLEE_NOTE_VAR)).toBe(CALLEE_NOTE_VALUE);
+    expect(demo.gateProbeCell.read()).toBe(GATE_PROBE_VALUE);
+    expect(demo.calleeNoteCell.read()).toBe(CALLEE_NOTE_VALUE);
     expect(sdkKit.state.rounds).toHaveLength(1);
     expect(readdirSync(tmp).sort()).toEqual(["work"]);
     expect(stderrText()).toBe("");
@@ -898,7 +898,7 @@ describe("admission, composition, settlement (C rows)", () => {
     expect(replica).toContain(VERDICT_PHRASE_REPLICA);
   });
 
-  it("C3 callee-exhaustion fault forwarding (REAL ceiling - no locally-minted error): the callee's variable is NEVER driven - its compose-write phase runs 1 + 3 corrective passes (FOUR prompts, notes naming the variable after 1/2/3 run(s)), the fourth break hits the cap and throws the collect-all ceiling failure; the child's run() settles ok:false and the demo RESOLVES (never rejects) ok:false with the child's capture forwarded VERBATIM (family shape {type, cause, message, violations}); the summary NEVER STARTS (TEN prompts total, two markers); the store carries the three earlier values with the callee variable ABSENT; clean stderr", async () => {
+  it("C3 callee-exhaustion fault forwarding (REAL ceiling - no locally-minted error): the callee's variable is NEVER driven - its compose-write phase runs 1 + 3 corrective passes (FOUR prompts, notes naming the variable after 1/2/3 run(s)), the fourth break hits the cap and throws the collect-all ceiling failure; the child's run() settles ok:false and the demo RESOLVES (never rejects) ok:false with the child's capture forwarded VERBATIM (family shape {type, cause, message, violations}); the summary NEVER STARTS (TEN prompts total, two markers); the three earlier cells carry their values with the callee cell ABSENT; clean stderr", async () => {
     const tmp = newTempRoot();
     enterWorkTree(tmp);
     const { instance, round } = await host();
@@ -967,13 +967,13 @@ describe("admission, composition, settlement (C rows)", () => {
     ]);
     expect(round.session.prompt).toHaveBeenCalledTimes(10);
     expect(round.session.sendCustomMessage).toHaveBeenCalledTimes(2);
-    // The store carries the three earlier values with the callee variable
-    // ABSENT (safe read returns undefined; the gate denied settlement four
+    // The three earlier cells carry their values with the callee cell
+    // ABSENT (read returns undefined; the gate denied settlement four
     // times over the absence).
-    expect(instance.vars.get(CALLEE_NOTE_VAR)).toBeUndefined();
-    expect(instance.vars.get(MODEL_NOTE_VAR)).toBe(MODEL_NOTE_VALUE);
-    expect(instance.vars.get(GATE_PROBE_VAR)).toBe(GATE_PROBE_VALUE);
-    expect(instance.vars.get(TS_FACTS_VAR)).toStrictEqual(TS_FACTS_VALUE);
+    expect(demo.calleeNoteCell.read()).toBeUndefined();
+    expect(demo.modelNoteCell.read()).toBe(MODEL_NOTE_VALUE);
+    expect(demo.gateProbeCell.read()).toBe(GATE_PROBE_VALUE);
+    expect(demo.tsFactsCell.read()).toStrictEqual(TS_FACTS_VALUE);
     expect(sdkKit.state.rounds).toHaveLength(1);
     expect(readdirSync(tmp).sort()).toEqual(["work"]);
     expect(stderrText()).toBe("");
@@ -1036,7 +1036,7 @@ describe("admission, composition, settlement (C rows)", () => {
     });
   }
 
-  it("C6 row-1 placement pin (observable-effect form): the composed callee rides the SAME single handle (ONE mint; its span stamp AND its phase prompts land on the CALLER'S OWN timeline) and the callee-written value is visible on the CALLER'S store instance afterwards THROUGH THE TYPED-READ SURFACE (one store, one observer, one mint)", async () => {
+  it("C6 row-1 placement pin (observable-effect form): the composed callee rides the SAME single handle (ONE mint; its span stamp AND its phase prompts land on the CALLER'S OWN timeline) and the callee-written value is visible on the CALLER'S HELD CELL afterwards THROUGH ITS OWN READ CHANNEL (one handle, one observer, one mint)", async () => {
     const tmp = newTempRoot();
     enterWorkTree(tmp);
     const { instance, round } = await host();
@@ -1067,10 +1067,9 @@ describe("admission, composition, settlement (C rows)", () => {
     // Single host: the SAME handle served both spans (no second mint).
     expect(sdkKit.state.rounds).toHaveLength(1);
     // By-identity sharing: the callee's written value is readable on the
-    // CALLER'S store through the TYPED-READ surface afterwards.
-    expect(instance.vars.get(CALLEE_NOTE_VAR, "string")).toBe(
-      CALLEE_NOTE_VALUE,
-    );
+    // CALLER'S held cell afterwards (same-reference cell through the
+    // caller-minted binding list).
+    expect(demo.calleeNoteCell.read()).toBe(CALLEE_NOTE_VALUE);
     expect(stderrText()).toBe("");
   });
 });
@@ -1151,7 +1150,7 @@ describe("module surface and mechanical source guards", () => {
     }
   });
 
-  it("named static VALUE clauses are EXACTLY {../capability/base.ts (PioCapability), ../capability/errors.ts (ContractViolationError)} in canonical order - and TYPE clauses exactly {../capability/base.ts (CapabilityParams), ../capability/contract.ts (Contract)}", () => {
+  it("named static VALUE clauses are EXACTLY {../capability/base.ts (PioCapability), ../capability/errors.ts (ContractViolationError), ../capability/var-cell.ts (declareVar)} in canonical order - and TYPE clauses exactly {../capability/base.ts (CapabilityParams), ../capability/contract.ts (Contract), ../capability/var-cell.ts (VarCell)}", () => {
     const clauses = staticImportClauses(src);
     const valueClauses = clauses.filter((clause) => !clause.typeOnly);
     const typeClauses = clauses.filter((clause) => clause.typeOnly);
@@ -1166,6 +1165,11 @@ describe("module surface and mechanical source guards", () => {
         names: ["ContractViolationError"],
         specifier: "../capability/errors.ts",
       },
+      {
+        typeOnly: false,
+        names: ["declareVar"],
+        specifier: "../capability/var-cell.ts",
+      },
     ]);
     expect(typeClauses).toEqual([
       {
@@ -1177,6 +1181,11 @@ describe("module surface and mechanical source guards", () => {
         typeOnly: true,
         names: ["Contract"],
         specifier: "../capability/contract.ts",
+      },
+      {
+        typeOnly: true,
+        names: ["VarCell"],
+        specifier: "../capability/var-cell.ts",
       },
     ]);
   });

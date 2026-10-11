@@ -46,13 +46,13 @@ import {
   PioSession,
   renderCapabilityMarker,
   renderPhaseMarker,
-  SessionVariableStore,
 } from "../capability/pio-session.ts";
 import {
   activeFrames,
   installFrameEnvironment,
   teardownFrameEnvironment,
 } from "../capability/terminal-takeover.ts";
+import { declareVar } from "../capability/var-cell.ts";
 import { deriveProjectKey } from "../sandbox/layout.ts";
 import AdhocCapability, {
   ADHOC_BURST_MAX_RUNS,
@@ -506,40 +506,30 @@ const SUITE_REQUEST_SCHEMA = z
     }
   });
 
-const declareRequestTwin = (store: SessionVariableStore): void => {
-  store.declare(DISPATCH_REQUEST_VAR, {
-    label: REQUEST_SPEC_LABEL_REPLICA,
-    schema: SUITE_REQUEST_SCHEMA,
-  });
-};
-
-/** THE twin-store drive (identity-over-goldens over store-owned settlement
- * bytes): a FRESH store carrying the SAME declaration settles the SAME
+/** THE twin-cell drive (identity-over-goldens over cell-owned settlement
+ * bytes): a FRESH cell carrying the SAME authored spec settles the SAME
  * value; when a prior value is seeded the defect write leaves it INTACT
  * (asserted on the twin), and the thrown family message IS the comparison
  * target for the driven mid-turn tool result - zero hand-built frame
  * copies. */
-function twinDefectLine(opts: {
-  name: string;
-  declare: (store: SessionVariableStore) => void;
-  prior?: unknown;
-  value: unknown;
-}): string {
-  const twin = new SessionVariableStore();
-  opts.declare(twin);
+function twinDefectLine(opts: { prior?: unknown; value: unknown }): string {
+  const twin = declareVar(DISPATCH_REQUEST_VAR, {
+    label: REQUEST_SPEC_LABEL_REPLICA,
+    schema: SUITE_REQUEST_SCHEMA,
+  });
   if (opts.prior !== undefined) {
-    twin.set(opts.name, opts.prior);
+    twin.set(opts.prior);
   }
   try {
-    twin.set(opts.name, opts.value);
+    twin.set(opts.value);
   } catch (error) {
     expect(error).toBeInstanceOf(VariableRejectionError);
     if (opts.prior !== undefined) {
-      expect(twin.get(opts.name)).toStrictEqual(opts.prior);
+      expect(twin.read()).toStrictEqual(opts.prior);
     }
     return (error as Error).message;
   }
-  throw new Error("adhoc-suite: expected the twin store to refuse");
+  throw new Error("adhoc-suite: expected the twin cell to refuse");
 }
 
 function projectSlotOf(): string {
@@ -905,13 +895,11 @@ describe("lane arming (unseeded request lane)", () => {
     const adhoc = new AdhocCapability({ session: world.instance });
     const result = await adhoc.run();
     expect(result).toStrictEqual(VALVE_RESULT);
-    const declarations = world.instance.vars.declarations();
-    expect(Object.keys(declarations)).toEqual([DISPATCH_REQUEST_VAR]);
-    expect(declarations[DISPATCH_REQUEST_VAR]).toBe(REQUEST_SPEC_LABEL_REPLICA);
-    expect(world.instance.vars.declarationDisplay(DISPATCH_REQUEST_VAR)).toBe(
-      REQUEST_SPEC_LABEL_REPLICA,
-    );
-    expect(world.instance.vars.get(DISPATCH_REQUEST_VAR)).toBeUndefined();
+    // THE single request cell: minted once per capability instance with the
+    // authored spec (label display) and naturally absent on a fresh one.
+    expect(adhoc.requestCell.displayName).toBe(REQUEST_SPEC_LABEL_REPLICA);
+    expect(adhoc.requestCell.isEmpty()).toBe(true);
+    expect(adhoc.requestCell.read()).toBeUndefined();
     const prompts = topPrompts(world);
     expect(prompts).toHaveLength(1);
     expect(sentText(prompts, 0)).toBe(
@@ -964,7 +952,7 @@ describe("happy chain (R1 - binding leg, physics world)", () => {
       `Outputs: ${JSON.stringify({ report: abs })}`,
     );
     expect(sentText(prompts, 2)).toBe(baseline);
-    expect(world.instance.vars.get(DISPATCH_REQUEST_VAR)).toBeUndefined();
+    expect(adhoc.requestCell.read()).toBeUndefined();
     expect(results[0]?.content[0]?.text).toBe(
       setSuccessReplica(DISPATCH_REQUEST_VAR, DECISION_OBJECT),
     );
@@ -1072,7 +1060,7 @@ describe("wire doctrine (model text arrives quoted - product regression)", () =>
     expect(sentText(prompts, 2)).toBe(baseline);
     // The lane reads back ABSENT: the re-arm's round-top clear disarmed the
     // consumed pick (deliberate-window rule).
-    expect(world.instance.vars.get(DISPATCH_REQUEST_VAR)).toBeUndefined();
+    expect(adhoc.requestCell.read()).toBeUndefined();
     // SUCCESS ECHO over the DECODED value: compact JSON, byte-identical to
     // the native drive's echo (identity-over-goldens over the settled bytes).
     expect(results[0]?.content[0]?.text).toBe(
@@ -1117,7 +1105,7 @@ describe("quiet-cycle shape (R2 - top world, ruled silent-round cost)", () => {
       expect(record.text).not.toContain(renderPhaseMarker("confirm"));
       expect(record.text).not.toContain(renderPhaseMarker("report"));
     }
-    expect(world.instance.vars.get(DISPATCH_REQUEST_VAR)).toBeUndefined();
+    expect(adhoc.requestCell.read()).toBeUndefined();
     expect(world.runtime.switchSession).toHaveBeenCalledTimes(0);
     expect(stubKit.state.bag).toEqual({});
     expect(sdkKit.state.customMessages).toHaveLength(1);
@@ -1167,7 +1155,7 @@ describe("flow independence (R3 - physics world)", () => {
     expect(sentText(prompts, 2)).toBe(
       promptOf("gather", gatherBaselineReplica()),
     );
-    expect(world.instance.vars.get(DISPATCH_REQUEST_VAR)).toBeUndefined();
+    expect(adhoc.requestCell.read()).toBeUndefined();
     expect(stderrText()).toBe("");
     expect(stdoutText()).toBe("");
   });
@@ -1220,7 +1208,7 @@ describe("store-on-retry (emergent property, top world)", () => {
     expect(stubKit.state.bag).toEqual({});
     expect(stubKit.state.inputs).toStrictEqual({ topic: TOPIC });
     expect(world.runtime.switchSession).toHaveBeenCalledTimes(2);
-    expect(world.instance.vars.get(DISPATCH_REQUEST_VAR)).toBeUndefined();
+    expect(adhoc.requestCell.read()).toBeUndefined();
     expect(stderrText()).toBe("");
     expect(stdoutText()).toBe("");
   });
@@ -1237,7 +1225,7 @@ describe("ESC mid-gather (R4 - top world)", () => {
     const result = await adhoc.run();
     expect(result).toStrictEqual(VALVE_RESULT);
     expect(result.errors?.[0]?.type).not.toBe("PhaseInterruptionError");
-    expect(world.instance.vars.get(DISPATCH_REQUEST_VAR)).toBeUndefined();
+    expect(adhoc.requestCell.read()).toBeUndefined();
     const prompts = topPrompts(world);
     expect(prompts).toHaveLength(2);
     expect(sentText(prompts, 1)).toBe(sentText(prompts, 0));
@@ -1309,7 +1297,7 @@ describe("ESC mid-hosted-run (R5 - physics world)", () => {
     expect(reportText.indexOf(survivorReport)).toBeLessThan(
       reportText.indexOf(survivorArchive),
     );
-    expect(world.instance.vars.get(DISPATCH_REQUEST_VAR)).toBeUndefined();
+    expect(adhoc.requestCell.read()).toBeUndefined();
     expect(sentText(prompts, 2)).toBe(
       promptOf("gather", gatherBaselineReplica()),
     );
@@ -1390,7 +1378,7 @@ describe("admission failures settle as failure reports (owner-directed full remo
         expect(row.fact).toBe(capabilityRefusalLine("doesnotexist"));
       }
       expect(sentText(prompts, 2)).toBe(baseline);
-      expect(world.instance.vars.get(DISPATCH_REQUEST_VAR)).toBeUndefined();
+      expect(adhoc.requestCell.read()).toBeUndefined();
       expect(world.runtime.switchSession).toHaveBeenCalledTimes(0);
       expect(stubKit.state.bag).toEqual({});
       expect(stderrText()).toBe("");
@@ -1429,12 +1417,7 @@ describe("mid-turn settlement (replaces the retired malformed-defect class)", ()
     const adhoc = new AdhocCapability({ session: world.instance });
     const result = await adhoc.run();
     expect(result).toStrictEqual(VALVE_RESULT);
-    const twinLine = twinDefectLine({
-      name: DISPATCH_REQUEST_VAR,
-      declare: declareRequestTwin,
-      prior,
-      value,
-    });
+    const twinLine = twinDefectLine({ prior, value });
     expect(results[0]?.content[0]?.text).toBe(twinLine);
     const prompts = topPrompts(world);
     expect(prompts).toHaveLength(5);
@@ -1452,7 +1435,7 @@ describe("mid-turn settlement (replaces the retired malformed-defect class)", ()
     // THE contrast pin: mid-turn settlements leave NO carried fact - the
     // following burst is the plain baseline byte-exact.
     expect(sentText(prompts, 4)).toBe(baseline);
-    expect(world.instance.vars.get(DISPATCH_REQUEST_VAR)).toBeUndefined();
+    expect(adhoc.requestCell.read()).toBeUndefined();
     expect(world.runtime.switchSession).toHaveBeenCalledTimes(0);
     expect(stubKit.state.bag).toEqual({});
     expect(stderrText()).toBe("");
@@ -1473,11 +1456,7 @@ describe("mid-turn settlement (replaces the retired malformed-defect class)", ()
     await driveRequestDefectRow("composite", composite, undefined);
     // Identity over goldens already bound the joined line via the twin;
     // the COMPOSITION witness pins the encounter order explicitly.
-    const twinLine = twinDefectLine({
-      name: DISPATCH_REQUEST_VAR,
-      declare: declareRequestTwin,
-      value: composite,
-    });
+    const twinLine = twinDefectLine({ value: composite });
     expect(twinLine).toBe(
       "Variable rejection: variable 'dispatch_request' does not satisfy its declared shape check \u2014 name: the stored dispatch request has no non-empty capability name; inputs: the stored dispatch request inputs must be a plain object of string values",
     );
@@ -1502,21 +1481,18 @@ describe("mid-turn settlement (replaces the retired malformed-defect class)", ()
 // silent-confirm physics dies with the confirm phase itself.
 
 describe("stale residue erasure (R10 - top world)", () => {
-  it("a PRE-SEEDED valid decision left in the request lane neither dispatches nor reaches any prompt: the round-top clear erases it BEFORE the first burst (plain baseline, four silent-cycle shapes + valve = five prompts; no hop; the callee bag empty); the lane ends absent", async () => {
+  it("a PRE-SEEDED valid decision left in the request lane neither dispatches nor reaches any prompt: the round-top reset erases it BEFORE the first burst (plain baseline, four silent-cycle shapes + valve = five prompts; no hop; the callee bag empty); the lane ends absent", async () => {
     const root = newTempRoot();
     const world = await setupWorld({ root, env: "set" });
-    // Program-side residue (identity surface): a PRIOR sitting's
-    // declaration + stored pick left behind - seeded AFTER declaring the
-    // lane (undeclared writes reject), BEFORE the running sitting owns it.
-    // The re-declaration inside the running sitting settles as the
-    // idempotent same-kind/same-display no-op.
-    declareRequestTwin(world.instance.vars);
-    world.instance.vars.set(DISPATCH_REQUEST_VAR, DECISION_OBJECT);
+    // Same-instance residue: an EARLIER sitting's pick survives inside the
+    // very cell THIS sitting will own - the round-top reset erases it
+    // before the first burst issues.
+    const adhoc = new AdhocCapability({ session: world.instance });
+    adhoc.requestCell.set(DECISION_OBJECT);
     for (let run = 0; run < 4; run += 1) {
       scriptQuiet(world.round.session); // silent cycle 1 (four prompts)
     }
     scriptValve(world.round.session); // row-end valve (silent cycle 2's first prompt)
-    const adhoc = new AdhocCapability({ session: world.instance });
     const result = await adhoc.run();
     expect(result).toStrictEqual(VALVE_RESULT);
     const prompts = topPrompts(world);
@@ -1535,7 +1511,7 @@ describe("stale residue erasure (R10 - top world)", () => {
     expect(sentText(prompts, 4)).toBe(baseline);
     expect(world.runtime.switchSession).toHaveBeenCalledTimes(0);
     expect(stubKit.state.bag).toEqual({});
-    expect(world.instance.vars.get(DISPATCH_REQUEST_VAR)).toBeUndefined();
+    expect(adhoc.requestCell.read()).toBeUndefined();
     expect(stderrText()).toBe("");
     expect(stdoutText()).toBe("");
   });
@@ -1714,7 +1690,7 @@ describe("result-variant coverage (physics world)", () => {
     expect(parsed.errors).toStrictEqual([
       { type: "WebToolsMissingError", message: stubKit.BARE_ERROR_MESSAGE },
     ]);
-    expect(world.instance.vars.get(DISPATCH_REQUEST_VAR)).toBeUndefined();
+    expect(adhoc.requestCell.read()).toBeUndefined();
     expect(sentText(prompts, 2)).toBe(
       promptOf("gather", gatherBaselineReplica()),
     );
@@ -1799,7 +1775,7 @@ describe("bound (R12 - top world)", () => {
       cycleShapes[3],
     );
     expect(sentText(prompts, ADHOC_BURST_MAX_RUNS * 4)).toBe(cycleShapes[0]);
-    expect(world.instance.vars.get(DISPATCH_REQUEST_VAR)).toBeUndefined();
+    expect(adhoc.requestCell.read()).toBeUndefined();
     expect(world.runtime.switchSession).toHaveBeenCalledTimes(0);
     expect(stderrText()).toBe("");
     expect(stdoutText()).toBe("");
@@ -1868,8 +1844,8 @@ describe("module surface and mechanical source guards (R13)", () => {
         "../capability/contract.ts",
         "../capability/errors.ts",
         "../capability/loader.ts",
-        "../capability/pio-session.ts",
         "../capability/status.ts",
+        "../capability/var-cell.ts",
         "../sandbox/layout.ts",
         "node:fs",
         "node:path",
@@ -1902,11 +1878,11 @@ describe("module surface and mechanical source guards (R13)", () => {
     }
   });
 
-  it("VERDICT SIGNATURE over a bare host (engine seam witnessed end-to-end): a variables-only ceiling exhaustion over a freshly declared custom-typed variable listed in a minimal phase throws the DEDICATED class whose names field deep-equals the listed-absent lane and whose message composes the engine-owned line bytes with ZERO drift (swallow-nothing-else is the catch's code shape - no dedicated row)", async () => {
+  it("VERDICT SIGNATURE over a bare host (engine seam witnessed end-to-end): a variables-only ceiling exhaustion over a freshly minted custom-typed cell bound by a minimal phase throws the DEDICATED class whose names field deep-equals the listed-absent binding and whose message composes the engine-owned line bytes with ZERO drift (swallow-nothing-else is the catch's code shape - no dedicated row)", async () => {
     const root = newTempRoot();
     const world = await setupWorld({ root, env: "set" });
     const PROBE_VAR = "probe_lane";
-    world.instance.vars.declare(PROBE_VAR, {
+    const probeCell = declareVar(PROBE_VAR, {
       label: "probe shape",
       schema: SUITE_REQUEST_SCHEMA,
     });
@@ -1924,7 +1900,7 @@ describe("module surface and mechanical source guards (R13)", () => {
     try {
       await world.instance.execute_phase("verdict-probe", {
         instructions: "Probe the verdict.",
-        vars: [PROBE_VAR],
+        vars: [{ cell: probeCell }],
       });
     } catch (error) {
       thrown = error;
@@ -1949,6 +1925,6 @@ describe("module surface and mechanical source guards (R13)", () => {
     expect(sentText(prompts, 3)).toBe(
       `${baseline}\n${varGuardNoteReplica(3, [PROBE_VAR])}`,
     );
-    expect(world.instance.vars.get(PROBE_VAR)).toBeUndefined();
+    expect(probeCell.read()).toBeUndefined();
   });
 });

@@ -37,10 +37,10 @@
 //    out): the row-2 terminal-handoff placement mints DISJOINT stores for
 //    its composed children - nothing crosses that boundary, and no row-2
 //    leg exists in this demonstration.
-// 4. The mandatory-type doctrine proven live: every variable is declare()'d
-//    in TypeScript BEFORE the first phase issues, so every phase listing
-//    (the caller's AND the callee's) validates at arm time over the shared
-//    registry, and the model's setVar stays bound to pre-declared names.
+// 4. Pre-minted cells (zero prompts): the four cells are minted at
+//    instance construction BEFORE any phase issues, so every phase
+//    listing (the caller's AND the callee's) binds pre-minted cells,
+//    and the model's setVar reaches only the granted cells.
 // 5. The verdict-beat discipline (inherited from the sibling guards-demo
 //    probes): every PROBE turn's reply states whether its expectation was
 //    satisfied - the four action probes (model-write, read-back,
@@ -95,6 +95,8 @@ import type { CapabilityParams } from "../capability/base.ts";
 import { PioCapability } from "../capability/base.ts";
 import type { Contract } from "../capability/contract.ts";
 import { ContractViolationError } from "../capability/errors.ts";
+import type { VarCell } from "../capability/var-cell.ts";
+import { declareVar } from "../capability/var-cell.ts";
 
 /** One-line catalog description (SOLE OWNER of the pinned bytes; the loader
  * suite replica names this owner). Surfaced by the on-demand catalog walk. */
@@ -249,10 +251,18 @@ function composeWriteInstructions(): string {
 // registration surface and this class is NOT registered: its name resolves
 // to the standard miss refusal line). The smallest compliant shape: the
 // four existing built-ins write no variables, so an inline class is the
-// only conformant vehicle for the cross-boundary WRITE. Its write phase
-// validates at arm over the SHARED declarations() - the caller's
-// pre-declaration of the variable is a HARD precondition (arm-time
-// enforcement makes this mechanical, not advisory).
+// only conformant vehicle for the cross-boundary WRITE. Its phases bind the
+// caller's pre-minted cells BY REFERENCE - cross-boundary sharing rests on
+// cell identity, and the caller's construction is the HARD precondition.
+
+/** Local params extension (unexported, additive): the cross-boundary cells
+ * pass BY REFERENCE into the callee's phases - the framework base stays
+ * untouched. */
+interface VarsDemoCalleeParams extends CapabilityParams {
+  readonly noteCell: VarCell;
+  readonly calleeNoteCell: VarCell;
+}
+
 class VarsDemoCallee extends PioCapability {
   readonly contract: Contract = {
     name: CALLEE_NAME,
@@ -262,8 +272,13 @@ class VarsDemoCallee extends PioCapability {
     writes: [],
   };
 
-  constructor(params: CapabilityParams) {
+  #noteCell: VarCell;
+  #calleeNoteCell: VarCell;
+
+  constructor(params: VarsDemoCalleeParams) {
     super(params);
+    this.#noteCell = params.noteCell;
+    this.#calleeNoteCell = params.calleeNoteCell;
   }
 
   async call(
@@ -272,23 +287,24 @@ class VarsDemoCallee extends PioCapability {
     // Zero declared inputs - the host gate already refused anything else.
     void inputs;
 
-    // Compose-read turn: the PURE cross-boundary READ (attach abstention -
-    // nothing is being written, so no dimension is declared and nothing
-    // attaches).
+    // Compose-read turn: the PURE cross-boundary READ over the CALLER'S
+    // cell (READ-ONLY binding - default-read scoping; frame present, zero
+    // write grants).
     await this.execute_phase("compose-read", {
       instructions: composeReadInstructions(),
       min: 1,
       max: 1,
+      vars: [{ cell: this.#noteCell }],
     });
 
-    // Compose-write turn: the gated cross-boundary WRITE (the variable
-    // listing arms the expectation gate AND admits the model's setVar
-    // against exactly this name while the phase governs).
+    // Compose-write turn: the gated cross-boundary WRITE (the write grant
+    // admits the model's setVar against exactly this cell while the phase
+    // governs AND arms the expectation gate over it).
     await this.execute_phase("compose-write", {
       instructions: composeWriteInstructions(),
       min: 1,
       max: 1,
-      vars: [CALLEE_NOTE_VAR],
+      vars: [{ cell: this.#calleeNoteCell, write: true }],
     });
     return {};
   }
@@ -302,6 +318,15 @@ export default class VarsDemoCapability extends PioCapability {
     outputs: [],
     writes: [],
   };
+
+  /** Pre-minted CELLS (constructive-impossibility successor to the
+   * mandatory-type proof): the field initializers run at instance
+   * construction, BEFORE any prompt - every later listing binds these
+   * pre-minted cells (the caller's AND the callee's). */
+  readonly modelNoteCell = declareVar(MODEL_NOTE_VAR, "string");
+  readonly gateProbeCell = declareVar(GATE_PROBE_VAR, "string");
+  readonly tsFactsCell = declareVar(TS_FACTS_VAR, "array");
+  readonly calleeNoteCell = declareVar(CALLEE_NOTE_VAR, "string");
 
   constructor(params: CapabilityParams) {
     super(params);
@@ -322,15 +347,6 @@ export default class VarsDemoCapability extends PioCapability {
         "no session available: vars-demo requires in-process placement",
       );
     }
-
-    // MANDATORY-TYPE PROOF (zero prompts): every variable is declare()'d
-    // FIRST - this is what makes every later phase's vars listing
-    // arm-time-valid (the caller's AND the callee's) and what bounds the
-    // model's setVar to pre-declared names.
-    s.vars.declare(MODEL_NOTE_VAR, "string");
-    s.vars.declare(GATE_PROBE_VAR, "string");
-    s.vars.declare(TS_FACTS_VAR, "array");
-    s.vars.declare(CALLEE_NOTE_VAR, "string");
 
     // Hook bag + observer hook (the live-leg-1 seam): a call()-scoped
     // mutable bag captured by the model-write phase's stop-rule closure.
@@ -358,9 +374,9 @@ export default class VarsDemoCapability extends PioCapability {
       instructions: modelWriteInstructions(),
       min: 1,
       max: 1,
-      vars: [MODEL_NOTE_VAR],
-      shouldStopLoop: (ctx) => {
-        const seen = ctx.vars.get(MODEL_NOTE_VAR);
+      vars: [{ cell: this.modelNoteCell, write: true }],
+      shouldStopLoop: async ({ vars }) => {
+        const seen = vars.get(MODEL_NOTE_VAR);
         if (typeof seen === "string") {
           hookBag.note = seen;
         }
@@ -378,27 +394,36 @@ export default class VarsDemoCapability extends PioCapability {
     const result = await this.execute_phase("guard-retry", {
       instructions: guardRetryInstructions(),
       min: 1,
-      vars: [GATE_PROBE_VAR],
+      vars: [{ cell: this.gateProbeCell, write: true }],
     });
 
     // 4. TS SEED GLUE (zero prompts): programmatic definition between
-    // phases - registered AND well-typed, so the entry point cannot fault.
-    s.vars.set(TS_FACTS_VAR, TS_FACTS_VALUE);
+    // phases - the cell's own settle is the funnel entry (pre-minted and
+    // well-typed, so it cannot fault).
+    this.tsFactsCell.set(TS_FACTS_VALUE);
 
     // 5. Read-back (tests: the model reads TS-defined values FOLLOWING
-    // TURN) - one settled turn (attach abstention).
+    // TURN) - one settled turn. READ-ONLY bindings (NO write grants):
+    // default-read scoping is LOAD-BEARING here - the model's getVar calls
+    // resolve both cells while the gate's universal line governs any write
+    // attempt in that window.
     await this.execute_phase("read-back", {
       instructions: readBackInstructions(),
       min: 1,
       max: 1,
+      vars: [{ cell: this.tsFactsCell }, { cell: this.modelNoteCell }],
     });
 
     // 6. Composition (row-1): constructed WITH the caller's session
-    // instance BY REFERENCE - nothing else crosses the boundary; the
-    // callee's OWN base dispatch stamps ITS span marker on the shared
-    // transcript and runs its phases in-process (no spawn, no terminal
-    // change).
-    const child = new VarsDemoCallee({ session: s });
+    // instance AND its TWO cross-boundary cells BY REFERENCE - nothing
+    // else crosses the boundary; the callee's OWN base dispatch stamps ITS
+    // span marker on the shared transcript and runs its phases in-process
+    // (no spawn, no terminal change).
+    const child = new VarsDemoCallee({
+      session: s,
+      noteCell: this.modelNoteCell,
+      calleeNoteCell: this.calleeNoteCell,
+    });
     const outcome = await child.run();
 
     // 7. VERBATIM FAULT FORWARDING (success gate): a failed child re-
@@ -412,12 +437,17 @@ export default class VarsDemoCapability extends PioCapability {
       throw new ContractViolationError(first?.violations ?? [], first?.message);
     }
 
-    // 8. TYPED READ-BACK (zero prompts, success path): the typed-read
-    // surface over the SHARED store. Cannot fault here - the callee's
-    // ok:true implies its compose-write phase settled, and settlement
-    // REQUIRES the declared variable present (the gate guarantees it), so
-    // presence is GATE-GUARANTEED and no defensive corner exists.
-    const calleeNote = s.vars.get(CALLEE_NOTE_VAR, "string");
+    // 8. SAFE READ-BACK (zero prompts, success path): the safe read over
+    // the caller-held cell + narrowing replaces the retired typed-read
+    // site. Cannot fault here - the callee's ok:true implies its
+    // compose-write phase settled, and settlement REQUIRES the bound cell
+    // non-empty (the gate guarantees it), so the narrowing holds and the
+    // degenerate branch below is unreachable in practice (it settles a
+    // FIXED token, never a fault on the success path - house idiom mirroring
+    // the hook-bag degradation).
+    const rawCalleeNote = this.calleeNoteCell.read();
+    const calleeNote =
+      typeof rawCalleeNote === "string" ? rawCalleeNote : "<unobserved>";
 
     // 9. Summary - success path ONLY, ONE settled turn stated THROUGH THE
     // SESSION STREAM; variant selection keys ONLY on the observed

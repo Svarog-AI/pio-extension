@@ -383,7 +383,7 @@ function listingReplica(): string {
     "- compose-new-session-demo: Temporary demonstration of handing the terminal between sessions: after a greeting, a brand-new session takes over your terminal to research a fixed topic, and you get the top 3 findings from its report once control comes back.",
     "- compose-same-session-demo: Demonstration of keeping everything in one session: after a greeting, research runs inside your current session without ever leaving it, and you get the top 3 findings from its report.",
     "- guards-demo: Demonstration of missing-deliverable protection: a run deliberately skips writing its required file, the engine forces a corrected retry until the file exists, and the outcome is stated.",
-    "- vars-demo: Demonstration of the shared variable store: within one run, the AI and the program code set and read the same variables, one step is deliberately retried, and a value written by a nested sub-run is read back in the main run.",
+    "- vars-demo: Demonstration of the shared variable store: within one run, the AI and the program code set and read the same variables, the program observes an AI write mid-run, and one guarded value is deliberately retried until it lands.",
     `- adhoc: ${ADHOC_DESCRIPTION_REPLICA}`,
   ].join("\n");
 }

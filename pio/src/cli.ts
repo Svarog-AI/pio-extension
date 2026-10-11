@@ -83,7 +83,7 @@ const HELP_LINES: readonly string[] = [
   // NOTE the em dash is the U+2014 EM DASH character (pinned codepoint),
   // matching the pair style above; the canonical line is the BARE form —
   // the demo takes nothing.
-  "  vars-demo — PERMANENT variable-store demonstration: model and TS code read and write the same live session variables — visible expectation-guard retry, following-turn read-back, composed callee sharing the store by identity",
+  "  vars-demo — PERMANENT variable-store demonstration: model and TS code read and write the same live session variables — visible expectation-guard retry, following-turn read-back",
   "  pio run vars-demo",
 ];
 

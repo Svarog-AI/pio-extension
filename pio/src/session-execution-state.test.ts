@@ -909,7 +909,7 @@ describe("mechanical source guards", () => {
         }
         const end = Math.min(i, source.length);
         payloads.push(source.slice(start, end));
-        residue += `P`;
+        residue += ch + "P" + ch;
         i = end + 1;
         continue;
       }

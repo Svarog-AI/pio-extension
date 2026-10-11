@@ -77,8 +77,15 @@ export function createVarTools(
         const snapshot = state?.snapshot();
         const phase = snapshot === undefined ? null : snapshot.phase;
         const bindings = phase === null ? [] : phase.vars;
+        // Adjudication rides the gate's own write-grant projection (it runs
+        // the duplicate first-check FIRST and yields the names of the
+        // write === true entries in BINDING ORDER).
         const grants = listWriteGrants(bindings);
-        if (!grants.includes(params.name)) {
+        const granted = bindings.find(
+          (binding: PhaseVarBinding) =>
+            binding.write === true && binding.cell.name === params.name,
+        );
+        if (granted === undefined) {
           // OUT-OF-GRANT OR UNRESOLVED (incl. null phase / no write
           // grants): settle MID-TURN as the GATE-FAMILY refusal - the
           // phase line naming the attempted variable + the moment's
@@ -94,20 +101,6 @@ export function createVarTools(
         // behind the carried containment: the cell's rejection voice
         // (coercion reject / spec defect / spec fault lines) composes
         // VERBATIM into the result.
-        const granted = bindings.find(
-          (binding: PhaseVarBinding) =>
-            binding.write === true && binding.cell.name === params.name,
-        );
-        if (granted === undefined) {
-          // Unreachable in practice (the grant listing proves the
-          // binding); degrade to the phase line rather than guess (or the
-          // universal line when the null-phase corner is reached).
-          const degraded =
-            phase === null
-              ? renderVarGateUniversalLine(params.name)
-              : renderVarGatePhaseLine(params.name, phase.id, grants);
-          return settleText(new VariableRejectionError([degraded]).message);
-        }
         granted.cell.set(params.value);
         // Success echoes the SETTLED STORED value (cell read-back; spec
         // lanes hold the parse output), never the raw input.

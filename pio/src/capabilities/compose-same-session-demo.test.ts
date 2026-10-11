@@ -20,9 +20,10 @@
 // THE D1 PLACEMENT: the demo constructs the stubbed `research` WITH the
 // caller's session instance BY REFERENCE, so the REAL base run()'s
 // SESSION-PRESENT branch carries the scripted settlement in-process — the
-// stub records the CONSTRUCTION BAG + received inputs (+ vars vantage
-// points) and settles a scripted payload (success token / kill capture /
-// bare error / empty-or-absent outputs variants). Its success mode executes
+// stub records the CONSTRUCTION BAG + received inputs (+ the callee-
+// minted cell reference) and settles a scripted payload (success token /
+// kill capture / bare error / empty-or-absent outputs variants). Its
+// success mode executes
 // ONE phase THROUGH the inherited handle (real base execute_phase →
 // marker-lined prompt on the shared handle), and the REAL settle seam
 // transforms the stub's SLOT-RELATIVE token to the bubble's absolute

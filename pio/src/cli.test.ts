@@ -47,7 +47,7 @@ const GUARDS_DEMO_INVOCATION_LINE = "  pio run guards-demo";
 // the U+2014 EM DASH character (pinned codepoint), and the canonical line is
 // the BARE form — the demo takes nothing.
 const VARS_DEMO_ENTRY_LINE =
-  "  vars-demo — PERMANENT variable-store demonstration: model and TS code read and write the same live session variables — visible expectation-guard retry, following-turn read-back, composed callee sharing the store by identity";
+  "  vars-demo — PERMANENT variable-store demonstration: model and TS code read and write the same live session variables — visible expectation-guard retry, following-turn read-back";
 const VARS_DEMO_INVOCATION_LINE = "  pio run vars-demo";
 
 // Replicated miss-line literal — the SOLE OWNER is capabilityRefusalLine in

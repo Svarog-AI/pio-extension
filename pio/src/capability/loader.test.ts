@@ -724,7 +724,7 @@ const DESCRIPTION_REPLICAS: Readonly<Record<string, string>> = {
   "guards-demo":
     "Demonstration of missing-deliverable protection: a run deliberately skips writing its required file, the engine forces a corrected retry until the file exists, and the outcome is stated.",
   "vars-demo":
-    "Demonstration of the shared variable store: within one run, the AI and the program code set and read the same variables, one step is deliberately retried, and a value written by a nested sub-run is read back in the main run.",
+    "Demonstration of the shared variable store: within one run, the AI and the program code set and read the same variables, the program observes an AI write mid-run, and one guarded value is deliberately retried until it lands.",
   adhoc:
     "Describe what you need in plain language and it matches your request against the registered built-ins, runs the chosen capability right here in this conversation, and reports the result - staying available for follow-ups until you exit.",
 };

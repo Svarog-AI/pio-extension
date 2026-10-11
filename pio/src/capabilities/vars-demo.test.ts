@@ -21,9 +21,8 @@
 // (engine rows choose SET; the env-defect rows leave it UNSET/MALFORMED
 // from the start; saved/restored per row) and process.chdir into <tmp>/work
 // (restored). Every session-driven row mints EXACTLY ONE session handle
-// through the SDK kit - the single-host invariant IS the row-1 proof: the
-// composed callee rides the CALLER'S handle by reference, so no second
-// mint ever happens.
+// through the SDK kit - one capability, one host, no second mint ever
+// happens.
 //
 // SEAM INVENTORY: exactly ONE marked cast seam - driveVarEntry presents ONE
 // real threaded definition behind the widened five-argument execute view
@@ -47,19 +46,13 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { AgentSessionEvent } from "@earendil-works/pi-coding-agent";
 import type { CapabilityTable } from "../capability/loader.ts";
-import {
-  capabilityRefusalLine,
-  resolveCapability,
-} from "../capability/loader.ts";
+import { resolveCapability } from "../capability/loader.ts";
 import {
   PioSession,
   renderCapabilityMarker,
   renderPhaseMarker,
 } from "../capability/pio-session.ts";
 import VarsDemoCapability, {
-  CALLEE_NAME,
-  CALLEE_NOTE_VALUE,
-  CALLEE_NOTE_VAR,
   GATE_PROBE_VALUE,
   GATE_PROBE_VAR,
   MODEL_NOTE_VALUE,
@@ -265,7 +258,7 @@ vi.mock("@earendil-works/pi-coding-agent", () => ({
 /** Pinned greeting template (SOLE OWNER: GREETING_INSTRUCTIONS in
  * ./vars-demo.ts). Em dashes are U+2014 (escaped). */
 const GREETING_REPLICA = `You are starting a session-variable demonstration.
-1. Greet the operator: say hello and briefly mention that the run ahead exhibits session variables set from BOTH sides - the model defining a note that TypeScript code reads mid-run and the program defining facts the model reads back on a following turn - together with a deliberately-triggered variable expectation-guard retry and a composed callee that shares this one variable store.
+1. Greet the operator: say hello and briefly mention that the run ahead exhibits session variables set from BOTH sides - the model defining a note that TypeScript code reads mid-run and the program defining facts the model reads back on a following turn - together with a deliberately-triggered variable expectation-guard retry.
 2. Do nothing else in this turn \u2014 no tools, no questions. End your turn right after the greeting.`;
 
 /** Pinned model-write template (SOLE OWNER: the modelWriteInstructions owner
@@ -296,33 +289,15 @@ const readBackReplica = (): string =>
 /** Pinned summary template (SOLE OWNER: the summaryInstructions owner in
  * ./vars-demo.ts - variants A/B keyed ONLY on the observed iteration count).
  * Em dashes are U+2014 (escaped). */
-const summaryReplica = (
-  iterations: number,
-  observedNote: string,
-  calleeNote: string,
-): string => {
+const summaryReplica = (iterations: number, observedNote: string): string => {
   const outcome =
     iterations >= 2
       ? `The variable demonstration finished with the guard-retry phase settling after ${iterations} runs: the variable expectation guard DENIED first-pass settlement \u2014 the declared variable was still undefined \u2014 and FORCED the corrective re-run, which defined it (${GATE_PROBE_VALUE}).`
       : `The variable demonstration finished with the guard-retry phase settling after 1 run: the variable guard's loop was ARMED but NOT triggered \u2014 the model defined the guarded variable on the very first pass despite the skip directive.`;
   return `${outcome}
 1. Quote the value the TypeScript hook OBSERVED MID-RUN from ${MODEL_NOTE_VAR}: "${observedNote}" (read between the settled runs, not after them - the timing evidence that the model's setVar landed while the program was still running).
-2. Quote the value read back AFTER the composition through the typed-read surface from ${CALLEE_NOTE_VAR}: "${calleeNote}" (defined by the composed callee inside its own turns - the store shared by instance identity).
-3. State the documented row-2 property: the terminal-handoff placement mints DISJOINT variable stores for its composed children, so nothing crosses that boundary (documented property, stated - nothing is acted out).
-4. Do nothing else \u2014 no further tools, no questions. End your turn right after that statement.`;
+2. Do nothing else \u2014 no further tools, no questions. End your turn right after that statement.`;
 };
-
-/** Pinned compose-read template (SOLE OWNER: the composeReadInstructions
- * owner in ./vars-demo.ts - three beats ending in the sibling's verbatim
- * verdict beat; no em dash occurs in the body). */
-const composeReadReplica = (): string =>
-  `Use the getVar tool to read ${MODEL_NOTE_VAR} and state its EXACT rendering in your reply. The expectation is that it renders the exact value authored earlier in this same session - the store is shared by instance identity. Describe in one sentence if it's satisfied. End your turn right after (no other tools).`;
-
-/** Pinned compose-write template (SOLE OWNER: the composeWriteInstructions
- * owner in ./vars-demo.ts - three beats ending in the sibling's verbatim
- * verdict beat; no em dash occurs in the body). */
-const composeWriteReplica = (): string =>
-  `Use the setVar tool to define ${CALLEE_NOTE_VAR} with the EXACT value: ${CALLEE_NOTE_VALUE}. The expectation is that the value LANDS as stored in the shared store the caller reads back after the composition. Describe in one sentence if it's satisfied. End your turn right after (no other tools).`;
 
 /** Sibling verdict-phrase replica (SOLE OWNER: the guards-demo probe
  * template family in ./guards-demo.ts - reused VERBATIM per the settled
@@ -349,15 +324,6 @@ const varGuardBlock = (runs: number, names: readonly string[]): string =>
  * expectations, so no output-guard byte may appear anywhere). */
 const OUTPUT_GUARD_LABEL = "\u2014\u2014 output guard \u2014\u2014";
 
-/** Replica of the ceiling violation line for the callee's write phase (SOLE
- * OWNER: renderMissingVariableLine in ../capability/pio-session.ts). The 3
- * embeds the mirrored cap constant. Em dash U+2014 (escaped). */
-const CEILING_LINE = `phase 'compose-write' variable '${CALLEE_NOTE_VAR}' missing \u2014 still undefined after 3 variable expectation re-run(s); the ceiling is exhausted`;
-
-/** Replica of the family default-message composer over that line (SOLE
- * OWNER: the ContractViolationError constructor in ../capability/errors.ts). */
-const CEILING_MESSAGE = `Contract violation: ${CEILING_LINE}`;
-
 /** Replicas of the pinned state-root escape messages (SOLE OWNER:
  * deriveStateRootFromAgentDir in ../capability/base.ts). Em dashes are
  * U+2014 (escaped). */
@@ -365,11 +331,6 @@ const ENV_UNSET_REPLICA =
   "capability: PI_CODING_AGENT_DIR is unset \u2014 cannot derive the state root";
 const envMalformedReplica = (value: string): string =>
   `capability: PI_CODING_AGENT_DIR is malformed ('${value}') \u2014 cannot derive the state root`;
-
-/** Replicated miss-line literal (SOLE OWNER: capabilityRefusalLine in
- * ../capability/loader.ts - imported alongside for the cross-check). */
-const CALLEE_MISS_LINE =
-  "pio: capability 'vars-demo-callee' is not implemented yet";
 
 /** Trio result renderings (SOLE OWNER: the settle lane of var-tools.ts -
  * setVar success echoes the STORED conversion result as compact JSON;
@@ -389,12 +350,6 @@ const CUSTOM_TYPE_REPLICA = "pio-capability";
 const demoMarkerPayload = (): unknown => ({
   customType: CUSTOM_TYPE_REPLICA,
   content: renderCapabilityMarker("vars-demo"),
-  display: true,
-  details: undefined,
-});
-const calleeMarkerPayload = (): unknown => ({
-  customType: CUSTOM_TYPE_REPLICA,
-  content: renderCapabilityMarker(CALLEE_NAME),
   display: true,
   details: undefined,
 });
@@ -630,43 +585,6 @@ function scriptCallerPhases(
   ]);
 }
 
-/** Callee-side scripted passes (compose-read -> compose-write xN) over the
- * REAL trio bodies ON THE SAME HANDLE. With calleeWrites TRUE the variable
- * lands during the sole compose-write run; with FALSE the variable is NEVER
- * driven (three corrective denials, then the ceiling throw after the fourth
- * prompt - ten prompts total across the chain). */
-function scriptCalleePhases(
-  round: Round,
-  tools: Record<string, unknown>,
-  results: DrivenSettlement[],
-  calleeWrites: boolean,
-): void {
-  // Compose-read: the cross-boundary READ turn quotes the caller-authored
-  // value (the real getVar body driven inside the callee's own run).
-  scriptToolPass(round, tools, results, [
-    { name: "getVar", input: { name: MODEL_NOTE_VAR } },
-  ]);
-  const composeWriteActions: Array<{
-    name: string;
-    input: Record<string, unknown>;
-  }> = calleeWrites
-    ? [
-        {
-          name: "setVar",
-          input: {
-            name: CALLEE_NOTE_VAR,
-            type: "string",
-            value: CALLEE_NOTE_VALUE,
-          },
-        },
-      ]
-    : [];
-  const composeWriteRuns = calleeWrites ? 1 : 4;
-  for (let i = 0; i < composeWriteRuns; i++) {
-    scriptToolPass(round, tools, results, composeWriteActions);
-  }
-}
-
 function sentAt(round: Round, index: number): string {
   const text = round.session.prompt.mock.calls[index]?.[0];
   return typeof text === "string" ? text : "";
@@ -683,7 +601,7 @@ function enterWorkTree(tmp: string): void {
 
 // ─── C rows: admission / composition / settlement ───────────────────────
 
-describe("admission, composition, settlement (C rows)", () => {
+describe("admission and settlement (C rows)", () => {
   it("C1 loader admission (real pipeline over the shipped thunk): resolving 'vars-demo' through a single-entry table resolves ok with ctor by REFERENCE identity (the default export) and the contract by STRICT DEEP EQUALITY - the no-inputs/no-outputs/no-writes identity IS the pin", async () => {
     // The real resolution pipeline over the demo's own shipped module
     // (thunk -> strict descent -> throwaway construction -> contract
@@ -706,14 +624,13 @@ describe("admission, composition, settlement (C rows)", () => {
     });
   });
 
-  it("C2 the full happy chain (the BINDING leg): EXACTLY the expected sequence on the ONE shared handle IN ORDER (demo marker, greeting, model-write, guard-retry pass 1, guard-retry pass 2 + corrective note, read-back, callee marker, compose-read, compose-write, summary variant A); the REAL trio bodies driven DURING runs (setVar echo / getVar compact JSON / getVar bare renderings); BOTH round-trips observable (mid-run hook observation quoted in the summary; the read-back reached - the summary ran); the four cells hold their pinned values post-run; ZERO demo-side filesystem writes; clean stderr; ok:true with the EMPTY outputs record", async () => {
+  it("C2 the full happy chain (the BINDING leg): EXACTLY the expected sequence on the ONE shared handle IN ORDER (demo marker, greeting, model-write, guard-retry pass 1, guard-retry pass 2 + corrective note, read-back, summary variant A); the REAL trio bodies driven DURING runs (setVar echo / getVar compact JSON / getVar bare renderings); BOTH round-trips observable (mid-run hook observation quoted in the summary; the read-back reached - the summary ran); the three cells hold their pinned values post-run; ZERO demo-side filesystem writes; clean stderr; ok:true with the EMPTY outputs record", async () => {
     const tmp = newTempRoot();
     enterWorkTree(tmp);
     const { instance, round } = await host();
     const tools = await recoverTools();
     const driven: DrivenSettlement[] = [];
     scriptCallerPhases(round, tools, driven, false);
-    scriptCalleePhases(round, tools, driven, true);
     const demo = new VarsDemoCapability({ session: instance });
     const result = await demo.run();
     // Settlement: ok:true with the EMPTY outputs record (the transcript IS
@@ -722,8 +639,7 @@ describe("admission, composition, settlement (C rows)", () => {
     if (!result.ok) throw new Error("unreachable");
     expect(result.outputs).toStrictEqual({});
     // THE unified timeline on the ONE shared handle: the demo's marker
-    // STRICTLY BEFORE the greeting prompt, the callee's marker STRICTLY
-    // BEFORE its compose-read prompt, the summary LAST with no further
+    // STRICTLY BEFORE the greeting prompt, the summary LAST with no further
     // marker (implicit span-return) - each stamped EXACTLY ONCE.
     expect(round.timeline).toEqual([
       { kind: "custom", payload: demoMarkerPayload() },
@@ -738,46 +654,32 @@ describe("admission, composition, settlement (C rows)", () => {
           varGuardBlock(1, [GATE_PROBE_VAR]),
       },
       { kind: "prompt", text: promptOf("read-back", readBackReplica()) },
-      { kind: "custom", payload: calleeMarkerPayload() },
-      { kind: "prompt", text: promptOf("compose-read", composeReadReplica()) },
       {
         kind: "prompt",
-        text: promptOf("compose-write", composeWriteReplica()),
-      },
-      {
-        kind: "prompt",
-        text: promptOf(
-          "summary",
-          summaryReplica(2, MODEL_NOTE_VALUE, CALLEE_NOTE_VALUE),
-        ),
+        text: promptOf("summary", summaryReplica(2, MODEL_NOTE_VALUE)),
       },
     ]);
-    expect(round.session.prompt).toHaveBeenCalledTimes(8);
-    expect(round.session.sendCustomMessage).toHaveBeenCalledTimes(2);
-    // Single-host invariant (the row-1 proof): EXACTLY ONE session mint
-    // through the SDK kit.
+    expect(round.session.prompt).toHaveBeenCalledTimes(6);
+    expect(round.session.sendCustomMessage).toHaveBeenCalledTimes(1);
+    // Single-host invariant: EXACTLY ONE session mint through the SDK kit.
     expect(sdkKit.state.rounds).toHaveLength(1);
     // THE driven REAL trio settlements rendered the owners' pinned lines:
     // setVar success echo (compact JSON), getVar compact JSON (the seeded
-    // array), getVar BARE (the model-authored string) - cross-origin
-    // parity, including INSIDE the callee's own compose-read turn.
+    // array), getVar BARE (the model-authored string) - cross-origin parity.
     expect(driven.map((settlement) => settlement.content[0]?.text)).toEqual([
       setSuccessReplica(MODEL_NOTE_VAR, MODEL_NOTE_VALUE),
       setSuccessReplica(GATE_PROBE_VAR, GATE_PROBE_VALUE),
       getRenderingReplica(TS_FACTS_VALUE),
       getRenderingReplica(MODEL_NOTE_VALUE),
-      getRenderingReplica(MODEL_NOTE_VALUE),
-      setSuccessReplica(CALLEE_NOTE_VAR, CALLEE_NOTE_VALUE),
     ]);
-    // The four cells hold ALL FOUR pinned values post-run (caller-minted
+    // The three cells hold their pinned values post-run (instance-minted
     // members by reference).
     expect(demo.modelNoteCell.read()).toBe(MODEL_NOTE_VALUE);
     expect(demo.gateProbeCell.read()).toBe(GATE_PROBE_VALUE);
     expect(demo.tsFactsCell.read()).toStrictEqual(TS_FACTS_VALUE);
-    expect(demo.calleeNoteCell.read()).toBe(CALLEE_NOTE_VALUE);
     // Module-visible effect of live leg 1: the summary prompt QUOTES the
     // MID-RUN hook observation (the pinned model-set value).
-    expect(sentAt(round, 7)).toContain(MODEL_NOTE_VALUE);
+    expect(sentAt(round, 5)).toContain(MODEL_NOTE_VALUE);
     // Zero demo-side writes anywhere under the owned tree (scripted events
     // observe only; nothing seeds or writes files here).
     expect(readdirSync(tmp).sort()).toEqual(["work"]);
@@ -793,7 +695,6 @@ describe("admission, composition, settlement (C rows)", () => {
     const tools = await recoverTools();
     const driven: DrivenSettlement[] = [];
     scriptCallerPhases(round, tools, driven, false);
-    scriptCalleePhases(round, tools, driven, true);
     const demo = new VarsDemoCapability({ session: instance });
     const result = await demo.run();
     expect(result.ok).toBe(true);
@@ -813,42 +714,32 @@ describe("admission, composition, settlement (C rows)", () => {
     expect(stderrText()).toBe("");
   });
 
-  it("C2c the degenerate no-trigger variant: the guarded variable is driven on the FIRST pass (the model defined it despite the skip directive) - the guard-retry phase settles at iterations === 1, NO prompt carries the variable-guard label, the summary carries VARIANT B (armed but not triggered), and the chain otherwise matches C2 minus the corrective prompt (SEVEN prompts total)", async () => {
+  it("C2c the degenerate no-trigger variant: the guarded variable is driven on the FIRST pass (the model defined it despite the skip directive) - the guard-retry phase settles at iterations === 1, NO prompt carries the variable-guard label, the summary carries VARIANT B (armed but not triggered), and the chain otherwise matches C2 minus the corrective prompt (FIVE prompts total)", async () => {
     const tmp = newTempRoot();
     enterWorkTree(tmp);
     const { instance, round } = await host();
     const tools = await recoverTools();
     const driven: DrivenSettlement[] = [];
     scriptCallerPhases(round, tools, driven, true);
-    scriptCalleePhases(round, tools, driven, true);
     const demo = new VarsDemoCapability({ session: instance });
     const result = await demo.run();
     expect(result.ok).toBe(true);
     if (!result.ok) throw new Error("unreachable");
     expect(result.outputs).toStrictEqual({});
-    // The chain: C2's shape MINUS the corrective prompt (seven prompts).
+    // The chain: C2's shape MINUS the corrective prompt (five prompts).
     expect(round.timeline).toEqual([
       { kind: "custom", payload: demoMarkerPayload() },
       { kind: "prompt", text: promptOf("greeting", GREETING_REPLICA) },
       { kind: "prompt", text: promptOf("model-write", modelWriteReplica()) },
       { kind: "prompt", text: promptOf("guard-retry", guardRetryReplica()) },
       { kind: "prompt", text: promptOf("read-back", readBackReplica()) },
-      { kind: "custom", payload: calleeMarkerPayload() },
-      { kind: "prompt", text: promptOf("compose-read", composeReadReplica()) },
       {
         kind: "prompt",
-        text: promptOf("compose-write", composeWriteReplica()),
-      },
-      {
-        kind: "prompt",
-        text: promptOf(
-          "summary",
-          summaryReplica(1, MODEL_NOTE_VALUE, CALLEE_NOTE_VALUE),
-        ),
+        text: promptOf("summary", summaryReplica(1, MODEL_NOTE_VALUE)),
       },
     ]);
-    expect(round.session.prompt).toHaveBeenCalledTimes(7);
-    expect(round.session.sendCustomMessage).toHaveBeenCalledTimes(2);
+    expect(round.session.prompt).toHaveBeenCalledTimes(5);
+    expect(round.session.sendCustomMessage).toHaveBeenCalledTimes(1);
     // NO prompt carries the variable-guard label (the loop was ARMED but
     // NOT triggered).
     for (const call of round.session.prompt.mock.calls) {
@@ -856,36 +747,34 @@ describe("admission, composition, settlement (C rows)", () => {
         "\u2014\u2014 variable guard \u2014\u2014",
       );
     }
-    // Store holds all four pinned values post-run (the guarded variable
-    // landed on pass 1).
+    // Cells hold their pinned values post-run (the guarded variable landed
+    // on pass 1).
     expect(demo.gateProbeCell.read()).toBe(GATE_PROBE_VALUE);
-    expect(demo.calleeNoteCell.read()).toBe(CALLEE_NOTE_VALUE);
     expect(sdkKit.state.rounds).toHaveLength(1);
     expect(readdirSync(tmp).sort()).toEqual(["work"]);
     expect(stderrText()).toBe("");
   });
 
-  it("C2d the verdict-beat structural row (over REAL module bytes): the SIX probe prompts - model-write, guard-retry pass 1, guard-retry corrective pass 2, read-back, compose-read, compose-write - each CONTAIN the sibling's verbatim verdict-phrase replica (index 3 rides under the appended variable-guard block, which carries no verdict phrase of its own), while the bookends - the greeting (index 0) and the summary (index 7) - contain it NOWHERE (negative controls: bookend/report turns carry no verdict beat)", async () => {
+  it("C2d the verdict-beat structural row (over REAL module bytes): the FOUR probe prompts - model-write, guard-retry pass 1, guard-retry corrective pass 2, read-back - each CONTAIN the sibling's verbatim verdict-phrase replica (index 3 rides under the appended variable-guard block, which carries no verdict phrase of its own), while the bookends - the greeting (index 0) and the summary (index 5) - contain it NOWHERE (negative controls: bookend/report turns carry no verdict beat)", async () => {
     const tmp = newTempRoot();
     enterWorkTree(tmp);
     const { instance, round } = await host();
     const tools = await recoverTools();
     const driven: DrivenSettlement[] = [];
     scriptCallerPhases(round, tools, driven, false);
-    scriptCalleePhases(round, tools, driven, true);
     const demo = new VarsDemoCapability({ session: instance });
     const result = await demo.run();
     expect(result.ok).toBe(true);
     if (!result.ok) throw new Error("unreachable");
-    // The SIX probe prompts each carry the one-sentence verdict beat in
+    // The FOUR probe prompts each carry the one-sentence verdict beat in
     // their instructed output.
-    for (const index of [1, 2, 3, 4, 5, 6]) {
+    for (const index of [1, 2, 3, 4]) {
       expect(sentAt(round, index)).toContain(VERDICT_PHRASE_REPLICA);
     }
     // Bookend negative controls: the greeting and the summary NEVER carry
     // the verdict beat.
     expect(sentAt(round, 0)).not.toContain(VERDICT_PHRASE_REPLICA);
-    expect(sentAt(round, 7)).not.toContain(VERDICT_PHRASE_REPLICA);
+    expect(sentAt(round, 5)).not.toContain(VERDICT_PHRASE_REPLICA);
     expect(stderrText()).toBe("");
   });
 
@@ -896,95 +785,6 @@ describe("admission, composition, settlement (C rows)", () => {
     expect(ruleOneIndex).toBeGreaterThanOrEqual(0);
     expect(ruleTwoIndex).toBeGreaterThan(ruleOneIndex);
     expect(replica).toContain(VERDICT_PHRASE_REPLICA);
-  });
-
-  it("C3 callee-exhaustion fault forwarding (REAL ceiling - no locally-minted error): the callee's variable is NEVER driven - its compose-write phase runs 1 + 3 corrective passes (FOUR prompts, notes naming the variable after 1/2/3 run(s)), the fourth break hits the cap and throws the collect-all ceiling failure; the child's run() settles ok:false and the demo RESOLVES (never rejects) ok:false with the child's capture forwarded VERBATIM (family shape {type, cause, message, violations}); the summary NEVER STARTS (TEN prompts total, two markers); the three earlier cells carry their values with the callee cell ABSENT; clean stderr", async () => {
-    const tmp = newTempRoot();
-    enterWorkTree(tmp);
-    const { instance, round } = await host();
-    const tools = await recoverTools();
-    const driven: DrivenSettlement[] = [];
-    scriptCallerPhases(round, tools, driven, false);
-    scriptCalleePhases(round, tools, driven, false);
-    const demo = new VarsDemoCapability({ session: instance });
-    const result = await demo.run();
-    expect(result.ok).toBe(false);
-    if (result.ok) throw new Error("unreachable");
-    // THE verbatim family shape: the child's FIRST capture, unchanged -
-    // type + cause + the family-composed message + the single violation
-    // line (replicas name their owners above).
-    expect(result.errors).toStrictEqual([
-      {
-        type: "ContractViolationError",
-        cause: "contract",
-        message: CEILING_MESSAGE,
-        violations: [CEILING_LINE],
-      },
-    ]);
-    // Stopping exactly where the callee's ceiling throw lands: the
-    // timeline ends after the callee's FOURTH compose-write prompt (notes
-    // naming the variable after 1/2/3 run(s)) - NO summary prompt.
-    expect(round.timeline).toEqual([
-      { kind: "custom", payload: demoMarkerPayload() },
-      { kind: "prompt", text: promptOf("greeting", GREETING_REPLICA) },
-      { kind: "prompt", text: promptOf("model-write", modelWriteReplica()) },
-      { kind: "prompt", text: promptOf("guard-retry", guardRetryReplica()) },
-      {
-        kind: "prompt",
-        text:
-          promptOf("guard-retry", guardRetryReplica()) +
-          "\n" +
-          varGuardBlock(1, [GATE_PROBE_VAR]),
-      },
-      { kind: "prompt", text: promptOf("read-back", readBackReplica()) },
-      { kind: "custom", payload: calleeMarkerPayload() },
-      { kind: "prompt", text: promptOf("compose-read", composeReadReplica()) },
-      {
-        kind: "prompt",
-        text: promptOf("compose-write", composeWriteReplica()),
-      },
-      {
-        kind: "prompt",
-        text:
-          promptOf("compose-write", composeWriteReplica()) +
-          "\n" +
-          varGuardBlock(1, [CALLEE_NOTE_VAR]),
-      },
-      {
-        kind: "prompt",
-        text:
-          promptOf("compose-write", composeWriteReplica()) +
-          "\n" +
-          varGuardBlock(2, [CALLEE_NOTE_VAR]),
-      },
-      {
-        kind: "prompt",
-        text:
-          promptOf("compose-write", composeWriteReplica()) +
-          "\n" +
-          varGuardBlock(3, [CALLEE_NOTE_VAR]),
-      },
-    ]);
-    expect(round.session.prompt).toHaveBeenCalledTimes(10);
-    expect(round.session.sendCustomMessage).toHaveBeenCalledTimes(2);
-    // The three earlier cells carry their values with the callee cell
-    // ABSENT (read returns undefined; the gate denied settlement four
-    // times over the absence).
-    expect(demo.calleeNoteCell.read()).toBeUndefined();
-    expect(demo.modelNoteCell.read()).toBe(MODEL_NOTE_VALUE);
-    expect(demo.gateProbeCell.read()).toBe(GATE_PROBE_VALUE);
-    expect(demo.tsFactsCell.read()).toStrictEqual(TS_FACTS_VALUE);
-    expect(sdkKit.state.rounds).toHaveLength(1);
-    expect(readdirSync(tmp).sort()).toEqual(["work"]);
-    expect(stderrText()).toBe("");
-  });
-
-  it("C4 callee-not-registered boundary: the inline callee is module-private - resolving ITS name over the DEFAULT table yields the standard miss refusal line (byte-equal to BOTH the owner line AND the replicated literal)", async () => {
-    const result = await resolveCapability(CALLEE_NAME);
-    expect(result.ok).toBe(false);
-    if (result.ok) throw new Error("unreachable");
-    expect(result.refusal).toBe(capabilityRefusalLine(CALLEE_NAME));
-    expect(result.refusal).toBe(CALLEE_MISS_LINE);
   });
 
   const envDefectVariants: ReadonlyArray<{
@@ -1035,43 +835,6 @@ describe("admission, composition, settlement (C rows)", () => {
       expect(stderrText()).toBe("");
     });
   }
-
-  it("C6 row-1 placement pin (observable-effect form): the composed callee rides the SAME single handle (ONE mint; its span stamp AND its phase prompts land on the CALLER'S OWN timeline) and the callee-written value is visible on the CALLER'S HELD CELL afterwards THROUGH ITS OWN READ CHANNEL (one handle, one observer, one mint)", async () => {
-    const tmp = newTempRoot();
-    enterWorkTree(tmp);
-    const { instance, round } = await host();
-    const tools = await recoverTools();
-    const driven: DrivenSettlement[] = [];
-    scriptCallerPhases(round, tools, driven, false);
-    scriptCalleePhases(round, tools, driven, true);
-    const demo = new VarsDemoCapability({ session: instance });
-    const result = await demo.run();
-    expect(result.ok).toBe(true);
-    if (!result.ok) throw new Error("unreachable");
-    // The callee's span stamp AND its phase prompts ride the caller's OWN
-    // timeline (the private class keeps no bag recorder - the PUBLIC
-    // EFFECT is the pin).
-    expect(round.timeline).toEqual(
-      expect.arrayContaining([
-        { kind: "custom", payload: calleeMarkerPayload() },
-        {
-          kind: "prompt",
-          text: promptOf("compose-read", composeReadReplica()),
-        },
-        {
-          kind: "prompt",
-          text: promptOf("compose-write", composeWriteReplica()),
-        },
-      ]),
-    );
-    // Single host: the SAME handle served both spans (no second mint).
-    expect(sdkKit.state.rounds).toHaveLength(1);
-    // By-identity sharing: the callee's written value is readable on the
-    // CALLER'S held cell afterwards (same-reference cell through the
-    // caller-minted binding list).
-    expect(demo.calleeNoteCell.read()).toBe(CALLEE_NOTE_VALUE);
-    expect(stderrText()).toBe("");
-  });
 });
 
 // ─── Module surface and mechanical source guards ────────────────────────
@@ -1113,12 +876,9 @@ function countOccurrences(haystack: string, needle: string): number {
 describe("module surface and mechanical source guards", () => {
   const src = readFileSync(new URL("./vars-demo.ts", import.meta.url), "utf8");
 
-  it("runtime export surface is EXACTLY the ten named constants + default (sorted-key pin; the private callee is UNREACHABLE - no export)", async () => {
+  it("runtime export surface is EXACTLY the seven named constants + default (sorted-key pin)", async () => {
     const mod = await import("./vars-demo.ts");
     expect(Object.keys(mod).sort()).toEqual([
-      "CALLEE_NAME",
-      "CALLEE_NOTE_VALUE",
-      "CALLEE_NOTE_VAR",
       "DESCRIPTION",
       "GATE_PROBE_VALUE",
       "GATE_PROBE_VAR",
@@ -1133,14 +893,11 @@ describe("module surface and mechanical source guards", () => {
 
   it("every pinned literal occurs EXACTLY ONCE in the module source (the constant definitions - every other reference rides the identifier)", () => {
     const needles: Array<[string, string]> = [
-      ["CALLEE_NAME", CALLEE_NAME],
       ["MODEL_NOTE_VAR", MODEL_NOTE_VAR],
       ["GATE_PROBE_VAR", GATE_PROBE_VAR],
       ["TS_FACTS_VAR", TS_FACTS_VAR],
-      ["CALLEE_NOTE_VAR", CALLEE_NOTE_VAR],
       ["MODEL_NOTE_VALUE", MODEL_NOTE_VALUE],
       ["GATE_PROBE_VALUE", GATE_PROBE_VALUE],
-      ["CALLEE_NOTE_VALUE", CALLEE_NOTE_VALUE],
     ];
     for (const [label, needle] of needles) {
       expect(countOccurrences(src, needle), label).toBe(1);
@@ -1150,7 +907,7 @@ describe("module surface and mechanical source guards", () => {
     }
   });
 
-  it("named static VALUE clauses are EXACTLY {../capability/base.ts (PioCapability), ../capability/errors.ts (ContractViolationError), ../capability/var-cell.ts (declareVar)} in canonical order - and TYPE clauses exactly {../capability/base.ts (CapabilityParams), ../capability/contract.ts (Contract), ../capability/var-cell.ts (VarCell)}", () => {
+  it("named static VALUE clauses are EXACTLY {../capability/base.ts (PioCapability), ../capability/var-cell.ts (declareVar)} in canonical order - and TYPE clauses exactly {../capability/base.ts (CapabilityParams), ../capability/contract.ts (Contract)}", () => {
     const clauses = staticImportClauses(src);
     const valueClauses = clauses.filter((clause) => !clause.typeOnly);
     const typeClauses = clauses.filter((clause) => clause.typeOnly);
@@ -1159,11 +916,6 @@ describe("module surface and mechanical source guards", () => {
         typeOnly: false,
         names: ["PioCapability"],
         specifier: "../capability/base.ts",
-      },
-      {
-        typeOnly: false,
-        names: ["ContractViolationError"],
-        specifier: "../capability/errors.ts",
       },
       {
         typeOnly: false,
@@ -1182,15 +934,10 @@ describe("module surface and mechanical source guards", () => {
         names: ["Contract"],
         specifier: "../capability/contract.ts",
       },
-      {
-        typeOnly: true,
-        names: ["VarCell"],
-        specifier: "../capability/var-cell.ts",
-      },
     ]);
   });
 
-  it("ZERO dynamic-import occurrences (zero module-load graph growth - the callee is module-private and needs no thunk) and zero occurrences of the SDK specifier", () => {
+  it("ZERO dynamic-import occurrences (zero module-load graph growth) and zero occurrences of the SDK specifier", () => {
     expect(src.includes("import(")).toBe(false);
     expect(src.includes("@earendil-works/pi-coding-agent")).toBe(false);
   });

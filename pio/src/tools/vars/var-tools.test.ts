@@ -823,7 +823,7 @@ describe("mechanical island sweep - module source and suite source", () => {
         }
         const end = Math.min(i, source.length);
         payloads.push(source.slice(start, end));
-        code += `P`;
+        code += ch + "P" + ch;
         prevSig = ch;
         i = end + 1;
         continue;

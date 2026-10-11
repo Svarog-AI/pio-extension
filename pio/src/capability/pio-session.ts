@@ -172,7 +172,7 @@ import type {
   AgentSessionEventListener,
   AgentSessionRuntime,
 } from "@earendil-works/pi-coding-agent";
-import { z } from "zod";
+import type { z } from "zod";
 import { materializeEffectiveSet } from "../permission-mechanics.ts";
 import { slugify } from "../sandbox/layout.ts";
 import { createPioSession, EXECUTION_STATE_STAMP } from "../session.ts";
@@ -190,6 +190,20 @@ import {
 import type { CapabilitySources } from "./guards/guard-vocabulary.ts";
 import { decideVarWrite } from "./guards/var-gate.ts";
 import { decideWrite } from "./guards/write-gate.ts";
+import type { CustomVarSpec, VarType } from "./var-cell.ts";
+import {
+  admitVarFlavor,
+  convertVarValue,
+  displayVarFlavor,
+  materializeWireJson,
+  renderVarCoercionRejectLine,
+  renderVarSpecDefectLine,
+  renderVarSpecFaultLine,
+  sliceVarShapeIssues,
+  varTypeSpelling,
+} from "./var-cell.ts";
+
+export type { CustomVarSpec, VarType } from "./var-cell.ts";
 
 /** Tool names whose successful executions commit a file path. */
 const FILE_TOOL_NAMES: ReadonlySet<string> = new Set(["write", "edit"]);
@@ -446,31 +460,6 @@ export interface SessionCounters {
   readonly tokens: number;
 }
 
-/** Base types of the session variable store — the six legacy types,
- * module-owned here (the per-phase guard deals in names only; the model
- * tool params validate against these literals at the schema level). */
-export type VarType =
-  | "boolean"
-  | "number"
-  | "string"
-  | "array"
-  | "object"
-  | "null";
-
-/** A capability-authored NAMED SHAPE CHECK for a session variable: a
- * human-readable LABEL (its DISPLAYED name — how the listing surfaces the
- * shape the variable carries; nothing at write time consumes it) plus the
- * CHECK ITSELF expressed as a zod schema (owner ruling). The loose ZodType
- * base is the declared schema slot: authors pass CONCRETE schemas (objects,
- * enums, refined/transformed chains, records); the store never introspects
- * schema internals. Type-only surface: erased under erasable syntax — the
- * runtime half is the instanceof z.ZodType recognition executed at
- * declaration admission. */
-export interface CustomVarSpec {
-  readonly label: string;
-  readonly schema: z.ZodType;
-}
-
 /** Concrete TypeScript type per declared base type — the compile-time
  * half of the typed-read guarantee (conditional type; erased at runtime).
  * null falls through as the final branch: a type that is none of the
@@ -488,17 +477,19 @@ export type VarValueOf<T extends VarType> = T extends "boolean"
           : null;
 
 /**
- * Bookkeeping corruption over the variable REGISTRY: conflicting or
- * malformed declarations. Developer-facing, PURE ASCII (no em dashes),
- * model-invisible — the separate ASCII fault voice class (à la
- * ExecutionStateError) deliberately DISTINCT from the model-visible
- * VariableRejectionError (name, message prefix, and dash discipline all
- * differ). Unexported on purpose: the suite asserts by name only.
+ * Bookkeeping corruption over the SURVIVING STORE-SIDE machinery: the
+ * re-declare conflict and the clear-over-undeclared faults (both dissolve
+ * with the machinery they guard). DEVELOPER-FACING, PURE ASCII
+ * (no em dashes), model-invisible — same NAME and doctrine as the
+ * substrate's own admission voice in ./var-cell.ts (that copy stays
+ * unexported; each module owns its local voice instance, à la
+ * ExecutionStateError). Unexported on purpose: the suites assert by name
+ * only.
  */
-class VarRegistryError extends Error {
+class VarAdmissionError extends Error {
   constructor(message: string) {
     super(message);
-    this.name = "VarRegistryError";
+    this.name = "VarAdmissionError";
   }
 }
 
@@ -506,7 +497,7 @@ class VarRegistryError extends Error {
  * Bookkeeping corruption over the PHASE VARIABLE DECLARATION: a phase lists
  * variable names without base-type registrations. Developer-facing, PURE
  * ASCII (no em dashes), model-invisible — deliberately DISTINCT from the
- * model-visible VariableRejectionError (same doctrine as VarRegistryError /
+ * model-visible VariableRejectionError (same doctrine as the bookkeeping admission voice /
  * ExecutionStateError). Unexported on purpose: the suite asserts by name
  * only. NO ES cause member (bare-identity capture reduces to {type,
  * message}).
@@ -516,225 +507,6 @@ class PhaseVarDeclarationError extends Error {
     super(message);
     this.name = "PhaseVarDeclarationError";
   }
-}
-
-/** Closed fault taxonomy of the shared conversion core: one category per
- * rejection shape, detail-free by design — the clause renderer below is
- * the SOLE byte owner mapping category to the pinned line, and the
- * offending value is NEVER echoed (a cyclic input would blow up any
- * serialization; the clause grammar dodges the hazard by construction). */
-type VarRejectReason =
-  | "value-undefined"
-  | "value-function"
-  | "value-symbol"
-  | "value-bigint"
-  | "number-nan"
-  | "number-plus-infinity"
-  | "number-minus-infinity"
-  | "class-instance"
-  | "reference-cycle"
-  | "boolean-token"
-  | "shape-array"
-  | "shape-object"
-  | "does-not-coerce";
-
-/** Shared conversion outcome: success carries the CONVERSION RESULT
- * (never the raw input); a fault carries the closed category. */
-type VarConversion =
-  | { readonly converted: unknown }
-  | { readonly rejected: VarRejectReason };
-
-/** Plainness predicate of the stored-by-reference integrity: admits
- * exactly the Object.prototype-or-null prototype shapes (JSON-plain;
- * class instances, wrappers, and exotic prototypes reject). */
-function isPlainVarObject(value: unknown): value is Record<string, unknown> {
-  if (typeof value !== "object" || value === null || Array.isArray(value)) {
-    return false;
-  }
-  const proto: unknown = Object.getPrototypeOf(value);
-  return proto === Object.prototype || proto === null;
-}
-
-// The ancestor path lives in a module-level Set scoped to ONE walk: walks
-// never nest across calls (single-threaded, synchronous descent, and every
-// walk fully unwinds via its finally before any other runs), so the cursor
-// keeps the walker argument-free while staying strictly per-walk.
-const varWalkAncestors: Set<object> = new Set();
-
-/** Recursive stored-by-reference integrity walk: PLAIN prototypes
- * everywhere (arrays included as containers), ACYCLIC by ANCESTOR-PATH
- * tracking (shared substructures admit; back-edges reject), no class
- * instances at ANY depth. Scalar leaves need no walk. Pure over the input
- * (mutates nothing; the ancestor cursor is internal bookkeeping that
- * always unwinds). */
-function walkVarIntegrity(value: unknown): VarConversion {
-  if (typeof value !== "object" || value === null) {
-    return { converted: value }; // scalar leaf — admitted, walked through
-  }
-  if (!Array.isArray(value) && !isPlainVarObject(value)) {
-    return { rejected: "class-instance" };
-  }
-  if (varWalkAncestors.has(value)) {
-    return { rejected: "reference-cycle" };
-  }
-  varWalkAncestors.add(value);
-  try {
-    const children: unknown[] = Array.isArray(value)
-      ? [...value]
-      : Object.keys(value).map((key) => value[key]);
-    for (const child of children) {
-      const result = walkVarIntegrity(child);
-      if ("rejected" in result) return result;
-    }
-    return { converted: value };
-  } finally {
-    varWalkAncestors.delete(value);
-  }
-}
-
-/** THE shared admission/conversion core (one voice, one table): the SAME
- * pure function serves BOTH the validated write entry point (declared-name
- * path) and the typed reads (stored-value path) — consistency by
- * construction (what set admits, read converts). Type-preserving: the
- * converted value equals the declared type. Never throws; a fault resolves
- * to the closed category the clause renderers turn into the pinned line. */
-function convertVarValue(value: unknown, type: VarType): VarConversion {
-  switch (type) {
-    case "boolean": {
-      // Type-preserving admission: the four sanctioned forms ONLY (native
-      // booleans verbatim, the two exact textual tokens). Retires the
-      // legacy silent-false fallback AND the "1"/"yes"/"0"/"no" tokens and
-      // bare 0/1.
-      if (typeof value === "boolean") return { converted: value };
-      if (value === "true") return { converted: true };
-      if (value === "false") return { converted: false };
-      return {
-        rejected:
-          typeof value === "string" ? "boolean-token" : varScalarReason(value),
-      };
-    }
-    case "number": {
-      // Finite numbers verbatim; numeric strings trimmed-nonempty and
-      // finite-parse (so "42", " 42 ", "0x1A", "1e3" convert). Retires
-      // ""→0, null→0, true→1, [5]→5, NaN, ±Infinity.
-      if (typeof value === "number" && Number.isFinite(value)) {
-        return { converted: value };
-      }
-      if (typeof value === "string" && value.trim() !== "") {
-        const parsed = Number(value);
-        if (Number.isFinite(parsed)) return { converted: parsed };
-      }
-      return { rejected: varScalarReason(value) };
-    }
-    case "string": {
-      // Strings verbatim; finite numbers and booleans take the String()
-      // form. Retires the String() catch-all (arrays/objects/null reject;
-      // non-finite numbers take the finiteness clause).
-      if (typeof value === "string") return { converted: value };
-      if (typeof value === "number" && Number.isFinite(value)) {
-        return { converted: String(value) };
-      }
-      if (typeof value === "boolean") return { converted: String(value) };
-      return { rejected: varScalarReason(value) };
-    }
-    case "array": {
-      if (!Array.isArray(value)) return { rejected: varScalarReason(value) };
-      return walkVarIntegrity(value);
-    }
-    case "object": {
-      if (!isPlainVarObject(value)) {
-        return { rejected: varScalarReason(value) };
-      }
-      return walkVarIntegrity(value);
-    }
-    case "null": {
-      // Universal null rule: null converts ONLY to type "null"; present-
-      // but null read/stored against any other type is a conversion fault.
-      if (value === null) return { converted: null };
-      return { rejected: varScalarReason(value) };
-    }
-  }
-}
-
-/** Fault-category resolver for an UNCOERCIBLE top-level value: first-match
- * over the closed taxonomy. Container shape mismatches (array/object vs a
- * different demanded type) resolve to the shape clauses BEFORE any
- * structural walk — the walk runs only for array/object demands. The one
- * type-context exception (string INTO boolean takes the token clause) is
- * applied at the boolean demand site, where the type is known. */
-function varScalarReason(value: unknown): VarRejectReason {
-  if (value === undefined) return "value-undefined";
-  if (typeof value === "function") return "value-function";
-  if (typeof value === "symbol") return "value-symbol";
-  if (typeof value === "bigint") return "value-bigint";
-  if (typeof value === "number") {
-    if (Number.isNaN(value)) return "number-nan";
-    if (value === Number.POSITIVE_INFINITY) return "number-plus-infinity";
-    if (value === Number.NEGATIVE_INFINITY) return "number-minus-infinity";
-    return "does-not-coerce";
-  }
-  if (value === null) return "does-not-coerce";
-  if (Array.isArray(value)) return "shape-array";
-  if (typeof value === "object") {
-    return isPlainVarObject(value) ? "shape-object" : "class-instance";
-  }
-  // Remaining scalars (booleans and anything unexpected past erasure):
-  // the generic clause.
-  return "does-not-coerce";
-}
-
-/** TYPE SPELLING of a value for the pinned lines: typeof spelling with
- * null spelled explicitly (JS typeof null misleads with "object"). */
-function varTypeSpelling(value: unknown): string {
-  if (value === null) return "null";
-  return typeof value;
-}
-
-/** THE CLAUSE half of a coercion-reject line, keyed on the closed fault
- * taxonomy (SOLE byte owner alongside the line renderers below); the type
- * appears verbatim only in the does-not-coerce clause. */
-function varRejectClause(reason: VarRejectReason, type: VarType): string {
-  switch (reason) {
-    case "value-undefined":
-      return "value is undefined";
-    case "value-function":
-      return "value is a function";
-    case "value-symbol":
-      return "value is a symbol";
-    case "value-bigint":
-      return "value is a bigint";
-    case "number-nan":
-      return "number is not finite (NaN)";
-    case "number-plus-infinity":
-      return "number is not finite (+Infinity)";
-    case "number-minus-infinity":
-      return "number is not finite (-Infinity)";
-    case "class-instance":
-      return "value is a class instance";
-    case "reference-cycle":
-      return "value contains a reference cycle";
-    case "boolean-token":
-      return "token is not a recognized boolean form";
-    case "shape-array":
-      return "value is an array";
-    case "shape-object":
-      return "value is an object";
-    default:
-      return `value does not coerce to '${type}'`;
-  }
-}
-
-/** ONE coercion-reject line (declared-name write path): names the
- * VARIABLE, the incoming type spelling, the DECLARED TYPE, and the
- * category clause. The value is never echoed; LF discipline per the other
- * renderers (lines stand alone; the family constructor joins them). */
-function renderVarCoercionRejectLine(
-  name: string,
-  type: VarType,
-  value: unknown,
-  reason: VarRejectReason,
-): string {
-  return `variable '${name}' cannot take a value of type '${varTypeSpelling(value)}' as declared type '${type}' \u2014 ${varRejectClause(reason, type)}`;
 }
 
 /** ONE undeclared-write line (mandatory-type doctrine): names the variable
@@ -764,61 +536,6 @@ function renderVarReadConvertLine(
   return `read of variable '${name}' as '${type}' failed \u2014 ${description} cannot convert to '${type}'`;
 }
 
-/** THE display resolver (SOLE byte owner of the literal-self / spec-label
- * mapping): six literals display THEMSELVES; a spec displays its LABEL.
- * Feeds BOTH the display-valued declarations() snapshot and the
- * declarationDisplay() companion query — zero casts on either face. */
-function displayVarDeclaration(type: VarType | CustomVarSpec): string {
-  return typeof type === "string" ? type : type.label;
-}
-
-/** ONE malformed-spec LABEL line (class 1 — a NON-STRING or EMPTY label;
- * ONE line covering both, echoing NOTHING: the offending value fails the
- * gate before any echo could happen). Developer-facing pure-ASCII
- * bookkeeping voice. */
-function renderVarSpecLabelLine(name: string): string {
-  return `var registry: invalid spec label for variable '${name}': label must be a non-empty string`;
-}
-
-/** ONE built-in-SHADOWING line (class 2 — the label proved a NON-EMPTY
- * STRING through class 1 and therefore echoes VERBATIM: house echo
- * practice à la the legacy foreign-type echo). Developer-facing pure-ASCII
- * bookkeeping voice. */
-function renderVarSpecShadowLine(name: string, label: string): string {
-  return `var registry: invalid spec label for variable '${name}': label '${label}' shadows a built-in type name`;
-}
-
-/** ONE unrecognized-SCHEMA line (class 3 — the schema member failed the
- * library's own type guard for the pinned major; nothing echoed).
- * Developer-facing pure-ASCII bookkeeping voice. */
-function renderVarSpecSchemaLine(name: string): string {
-  return `var registry: invalid spec schema for variable '${name}': schema is not a recognizable zod schema`;
-}
-
-/** Structural issue slice (type-only, erased under erasable syntax) carrying exactly the two members the defect-line grammar consumes. */
-interface VarShapeIssue {
-  readonly message: string;
-  readonly path: readonly (string | number)[];
-}
-
-/** Sole byte owner of the spec-lane defect line: the store-owned frame over the check's findings carried verbatim, collect-all in issue-array order, '; '-joined statements with non-empty paths dot-prefixed (numeric segments in decimal). */
-function renderVarSpecDefectLine(
-  name: string,
-  issues: readonly VarShapeIssue[],
-): string {
-  const statements: string[] = issues.map((issue) =>
-    issue.path.length === 0
-      ? issue.message
-      : `${issue.path.join(".")}: ${issue.message}`,
-  );
-  return `variable '${name}' does not satisfy its declared shape check \u2014 ${statements.join("; ")}`;
-}
-
-/** Sole byte owner of the dedicated check-fault line: settlement for a declared shape check that threw while running (every thrown kind, the payload referenced nowhere), deliberately outside the closed six-type taxonomy. */
-function renderVarSpecFaultLine(name: string): string {
-  return `variable '${name}' cannot be shape-checked \u2014 the declared shape check itself faulted while checking the value`;
-}
-
 /** Registry-voice erasure fault line for clear() over an undeclared name (pure-ASCII bookkeeping voice, no em dash). */
 function renderVarClearUndeclaredLine(name: string): string {
   return `var registry: cannot clear variable '${name}': the variable is not declared`;
@@ -837,20 +554,6 @@ function storeUnionDeclaration(
   value: unknown,
 ): void {
   registry.set(name, value);
-}
-
-/** Malformed-type guard (reachable only via runtime foreignness past type
- * erasure — the union is exhaustive at compile time): the plain equality
- * chain keeps the check cast-free. */
-function isDeclaredType(type: string): boolean {
-  return (
-    type === "boolean" ||
-    type === "number" ||
-    type === "string" ||
-    type === "array" ||
-    type === "object" ||
-    type === "null"
-  );
 }
 
 /**
@@ -874,9 +577,9 @@ function isDeclaredType(type: string): boolean {
  * conformance, and settling a
  * contained refusal (composed defect line, or the dedicated check-fault
  * line behind the parse-only containment wrap) with the prior value
- * intact. Set polices SHAPE only, and bookkeeping corruption (registry
- * faults) rides the module-local pure-ASCII VarRegistryError, never the
- * model-visible family.
+ * intact. Set polices SHAPE only, and bookkeeping faults (re-declare
+ * conflict, clear-over-undeclared) ride the module-local pure-ASCII
+ * VarAdmissionError mirror, never the model-visible family.
  *
  * ERASURE CHANNEL: clear(name) is the SOLE program-owned emptying
  * operation (the model lane never erases) — it bypasses set() entirely,
@@ -927,72 +630,33 @@ export class SessionVariableStore {
 
   /** THE base-type registry writer (mandatory-type doctrine): registers
    * the base type OR a capability-authored CUSTOM SPEC ({label, schema})
-   * for a name, scoped to this session instance. Runtime dispatch past
-   * type erasure (fixed): a STRING payload takes the LEGACY LITERAL LANE
-   * BYTE-STABLE (the six literals register as today; a foreign string
-   * settles the EXISTING malformed line unchanged); a NON-NULL, NON-ARRAY
-   * OBJECT payload enters the SPEC LANE under the FIXED FIRST-FAULT TRIAGE
-   * (label well-formed, no built-in shadowing, schema recognized — the
-   * first fault settles LOUDLY and mints NOTHING); EVERYTHING ELSE
-   * (numbers, booleans, null, symbols, functions, bigints, AND arrays)
-   * keeps the EXISTING line with its historical ${payload} spelling. Re-
-   * declaration over an already-registered name settles by KIND THEN
-   * DISPLAY: same-kind + same-display is an IDEMPOTENT no-op (the original
-   * registration wins inertly); ANY other mix conflicts LOUDLY in the
-   * developer-facing ASCII bookkeeping family with the UNCHANGED form, now
-   * fed with DISPLAY names (literals display themselves, specs their
-   * labels — literal-over-literal reproduces the legacy bytes exactly).
+   * for a name, scoped to this session instance. Pre-mint ADMISSION
+   * delegates INWARD to the substrate's shared validator (admitVarFlavor
+   * — single source of truth for every admission line: the literal lane
+   * admits the six literals, a non-null non-array object enters the spec
+   * lane under the fixed first-fault triage, everything else settles the
+   * historical ${payload} malformed line; every fault rides the
+   * bookkeeping voice and mints NOTHING). Re-declaration over an
+   * already-registered name settles by KIND THEN DISPLAY: same-kind +
+   * same-display is an IDEMPOTENT no-op (the original registration wins
+   * inertly); ANY other mix conflicts LOUDLY in the developer-facing
+   * ASCII bookkeeping family with the UNCHANGED form, now fed with
+   * DISPLAY names (literals display themselves, specs their labels —
+   * literal-over-literal reproduces the legacy bytes exactly).
    * Registration touches the registry ONLY — an already-stored value is
    * never retroactively revalidated (every stored value passed validation
    * at ITS write moment; a stale-shaped value, should one ever exist,
    * faults per the table on typed read and an overwrite replaces it). */
   declare(name: string, type: VarType | CustomVarSpec): void {
-    let display: string;
-    if (typeof type === "string") {
-      // LEGACY LITERAL LANE (byte-stable): the existing equality chain
-      // governs — the six literals admit; a foreign string settles the
-      // EXISTING malformed line with unchanged bytes.
-      if (!isDeclaredType(type)) {
-        throw new VarRegistryError(
-          `var registry: invalid base type '${type}' for variable '${name}'`,
-        );
-      }
-      display = type;
-    } else if (
-      typeof type !== "object" ||
-      type === null ||
-      Array.isArray(type)
-    ) {
-      // EVERYTHING ELSE (non-string primitives, null, AND arrays — an
-      // array is never a plausible spec candidate): the EXISTING legacy
-      // line with its historical ${payload} template spelling —
-      // byte-stable for every such payload that ever reached it.
-      throw new VarRegistryError(
-        `var registry: invalid base type '${type}' for variable '${name}'`,
-      );
-    } else {
-      // SPEC LANE: fixed FIRST-FAULT triage over the runtime payload
-      // (cast-free; the interface types lie past erasure, so every member
-      // is re-adjudicated at runtime — the first fault settles, collect-
-      // all is barred; the voice is single-line single-fault). Nothing
-      // mints before the triage settles.
-      const label = type.label;
-      if (typeof label !== "string" || label === "") {
-        throw new VarRegistryError(renderVarSpecLabelLine(name));
-      }
-      if (isDeclaredType(label)) {
-        throw new VarRegistryError(renderVarSpecShadowLine(name, label));
-      }
-      if (!(type.schema instanceof z.ZodType)) {
-        throw new VarRegistryError(renderVarSpecSchemaLine(name));
-      }
-      display = label;
-    }
+    // THE shared pre-mint admission (delegated inward): yields the DISPLAY
+    // name on success; a fault throws the bookkeeping voice before
+    // anything mints.
+    const display = admitVarFlavor(name, type);
     const existing = this.#types.get(name);
     if (existing !== undefined) {
-      const existingDisplay = displayVarDeclaration(existing);
+      const existingDisplay = displayVarFlavor(existing);
       if (existingDisplay !== display) {
-        throw new VarRegistryError(
+        throw new VarAdmissionError(
           `var registry: cannot declare '${name}' as '${display}': already declared as '${existingDisplay}'`,
         );
       }
@@ -1006,19 +670,29 @@ export class SessionVariableStore {
     // Registration lands exactly once per name, at first declaration:
     // the conflict case has already thrown above, so what remains here is
     // a fresh name (insert). THE MARKED SEAM of the union storage: every
-    // RUNTIME admission decision has settled above it (fixed triage, then
-    // idempotency/conflict), and the widened-view write lets the
+    // RUNTIME admission decision has settled above it (shared triage,
+    // then idempotency/conflict), and the widened-view write lets the
     // well-formed spec ride into a field whose declared type stays the
-    // six-literal funnel view: byte-conservatism holds, with the
-    // six-type conversion core, the clause/line renderers, and the
-    // typed-read pair keeping their exact bytes, while spec payloads are
-    // adjudicated by the spec-lane arm of set(), which skips base
-    // conversion by the runtime-kind guard, so they never reach the
+    // six-literal funnel view: byte-conservatism holds, while spec
+    // payloads are adjudicated by the spec-lane arm of set(), which skips
+    // base conversion by the runtime-kind guard, so they never reach the
     // shared switch.
     storeUnionDeclaration(this.#types, name, type);
   }
 
-  /** THE single validated write entry point for ALL origins (shape policing only — permission belongs to the per-phase guard): an unregistered name faults first with the pinned undeclared-write line; a literal-declared name converts via the shared table and stores the CONVERSION RESULT; a spec-declared name skips base conversion, materializes ANY STRING payload against a JSON read BEFORE the shape check (wire doctrine: model writes arrive as text — a decoded document or scalar settles natively, non-document text rides the schema as-is), then parses the MATERIALIZED CANDIDATE through the schema's safeParse, stores the PARSE OUTPUT on success, settles a structured failure as the composed defect line and a throwing check as the dedicated fault line behind the parse-only containment wrap — always with the prior value intact, and with null flowing through the ordinary parse path like any other incoming value. */
+  /** THE single validated write entry point for ALL origins (shape
+   * policing only — permission belongs to the per-phase guard): an
+   * unregistered name faults first with the pinned undeclared-write line;
+   * a literal-declared name converts via the shared table (delegated
+   * inward) and stores the CONVERSION RESULT; a spec-declared name skips
+   * base conversion, materializes ANY STRING payload against a JSON read
+   * BEFORE the shape check (wire materialization delegated inward), then
+   * parses the MATERIALIZED CANDIDATE through the schema's safeParse,
+   * stores the PARSE OUTPUT on success, settles a structured failure as
+   * the composed defect line and a throwing check as the dedicated fault
+   * line (both renderers delegated inward) — always with the prior value
+   * intact, and with null flowing through the ordinary parse path like any
+   * other incoming value. */
   set(name: string, value: unknown): void {
     const type = this.#types.get(name);
     if (type === undefined) {
@@ -1026,7 +700,8 @@ export class SessionVariableStore {
     }
     if (typeof type === "string") {
       // LEGACY LITERAL LANE (preserved statement-for-statement): the
-      // shared table converts and the CONVERSION RESULT is what stores.
+      // shared table (delegated inward) converts and the CONVERSION RESULT
+      // is what stores.
       const result = convertVarValue(value, type);
       if ("rejected" in result) {
         throw new VariableRejectionError([
@@ -1041,14 +716,10 @@ export class SessionVariableStore {
     // registry entry).
     const spec: CustomVarSpec = type;
     let parsed: z.ZodSafeParseResult<unknown>;
-    let candidate: unknown = value;
-    if (typeof value === "string") {
-      try {
-        candidate = JSON.parse(value);
-      } catch {
-        candidate = value;
-      }
-    }
+    // Wire materialization delegates inward (wire doctrine: model writes
+    // arrive as text — decoded documents and scalars settle natively,
+    // non-document text rides the schema as-is).
+    const candidate = materializeWireJson(value);
     // Wrapping ONLY the parse call: author schema code can throw even on
     // merely-failing values, and every thrown kind settles the fault line.
     try {
@@ -1057,18 +728,11 @@ export class SessionVariableStore {
       throw new VariableRejectionError([renderVarSpecFaultLine(name)]);
     }
     if (!parsed.success) {
-      // Cast-free narrowing to the structural slice: symbol path segments
-      // filter out by type-predicate (plain array ops).
-      const issues: readonly VarShapeIssue[] = parsed.error.issues.map(
-        (issue) => ({
-          message: issue.message,
-          path: issue.path.filter(
-            (segment): segment is string | number =>
-              typeof segment !== "symbol",
-          ),
-        }),
-      );
-      throw new VariableRejectionError([renderVarSpecDefectLine(name, issues)]);
+      // Cast-free narrowing to the structural slice delegates inward to
+      // the relocated filtering map (symbol segments filtered out).
+      throw new VariableRejectionError([
+        renderVarSpecDefectLine(name, sliceVarShapeIssues(parsed.error.issues)),
+      ]);
     }
     this.#entries.set(name, parsed.data);
   }
@@ -1076,7 +740,7 @@ export class SessionVariableStore {
   /** Sole program-owned erasure (the model lane never erases): an undeclared name faults the pure-ASCII bookkeeping voice leaving entries and registry verbatim, and a declared name drops its entry — idempotent over absence — while the declaration survives, with post-clear writes re-entering the funnel from scratch (set() bypassed entirely). */
   clear(name: string): void {
     if (!this.#types.has(name)) {
-      throw new VarRegistryError(renderVarClearUndeclaredLine(name));
+      throw new VarAdmissionError(renderVarClearUndeclaredLine(name));
     }
     this.#entries.delete(name);
   }
@@ -1090,14 +754,14 @@ export class SessionVariableStore {
   /** THE registry query surface: fresh plain object per call listing every
    * declared name to its DISPLAY name in DECLARATION order (independent of
    * stored values): six literals display themselves, specs display their
-   * label (ONE module-private display resolver feeds this face and the
+   * label (the relocated display resolver feeds this face and the
    * declarationDisplay() companion below). Callers may retain freely
    * (counters() doctrine); derive declared-or-not AND display from this
    * snapshot (the single registry introspection face). */
   declarations(): Readonly<Record<string, string>> {
     const snapshot: Record<string, string> = {};
     for (const [name, type] of this.#types) {
-      snapshot[name] = displayVarDeclaration(type);
+      snapshot[name] = displayVarFlavor(type);
     }
     return snapshot;
   }
@@ -1111,7 +775,7 @@ export class SessionVariableStore {
   declarationDisplay(name: string): string | undefined {
     const stored = this.#types.get(name);
     if (stored === undefined) return undefined;
-    return displayVarDeclaration(stored);
+    return displayVarFlavor(stored);
   }
 }
 

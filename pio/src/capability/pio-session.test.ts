@@ -1122,8 +1122,11 @@ describe("PioSession — vars store", () => {
 // the EXPORTED class directly (hermetic, zero harness); the cross-
 // instance legs extend BOTH the host()/create pair pattern AND the
 // fromRuntime H/H2 pattern over the same settled runtime. Golden lines
-// below are REPLICAS — sole owners are the module-private renderers in
-// ./pio-session.ts; the \u2014 escape is replicated identically (never a
+// below are REPLICAS - sole owners of the MOVED byte families (coercion
+// line, spec defect/fault lines, admission lines) are the renderers in
+// ./var-cell.ts; sole owners of the STORE-SIDE families (undeclared-write,
+// clear, conflict, typed-read lines) stay the module-private renderers in
+// ./pio-session.ts. The \u2014 escape is replicated identically (never a
 // literal em dash inside a string literal).
 // ---------------------------------------------------------------------
 
@@ -1133,7 +1136,8 @@ const VAR_REJECTION_PREFIX = "Variable rejection: ";
 const varUndeclaredWriteLine = (name: string): string =>
   `variable '${name}' has no declared base type \u2014 a base type must be declared before writing`;
 
-/** Replica of the pinned coercion-reject line (declared-name write path). */
+/** Replica of the pinned coercion-reject line (declared-name write path;
+ * sole owner: the renderer in ./var-cell.ts). */
 const varCoercionRejectLine = (
   name: string,
   type: string,
@@ -1156,7 +1160,9 @@ const varReadConvertLine = (
 ): string =>
   `read of variable '${name}' as '${type}' failed \u2014 ${description} cannot convert to '${type}'`;
 
-/** Replica of the pure-ASCII bookkeeping conflict line (NO em dashes). */
+/** Replica of the pure-ASCII bookkeeping conflict line (NO em dashes;
+ * store-side: sole owner stays the module-private renderer in
+ * ./pio-session.ts). */
 const varRegistryConflictLine = (
   name: string,
   newType: string,
@@ -1164,7 +1170,8 @@ const varRegistryConflictLine = (
 ): string =>
   `var registry: cannot declare '${name}' as '${newType}': already declared as '${existingType}'`;
 
-/** Replica of the pure-ASCII bookkeeping malformed-type line. */
+/** Replica of the pure-ASCII bookkeeping malformed-type line (sole owner:
+ * the renderer in ./var-cell.ts). */
 const varRegistryMalformedLine = (type: string, name: string): string =>
   `var registry: invalid base type '${type}' for variable '${name}'`;
 
@@ -1180,19 +1187,20 @@ const varRegistrySpecShadowLine = (name: string, label: string): string =>
   `var registry: invalid spec label for variable '${name}': label '${label}' shadows a built-in type name`;
 
 /** Replica of the PINNED unrecognized-schema line (class 3: the schema
- * member failed the library's own type guard; nothing echoed). */
+ * member failed the library's own type guard; nothing echoed). Sole owner:
+ * the renderer in ./var-cell.ts. */
 const varRegistrySpecSchemaLine = (name: string): string =>
   `var registry: invalid spec schema for variable '${name}': schema is not a recognizable zod schema`;
 
-/** Spec-lane defect-line frame replica (sole owner: the module-private renderer in ./pio-session.ts) — rows supply the composed problem text so order, join, and path-prefix spelling pin end-to-end. */
+/** Spec-lane defect-line frame replica (sole owner: the renderer in ./var-cell.ts) — rows supply the composed problem text so order, join, and path-prefix spelling pin end-to-end. */
 const varSpecDefectLine = (name: string, problemText: string): string =>
   `variable '${name}' does not satisfy its declared shape check \u2014 ${problemText}`;
 
-/** Dedicated check-fault line replica (sole owner: the module-private fault-line renderer). */
+/** Dedicated check-fault line replica (sole owner: the fault-line renderer in ./var-cell.ts). */
 const varSpecFaultLine = (name: string): string =>
   `variable '${name}' cannot be shape-checked \u2014 the declared shape check itself faulted while checking the value`;
 
-/** Registry-voice clear fault line replica (pure ASCII, no em dash; sole owner: the module-private renderer). */
+/** Registry-voice clear fault line replica (pure ASCII, no em dash; store-side: sole owner stays the module-private renderer in ./pio-session.ts). */
 const varRegistryClearUndeclaredLine = (name: string): string =>
   `var registry: cannot clear variable '${name}': the variable is not declared`;
 
@@ -1296,7 +1304,7 @@ describe("SessionVariableStore — base-type registry (declare)", () => {
     store.declare("flag", "boolean");
     store.set("flag", true);
     const fault = captureNamedFault(() => store.declare("flag", "number"));
-    expect(fault.name).toBe("VarRegistryError");
+    expect(fault.name).toBe("VarAdmissionError");
     expect(fault.message).toBe(
       varRegistryConflictLine("flag", "number", "boolean"),
     );
@@ -1309,7 +1317,7 @@ describe("SessionVariableStore — base-type registry (declare)", () => {
   it("a MALFORMED type (runtime foreignness past type erasure) faults in the SAME bookkeeping family with the exact pinned bytes; nothing is minted and a legal declaration afterwards still works", () => {
     const store = new SessionVariableStore();
     const fault = captureNamedFault(() => store.declare("n", foreignVarType));
-    expect(fault.name).toBe("VarRegistryError");
+    expect(fault.name).toBe("VarAdmissionError");
     expect(fault.message).toBe(varRegistryMalformedLine("bogus", "n"));
     // The malformed attempt mints NOTHING (explicit authoring-side
     // declare() is the SOLE registry writer — inference is barred).
@@ -1381,7 +1389,7 @@ describe("SessionVariableStore — base-type registry (declare)", () => {
         foreignDeclarePayload({ label: "custom-shape", schema: {} }),
       ),
     );
-    expect(fault.name).toBe("VarRegistryError");
+    expect(fault.name).toBe("VarAdmissionError");
     expect(fault.message).toBe(varRegistrySpecSchemaLine("bad"));
     expect(/\u2014/.test(fault.message)).toBe(false); // pure ASCII
     // NOTHING MINTS: 'bad' absent; 'ok' intact with its stored entry.
@@ -1399,7 +1407,7 @@ describe("SessionVariableStore — base-type registry (declare)", () => {
     const emptyFault = captureNamedFault(() =>
       store.declare("blank", { label: "", schema: z.string() }),
     );
-    expect(emptyFault.name).toBe("VarRegistryError");
+    expect(emptyFault.name).toBe("VarAdmissionError");
     expect(emptyFault.message).toBe(varRegistrySpecLabelLine("blank"));
     expect(/\u2014/.test(emptyFault.message)).toBe(false);
     // NON-STRING label (marked-cast seam à la foreignVarType).
@@ -1409,7 +1417,7 @@ describe("SessionVariableStore — base-type registry (declare)", () => {
         foreignDeclarePayload({ label: 42, schema: z.string() }),
       ),
     );
-    expect(nonStringFault.name).toBe("VarRegistryError");
+    expect(nonStringFault.name).toBe("VarAdmissionError");
     expect(nonStringFault.message).toBe(varRegistrySpecLabelLine("weird"));
     expect(/\u2014/.test(nonStringFault.message)).toBe(false);
     // NOTHING MINTED: registry and entries survive the faults verbatim.
@@ -1422,7 +1430,7 @@ describe("SessionVariableStore — base-type registry (declare)", () => {
     const fault = captureNamedFault(() =>
       store.declare("shadow", { label: "string", schema: z.string() }),
     );
-    expect(fault.name).toBe("VarRegistryError");
+    expect(fault.name).toBe("VarAdmissionError");
     expect(fault.message).toBe(varRegistrySpecShadowLine("shadow", "string"));
     expect(/\u2014/.test(fault.message)).toBe(false);
     const literals: VarType[] = [
@@ -1438,7 +1446,7 @@ describe("SessionVariableStore — base-type registry (declare)", () => {
       const sweepFault = captureNamedFault(() =>
         store.declare(sweepName, { label: literal, schema: z.string() }),
       );
-      expect(sweepFault.name).toBe("VarRegistryError");
+      expect(sweepFault.name).toBe("VarAdmissionError");
       expect(sweepFault.message).toBe(
         varRegistrySpecShadowLine(sweepName, literal),
       );
@@ -1454,7 +1462,7 @@ describe("SessionVariableStore — base-type registry (declare)", () => {
     const fault = captureNamedFault(() =>
       store.declare("flag", { label: "custom-shape", schema: z.string() }),
     );
-    expect(fault.name).toBe("VarRegistryError");
+    expect(fault.name).toBe("VarAdmissionError");
     expect(fault.message).toBe(
       varRegistryConflictLine("flag", "custom-shape", "boolean"),
     );
@@ -1468,7 +1476,7 @@ describe("SessionVariableStore — base-type registry (declare)", () => {
     const store = new SessionVariableStore();
     store.declare("shape", { label: "decision-shape", schema: z.string() });
     const fault = captureNamedFault(() => store.declare("shape", "number"));
-    expect(fault.name).toBe("VarRegistryError");
+    expect(fault.name).toBe("VarAdmissionError");
     expect(fault.message).toBe(
       varRegistryConflictLine("shape", "number", "decision-shape"),
     );
@@ -1482,7 +1490,7 @@ describe("SessionVariableStore — base-type registry (declare)", () => {
     const fault = captureNamedFault(() =>
       store.declare("dual", { label: "second-label", schema: z.number() }),
     );
-    expect(fault.name).toBe("VarRegistryError");
+    expect(fault.name).toBe("VarAdmissionError");
     expect(fault.message).toBe(
       varRegistryConflictLine("dual", "second-label", "first-label"),
     );
@@ -1502,7 +1510,7 @@ describe("SessionVariableStore — base-type registry (declare)", () => {
       const fault = captureNamedFault(() =>
         store.declare(name, foreignDeclarePayload(payload)),
       );
-      expect(fault.name).toBe("VarRegistryError");
+      expect(fault.name).toBe("VarAdmissionError");
       // Historical ${payload} spelling: String(payload) interpolation.
       expect(fault.message).toBe(
         varRegistryMalformedLine(String(payload), name),
@@ -1871,7 +1879,7 @@ describe("SessionVariableStore — program-owned erasure (clear)", () => {
     store.declare("plain", "number");
     store.set("plain", 5);
     const fault = captureNamedFault(() => store.clear("ghost"));
-    expect(fault.name).toBe("VarRegistryError");
+    expect(fault.name).toBe("VarAdmissionError");
     expect(fault.message).toBe(varRegistryClearUndeclaredLine("ghost"));
     expect(/\u2014/.test(fault.message)).toBe(false); // PURE ASCII
     // Nothing mutated: entries AND registry survive the fault
@@ -5456,7 +5464,7 @@ describe("source guards (composed-host edge discipline over pio-session.ts)", ()
     expect(src.includes("isComposed")).toBe(false);
   });
 
-  it("the SDK root sits in EXACTLY ONE clause — the TYPE clause, normalized byte form pinned with AgentSession LEADING — and the VALUE clause set is exactly the pinned twelve-specifier gate-wiring set behind it", () => {
+  it("the SDK root sits in EXACTLY ONE clause — the TYPE clause, normalized byte form pinned with AgentSession LEADING — and the VALUE clause set is exactly the pinned eleven-specifier gate-wiring set behind it", () => {
     // EXACTLY ONE clause references the SDK root, and it is the TYPE
     // clause.
     expect(src.match(/from "@earendil-works\/pi-coding-agent"/g)?.length).toBe(
@@ -5482,12 +5490,15 @@ describe("source guards (composed-host edge discipline over pio-session.ts)", ()
       ),
     ].map((match) => match[1]);
     // ./errors.ts EXEMPT: its clause is formatter-wrapped (the joined
-    // three-name brace list exceeds the width limit) and this regex
-    // observes single-line statements only.
+    // four-name brace list exceeds the width limit) and this regex
+    // observes single-line statements only. ./var-cell.ts EXEMPT alike:
+    // the relocated substrate import wraps across lines under the
+    // formatter (nine named imports exceed the width limit) - and the
+    // retired zod VALUE clause departed with its runtime usages (only the
+    // type clause remains, unobserved here).
     expect(valueClauses).toEqual([
       "node:fs",
       "node:path",
-      "zod",
       "../permission-mechanics.ts",
       "../sandbox/layout.ts",
       "../session.ts",

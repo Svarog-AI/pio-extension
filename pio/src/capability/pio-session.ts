@@ -631,11 +631,12 @@ export class SessionVariableStore {
   /** THE base-type registry writer (mandatory-type doctrine): registers
    * the base type OR a capability-authored CUSTOM SPEC ({label, schema})
    * for a name, scoped to this session instance. Pre-mint ADMISSION
-   * delegates INWARD to the substrate's shared validator (admitVarType
+   * delegates to the shared validator in the variable-substrate module
+   * (admitVarType
    * — single source of truth for every admission line: the literal lane
    * admits the six literals, a non-null non-array object enters the spec
    * lane under the fixed first-fault triage, everything else settles the
-   * historical ${payload} malformed line; every fault rides the
+   * ${payload} malformed-base-type line; every fault rides the
    * bookkeeping voice and mints NOTHING). Re-declaration over an
    * already-registered name settles by KIND THEN DISPLAY: same-kind +
    * same-display is an IDEMPOTENT no-op (the original registration wins
@@ -648,9 +649,8 @@ export class SessionVariableStore {
    * at ITS write moment; a stale-shaped value, should one ever exist,
    * faults per the table on typed read and an overwrite replaces it). */
   declare(name: string, type: VarType | CustomVarSpec): void {
-    // THE shared pre-mint admission (delegated inward): yields the DISPLAY
-    // name on success; a fault throws the bookkeeping voice before
-    // anything mints.
+    // THE shared pre-mint admission: yields the DISPLAY name on success;
+    // a fault throws the bookkeeping voice before anything mints.
     const display = admitVarType(name, type);
     const existing = this.#types.get(name);
     if (existing !== undefined) {
@@ -683,25 +683,24 @@ export class SessionVariableStore {
   /** THE single validated write entry point for ALL origins (shape
    * policing only — permission belongs to the per-phase guard): an
    * unregistered name faults first with the pinned undeclared-write line;
-   * a literal-declared name converts via the shared table (delegated
-   * inward) and stores the CONVERSION RESULT; a spec-declared name skips
-   * base conversion, materializes ANY STRING payload against a JSON read
-   * BEFORE the shape check (wire materialization delegated inward), then
-   * parses the MATERIALIZED CANDIDATE through the schema's safeParse,
-   * stores the PARSE OUTPUT on success, settles a structured failure as
-   * the composed defect line and a throwing check as the dedicated fault
-   * line (both renderers delegated inward) — always with the prior value
-   * intact, and with null flowing through the ordinary parse path like any
-   * other incoming value. */
+   * a literal-declared name converts via the shared conversion table and
+   * stores the CONVERSION RESULT; a spec-declared name skips base
+   * conversion, materializes ANY STRING payload against a JSON read BEFORE
+   * the shape check, then parses the MATERIALIZED CANDIDATE through the
+   * schema's safeParse, stores the PARSE OUTPUT on success, settles a
+   * structured failure as the composed defect line and a throwing check as
+   * the dedicated fault line — always with the prior value intact, and
+   * with null flowing through the ordinary parse path like any other
+   * incoming value. The conversion core, wire materialization, and both
+   * line renderers are owned by the variable-substrate module. */
   set(name: string, value: unknown): void {
     const type = this.#types.get(name);
     if (type === undefined) {
       throw new VariableRejectionError([renderVarUndeclaredWriteLine(name)]);
     }
     if (typeof type === "string") {
-      // LEGACY LITERAL LANE (preserved statement-for-statement): the
-      // shared table (delegated inward) converts and the CONVERSION RESULT
-      // is what stores.
+      // LITERAL LANE: the shared conversion table converts and the
+      // CONVERSION RESULT is what stores.
       const result = convertVarValue(value, type);
       if ("rejected" in result) {
         throw new VariableRejectionError([
@@ -711,14 +710,13 @@ export class SessionVariableStore {
       this.#entries.set(name, result.converted);
       return;
     }
-    // Bottom-type assignment: the guard narrowed this branch to never,
-    // so the payload binds cast-free (the funnel trusts the triaged
-    // registry entry).
+    // The registry triage above settled this branch to the spec type, so
+    // the binding stays cast-free.
     const spec: CustomVarSpec = type;
     let parsed: z.ZodSafeParseResult<unknown>;
-    // Wire materialization delegates inward (wire doctrine: model writes
-    // arrive as text — decoded documents and scalars settle natively,
-    // non-document text rides the schema as-is).
+    // Wire materialization (model writes arrive as text — decoded
+    // documents and scalars settle natively, non-document text rides the
+    // schema as-is).
     const candidate = materializeWireJson(value);
     // Wrapping ONLY the parse call: author schema code can throw even on
     // merely-failing values, and every thrown kind settles the fault line.
@@ -728,8 +726,8 @@ export class SessionVariableStore {
       throw new VariableRejectionError([renderVarSpecFaultLine(name)]);
     }
     if (!parsed.success) {
-      // Cast-free narrowing to the structural slice delegates inward to
-      // the relocated filtering map (symbol segments filtered out).
+      // Narrow the findings to the structural slice (symbol segments
+      // dropped).
       throw new VariableRejectionError([
         renderVarSpecDefectLine(name, sliceVarShapeIssues(parsed.error.issues)),
       ]);
@@ -754,7 +752,7 @@ export class SessionVariableStore {
   /** THE registry query surface: fresh plain object per call listing every
    * declared name to its DISPLAY name in DECLARATION order (independent of
    * stored values): six literals display themselves, specs display their
-   * label (the relocated display resolver feeds this face and the
+   * label (the shared display resolver feeds this face and the
    * declarationDisplay() companion below). Callers may retain freely
    * (counters() doctrine); derive declared-or-not AND display from this
    * snapshot (the single registry introspection face). */

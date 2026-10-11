@@ -24,20 +24,19 @@ import {
   VarCell,
 } from "./var-cell.ts";
 
-/** Replica of the PINNED malformed-base-type line (exact bytes; the
- * historical ${payload} spelling - arrays comma-join, null echoes
- * "null"). PURE ASCII. */
+/** Replica of the pinned malformed-base-type line (exact bytes; the
+ * ${payload} echo spells String(payload) - arrays comma-join, null echoes
+ * "null"). Pure ASCII. */
 const varRegistryMalformedLine = (type: string, name: string): string =>
   `var registry: invalid base type '${type}' for variable '${name}'`;
 
-/** Replica of the PINNED malformed-spec LABEL line (class 1: NON-STRING or
- * EMPTY label - ONE line covering both, echoing NOTHING). PURE ASCII. */
+/** Replica of the pinned malformed-spec-label line (a NON-STRING or EMPTY
+ * label; one line covers both, echoing nothing). Pure ASCII. */
 const varRegistrySpecLabelLine = (name: string): string =>
   `var registry: invalid spec label for variable '${name}': label must be a non-empty string`;
 
-/** Replica of the PINNED built-in-shadowing line (class 2: the label proved
- * a non-empty string and echoes VERBATIM per the house echo practice).
- * PURE ASCII. */
+/** Replica of the pinned built-in-shadowing line (the label is a non-empty
+ * string and echoes verbatim). Pure ASCII. */
 const varRegistrySpecShadowLine = (name: string, label: string): string =>
   `var registry: invalid spec label for variable '${name}': label '${label}' shadows a built-in type name`;
 
@@ -87,8 +86,8 @@ const CLAUSE_SHAPE_OBJECT = "value is an object";
 const clauseGeneric = (type: string): string =>
   `value does not coerce to '${type}'`;
 
-/** Replica of the PINNED duplicate-binding line (PURE ASCII - the NEW line
- * rides its planning-adopted form frozen here alongside the module owner). */
+/** Replica of the pinned duplicate-binding line (pure ASCII; the exact
+ * form is frozen here alongside the module owner). */
 const phaseVarDuplicateLine = (name: string): string =>
   `phase binding set: variable '${name}' is bound more than once; a phase binds each variable at most once`;
 
@@ -106,10 +105,9 @@ const foreignVarType = "bogus" as VarType;
 const foreignDeclarePayload = (value: unknown): VarType | CustomVarSpec =>
   value as VarType | CustomVarSpec;
 
-/** Fault-capture helper for the UNEXPORTED bookkeeping voices: asserts
- * Error shape by NAME only (no instanceof - the classes are module-local;
- * the new substrate voice rides the re-pinned name VarAdmissionError in
- * place of the retired registry name). */
+/** Fault-capture helper for the unexported bookkeeping voices: asserts
+ * the Error shape by NAME only (no instanceof - the voice classes are
+ * module-local, so identity checks cannot reach them). */
 function captureNamedFault(fn: () => void): { name: string; message: string } {
   try {
     fn();
@@ -168,14 +166,14 @@ describe("VarCell \u2014 admission (declareVar)", () => {
     }
   });
 
-  it("a MALFORMED base type (runtime foreignness past type erasure) faults in the developer-facing bookkeeping voice with the RE-PINNED name (VarAdmissionError replacing the retired registry name) and the exact pinned bytes; nothing mints", () => {
+  it("a MALFORMED base type (runtime foreignness past type erasure) faults in the developer-facing bookkeeping voice named VarAdmissionError with the exact pinned bytes; nothing mints", () => {
     const fault = captureNamedFault(() => declareVar("n", foreignVarType));
     expect(fault.name).toBe("VarAdmissionError");
     expect(fault.message).toBe(varRegistryMalformedLine("bogus", "n"));
     expect(/\u2014/.test(fault.message)).toBe(false); // pure ASCII
   });
 
-  it("DISPATCH EDGE (non-string primitive, ARRAY, and NULL payloads): every such payload settles the LEGACY malformed-base-type line with its HISTORICAL PAYLOAD-INTERPOLATION SPELLING BYTE-IDENTICAL; nothing mints across the whole sweep", () => {
+  it("DISPATCH EDGE (non-string primitive, ARRAY, and NULL payloads): every such payload settles the single malformed-base-type line with its payload-interpolation echo, byte-stable for every payload kind; nothing mints across the sweep", () => {
     const cases: Array<[name: string, payload: unknown]> = [
       ["n-prime", 42],
       ["b-prime", true],
@@ -187,7 +185,7 @@ describe("VarCell \u2014 admission (declareVar)", () => {
         declareVar(name, foreignDeclarePayload(payload)),
       );
       expect(fault.name).toBe("VarAdmissionError");
-      // Historical ${payload} spelling: String(payload) interpolation.
+      // The ${payload} echo is the String(payload) spelling.
       expect(fault.message).toBe(
         varRegistryMalformedLine(String(payload), name),
       );
@@ -281,7 +279,7 @@ describe("VarCell \u2014 admission (declareVar)", () => {
     expect(() => admitVarType("f", foreignVarType)).toThrow();
   });
 
-  it("DISPLAY derivation (resolver-owned, NO stored field): a built-in cell displays its LITERAL, a spec cell displays its LABEL \u2014 delegated to the relocated display resolver, consistent with the admission return", () => {
+  it("DISPLAY derivation (resolver-owned, NO stored field): a built-in cell displays its LITERAL, a spec cell displays its LABEL \u2014 delegated to the display resolver, consistent with the admission return", () => {
     const builtin = declareVar("note", "string");
     expect(builtin.displayName).toBe("string");
     expect(displayVarType("string")).toBe("string");
@@ -296,8 +294,8 @@ describe("VarCell \u2014 admission (declareVar)", () => {
   });
 });
 
-describe("VarCell \u2014 D4 admission/conversion matrix (set)", () => {
-  it("'boolean': ADMITS exactly the four sanctioned forms (true, 'true', false, 'false') and retires every legacy token/quirk row (silent-fallback W2C defect, '1'/'yes'/'0'/'no' tokens, bare 0/1) with the exact pinned clause each", () => {
+describe("VarCell \u2014 admission/conversion matrix (set)", () => {
+  it("'boolean': ADMITS exactly the four sanctioned forms (true, 'true', false, 'false'); every non-sanctioned input (token-like strings '1'/'yes'/'0'/'no', bare 0/1, numbers, null, and other shapes) FAULTS with the exact pinned clause each and leaves the prior value intact", () => {
     const cell = declareVar("b", "boolean");
     const admits: readonly { input: unknown; stored: unknown }[] = [
       { input: true, stored: true },
@@ -351,7 +349,7 @@ describe("VarCell \u2014 D4 admission/conversion matrix (set)", () => {
     }
   });
 
-  it("'number': ADMITS finite numbers and the numeric-string corners ('42', ' 42 ', '0x1A', '1e3', '-7') and retires every legacy quirk row (''→0, null→0, true→1, [5]→5, NaN, ±Infinity) with the exact pinned clause each", () => {
+  it("'number': ADMITS finite numbers and the numeric-string corners ('42', ' 42 ', '0x1A', '1e3', '-7'); every non-coercible input ('', null, true, [5], NaN, ±Infinity) FAULTS with the exact pinned clause each", () => {
     const cell = declareVar("n", "number");
     const admits: readonly { input: unknown; stored: number }[] = [
       { input: 42, stored: 42 },
@@ -406,7 +404,7 @@ describe("VarCell \u2014 D4 admission/conversion matrix (set)", () => {
     }
   });
 
-  it("'string': ADMITS strings verbatim plus finite-number and boolean String()-form conversions and retires the String() catch-all (arrays, objects, null) with the exact pinned clause each", () => {
+  it("'string': ADMITS strings verbatim plus finite-number and boolean String()-form conversions; arrays, objects, and null FAULT with the exact pinned clause each", () => {
     const cell = declareVar("s", "string");
     const admits: readonly { input: unknown; stored: string }[] = [
       { input: "hello", stored: "hello" },
@@ -933,7 +931,7 @@ describe("VarCell \u2014 containment shape (bare identity)", () => {
     expect(Object.keys(captured).sort()).toEqual(["message", "type"]);
   });
 
-  it("a declareVar admission fault captures by NAME only under the RE-PINNED voice (VarAdmissionError replaces the retired registry name) with PURE ASCII bytes", () => {
+  it("a declareVar admission fault captures by NAME only under the VarAdmissionError bookkeeping voice with pure ASCII bytes", () => {
     const fault = captureNamedFault(() => declareVar("n", foreignVarType));
     expect(fault.name).toBe("VarAdmissionError");
     expect(fault.message).toBe(varRegistryMalformedLine("bogus", "n"));
@@ -988,7 +986,7 @@ describe("VarCell \u2014 absence signal", () => {
     expect(cell.isEmpty()).toBe(true);
     expect(cell.read()).toBeUndefined();
     expect(cell.read()).toBeUndefined();
-    // The retired strict channel left no trace on the surface.
+    // No get() accessor exists on the surface (only read()).
     expect("get" in cell).toBe(false);
   });
 });
@@ -1139,10 +1137,9 @@ describe("source guards (substrate edge discipline over var-cell.ts)", () => {
     expect(src.match(/import\(/g)?.length ?? 0).toBe(0);
   });
 
-  it("single-owner spot checks (Acceptance #2): the relocated conversion owners are defined EXACTLY ONCE each, both in var-cell.ts, and REDEFINED NOWHERE in the session host (which reaches them through its import clause)", () => {
+  it("single-owner spot checks: the conversion owners are defined EXACTLY ONCE each, both in var-cell.ts, and REDEFINED NOWHERE in the session host (which reaches them through its import clause)", () => {
     // Needles assembled from fragments so this scan cannot match itself
-    // (house idiom à la the residue sweep): the joined bytes name the
-    // relocated sole owners.
+    // (house idiom): the joined bytes name the sole owner functions.
     const ownerNeedles: Array<[string, string]> = [
       ["function convert", "VarValue"],
       ["function renderVarCoercion", "RejectLine"],

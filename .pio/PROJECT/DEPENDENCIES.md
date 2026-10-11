@@ -14,6 +14,7 @@ Model switching (`~/.pi/pio-config.yaml`) references LLM providers (e.g., Anthro
 | `@earendil-works/pi-coding-agent` | 0.85.1 (**exact-pinned**, dep of the standalone `pio/` package) | Owned runtime of the `pio` executable — the exact pin tracks upstream independently of the root devDependency and host pi (self-contained artifact policy; evidence in commit messages) |
 | `pi-native-search` | 0.1.0 (**exact-pinned**, dep of the standalone `pio/` package) | Web-tools extension PROVISIONED into every sandboxed session — provides `web_search`/`web_fetch` (goal `web-research-capability`: owned exact dependency + local-source registration of the vendored tree into the isolated agent dir + ro identity bind; loaded IN PLACE — no copy, no symlink, no network at launch; zero operator obligations) |
 | `pi-ask-user` | 0.15.0 (**exact-pinned**, dep of the standalone `pio/` package) | Structured `ask_user` FEEDBACK TOOL vendored into every sandboxed session via the same owned-extension roster (goal `web-research-capability`). MIT, ZERO runtime dependencies — peers (`pi-coding-agent`, `pi-tui`, `typebox`) host-provided inside the pi process; the loader's alias bridge resolves the heavy `pi-tui`/typebox imports from the SDK's nested copies (measured — the documented mitigation gate never engaged). AVAILABILITY ≠ USAGE: no capability consumes it yet. DISTINCT from the ROOT devDependency `pi-ask-user` ^0.10.0 listed below — different tree, different revision, different consumer (root serves the ask-user SKILL to pio sub-sessions) |
+| `zod` | 4.6.5 (**exact-pinned**, dep of the standalone `pio/` package) | Custom-variable SHAPE CHECKS (goal `custom-typed-vars`): capability-declared session variables may carry their OWN named shape check alongside the six built-in types, expressed as a zod schema enforced by the store's single validated write funnel (safeParse admission storing the PARSE OUTPUT; failures settle mid-turn with the check's own defect line; throwing author checks contained behind a parse-only wrap; the wire doctrine materializes model text against `JSON.parse` before the declared check). THE ONLY manifest addition of that goal — deliberate and owner-directed (superseding the design record's zero-dependency closure draft). The exact pin's contract was EMPIRICALLY VERIFIED at spec time against the installed copy: never-throwing-on-bad-values `safeParse` (failure `{ success: false, error: ZodError }` with flat `.issues[]` carrying `message` + `path`), authored messages carried verbatim under all four authoring forms, transform-output identity, recognition via `instanceof z.ZodType`; throwing refinements PROPAGATE OUT of `safeParse` (grounds the containment wrap); `z.record()` requires BOTH key AND value schemas |
 | `typebox` | ^1.1.24 (devDep) | JSON Schema type builders for tool parameter definitions |
 | `typescript` | ^5.8.0 (devDep) | Type checking via `npm run check` (`tsc --noEmit`) |
 | `vitest` | ^4.1.6 (devDep) | Test runner: unit tests with global `describe/it/expect` |
@@ -24,7 +25,7 @@ Model switching (`~/.pi/pio-config.yaml`) references LLM providers (e.g., Anthro
 | `@biomejs/biome` | 2.5.13 (**exact-pinned**, devDep in BOTH trees) | Linter and formatter — recommended preset with test file overrides (single shared root `biome.json`; both manifests pin identically so the lefthook pre-commit hook and the per-tree gates share ONE engine — owner-directed cross-tree alignment during goal `capability-base` after the stale range-resolution skew silently re-flipped a committed layout) |
 | `lefthook` | ^2.1.9 (devDep) | Git hook manager — pre-commit Biome check on staged `.ts`/`.json` files (config in `lefthook.yml`) |
 
-All devDependencies run at development time or via pi's TypeScript runtime. Production dependencies: `js-yaml` (root); the `pio/` package EXACT-pins THREE runtime deps — `@earendil-works/pi-coding-agent` 0.85.1 (owned pi runtime) plus `pi-native-search` 0.1.0 and `pi-ask-user` 0.15.0 (owned extensions provisioned into every sandboxed session via the `OWNED_EXTENSION_PACKAGES` roster; goal `web-research-capability`) — versions ride the artifact lockfile, never ranges.
+All devDependencies run at development time or via pi's TypeScript runtime. Production dependencies: `js-yaml` (root); the `pio/` package EXACT-pins FOUR runtime deps — `@earendil-works/pi-coding-agent` 0.85.1 (owned pi runtime) plus `pi-native-search` 0.1.0 and `pi-ask-user` 0.15.0 (owned extensions provisioned into every sandboxed session via the `OWNED_EXTENSION_PACKAGES` roster; goal `web-research-capability`) plus `zod` 4.6.5 (custom-variable shape checks; goal `custom-typed-vars`) — versions ride the artifact lockfile, never ranges.
 
 **Dual pi copies are a structural property of this packaging:** the root devDependency (^0.74.0-line) serves the TUI-loaded extension from root `node_modules`; the exact-pinned 0.85.1 in `pio/node_modules` is the executable's owned runtime. In a live probe session the extension bound exclusively to the pinned copy — root `src/index.ts` imports the SDK type-only (erased at load), so the devDependency copy never entered the process (verified 2026-09-16). If mixed-copy behavior ever misbehaves, the documented escape hatch is the public `extensionsOverride` discovery-filtering seam.
 
@@ -196,9 +197,9 @@ annotated partial and continues by construction — the gate keys ONLY on ok)
 
 The TOP frame's `status.json` is the SINGLE durable record for the whole run — row 1 mints NO child scope dirs, NO per-frame emissions, NO session lineage (there is no hop; the row-2 machinery stays unevaluated on session-present executions). One composed session = one engagement = one transcript marked per capability in call order (`capability: P / phase x / capability: C / phase y …`); counter/variable continuity across the boundary falls out of instance identity (D1/D4). Bound-event observables ride the same two channels as any outcome — IN-STREAM (the annotated partial the summary turn reads back) and IN-LEDGER (the `outputs.report` token resolving to the artifact containing the pinned truncation note); NO new stream machinery (terminal-ownership doctrine untouched).
 
-### Adhoc Dispatch Loop (goal `adhoc-capability`)
+### Adhoc Dispatch Loop (goal `adhoc-capability`; CONVERTED by goal `custom-typed-vars`)
 
-Data flow of the bare-`pio` sitting (footprint exclusively `pio/` — root tree zero diff; zero new third-party dependencies):
+Data flow of the bare-`pio` sitting (footprint exclusively `pio/` — root tree zero diff; the decision lane rides the store's CUSTOM-TYPED VARIABLES over the exact-pinned `zod` 4.6.5):
 
 ```
 bare pio / bare pio run           reserved forms RETIRED — ONE module-private
@@ -216,29 +217,49 @@ in-namespace entry: ONE mount of InteractiveMode over the session runtime BY REF
         v
 adhoc body over ONE long-lived session (run lifetime == process lifetime):
 NO greeting bookend (goal adhoc-no-greeting - first beat IS a gather turn)
+LANE ARMS: dispatch_request declared as a CUSTOM-TYPED VARIABLE (zod object
+schema, label "dispatch decision"; DECLARED-BUT-UNSEEDED - ABSENCE is the
+armed/no-request state; registration != presence)
 sitting loop {
-   gather burst    model stores decision JSON in lane var dispatch_request
-                   [NO stop rule (goal adhoc-no-greeting) - every burst settles
-                   after exactly ONE settling run; instructions = discovery-first
-                   GATHER_INSTRUCTIONS paragraph + rendered listCapabilities()
-                   listing - matching reference material, never a menu; filtered
-                   narrowing to an obvious fit or a shortlist]
-   validate        decode -> recursion guard -> loader admission ->
-                   collect-all input validation   [the ONLY catch; refusal
-                   FACTS ride the NEXT burst's instructions]
-   confirm         single ask_user (yes / no / custom = acceptance with amendment)
+   round-top    program-owned clear(dispatch_request) as the FIRST statements
+                [SOLE erasure site - stale picks, interrupted-run residue,
+                repeat-invocation leftovers all disarmed uniformly;
+                erasure-before-admission dominates dispatch]
+   gather       burst settles after EXACTLY ONE settling run; model stores the
+                decision OBJECT by NAME ALONE via the two-parameter setVar
+                (quoted JSON text OK - the FUNNEL MATERIALIZES STRING PAYLOADS
+                AGAINST A JSON READ BEFORE THE SHAPE CHECK: decoded document/
+                scalar settles natively, non-document raw text rides the schema
+                as-is); silence IS absence - a quiet round pays the RULED
+                ACCEPTED cost (up to 4 prompts / 4 ask_user exchanges per
+                silent cycle - recorded, never failed)
+   admit        FAIL-FAST IN THE MAIN LOOP: recursion guard -> resolveCapability
+                existence -> validateInputs conformance [same order/bytes] -
+                ADMITTED => dispatch NOW; REFUSED => FAILURE REPORT narrated
+                THROUGH THE report phase (Facts for the report: / The gathered
+                decision names '<n>' but the program side did not admit it:
+                <refusal> / No capability was run.) - NO hop, lane ends cleared,
+                next outer pass re-arms on the PLAIN baseline where the operator
+                steers in-conversation
 } -> row-2 frame materialized over SHARED runtime / SAME mounted TUI
               [callee's own engagement scope + child status.json; fresh session,
                strictly between settled turns; ESC mid-hosted-run settles the
                callee as the typed interrupted outcome]
-       -> report one-shot (outcome FACTS via instruction text — ZERO no-turn
-          custom messages / ZERO tools) -> back to gather
+       -> report one-shot (outcome FACTS via instruction text - incl. the
+          admission-failure narration - ZERO no-turn custom messages /
+          ZERO tools) -> back to the next round
 
-channels: decision = process-local lane var ONLY (consume-and-clear /
-discard-on-interrupt) · durable state = callee FILES ALONE (files-only
-continuation — checkpoint machinery parked; no journal/index/marker/cursor
+channels: decision = the ONE custom-typed lane variable ONLY (absent = no
+request; malformed writes settle MID-TURN with the check's own defect line
+at the write moment - the previous value, a decision OR absence, stays
+intact; the inter-turn "malformed" refusal class DOES NOT EXIST anymore) ·
+retained inter-turn refusal classes = recursion / unknown-capability /
+non-conforming-inputs ONLY · durable state = callee FILES ALONE (files-only
+continuation - checkpoint machinery parked; no journal/index/marker/cursor
 artifacts) · interruption = PhaseInterruptionError settles the active
-operation (own cycle -> catch/discard/re-arm; hosted run -> typed interrupted
+operation (own cycle -> catch/re-arm; hosted run -> typed interrupted
 outcome) · genuine exit = the EXISTING ordered shutdown pass unchanged
 (exactly-one terminal record, typed line, exit 130)
 ```
+
+SUPERSEDED at goal `custom-typed-vars`: the `confirm` exchange + `dispatch_confirm` answer lane (removed entirely by owner directive — single request lane, fail-fast main-loop admission), the `"{}"` sentinel seed + consume-and-clear discipline (replaced by ABSENCE-as-armed-state + the SOLE program-owned round-top `clear()`), the hand-rolled DECODE HALF (`decodeDispatchRequest` / `DecodeDefect` / `MALFORMED_DEFECT_LINES` — zero occurrences, grep-clean; replaced by the declared zod schema's own issue messages under the store-owned frame), the inter-turn MALFORMED-DEFECT refusal class (mid-turn settlement replaces it), and the legacy JSON-string-in-a-variable encoding (the model now writes the decision OBJECT natively — quoted JSON text is materialized by the funnel's wire doctrine before the declared check).

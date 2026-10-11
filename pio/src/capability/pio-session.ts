@@ -867,7 +867,11 @@ function isDeclaredType(type: string): boolean {
  * an unregistered name faults before any shape work, a built-in literal
  * stores the shared table's CONVERSION RESULT, and a custom spec skips
  * base conversion entirely — parsing through the schema's safe-parse
- * entry point, storing the PARSE OUTPUT on conformance, and settling a
+ * entry point over a candidate that first MATERIALIZES any string
+ * payload against a JSON read (wire doctrine: model writes arrive as
+ * text — decoded documents and scalars settle natively, non-document
+ * text rides the schema as-is), storing the PARSE OUTPUT on
+ * conformance, and settling a
  * contained refusal (composed defect line, or the dedicated check-fault
  * line behind the parse-only containment wrap) with the prior value
  * intact. Set polices SHAPE only, and bookkeeping corruption (registry
@@ -1014,7 +1018,7 @@ export class SessionVariableStore {
     storeUnionDeclaration(this.#types, name, type);
   }
 
-  /** THE single validated write entry point for ALL origins (shape policing only — permission belongs to the per-phase guard): an unregistered name faults first with the pinned undeclared-write line; a literal-declared name converts via the shared table and stores the CONVERSION RESULT; a spec-declared name skips base conversion, parses through the schema's safeParse, stores the PARSE OUTPUT on success, settles a structured failure as the composed defect line and a throwing check as the dedicated fault line behind the parse-only containment wrap — always with the prior value intact, and with null flowing through the ordinary parse path like any other incoming value. */
+  /** THE single validated write entry point for ALL origins (shape policing only — permission belongs to the per-phase guard): an unregistered name faults first with the pinned undeclared-write line; a literal-declared name converts via the shared table and stores the CONVERSION RESULT; a spec-declared name skips base conversion, materializes ANY STRING payload against a JSON read BEFORE the shape check (wire doctrine: model writes arrive as text — a decoded document or scalar settles natively, non-document text rides the schema as-is), then parses the MATERIALIZED CANDIDATE through the schema's safeParse, stores the PARSE OUTPUT on success, settles a structured failure as the composed defect line and a throwing check as the dedicated fault line behind the parse-only containment wrap — always with the prior value intact, and with null flowing through the ordinary parse path like any other incoming value. */
   set(name: string, value: unknown): void {
     const type = this.#types.get(name);
     if (type === undefined) {
@@ -1037,10 +1041,18 @@ export class SessionVariableStore {
     // registry entry).
     const spec: CustomVarSpec = type;
     let parsed: z.ZodSafeParseResult<unknown>;
+    let candidate: unknown = value;
+    if (typeof value === "string") {
+      try {
+        candidate = JSON.parse(value);
+      } catch {
+        candidate = value;
+      }
+    }
     // Wrapping ONLY the parse call: author schema code can throw even on
     // merely-failing values, and every thrown kind settles the fault line.
     try {
-      parsed = spec.schema.safeParse(value);
+      parsed = spec.schema.safeParse(candidate);
     } catch {
       throw new VariableRejectionError([renderVarSpecFaultLine(name)]);
     }

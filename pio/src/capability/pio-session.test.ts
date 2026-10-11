@@ -1740,6 +1740,73 @@ describe("SessionVariableStore — spec-lane funnel (set, custom-spec declaratio
   });
 });
 
+describe("SessionVariableStore — spec-lane text materialization (wire doctrine)", () => {
+  it("JSON-document text MATERIALIZES BEFORE the declared shape check: the quoted document stores the DECODED parse output deep-equal to the IDENTICAL native drive of the same document (twin equivalence over the real funnel - the product-regression pin for the model's quoted-JSON wire form)", () => {
+    const declareShape = (s: SessionVariableStore): void =>
+      s.declare("decision", {
+        label: "decision-shape",
+        schema: z.object({ action: z.string(), count: z.number() }),
+      });
+    // NATIVE DRIVE (oracle): the decision stored as a plain object.
+    const native = new SessionVariableStore();
+    declareShape(native);
+    native.set("decision", { action: "proceed", count: 2 });
+    expect(native.get("decision")).toEqual({ action: "proceed", count: 2 });
+    // TEXT DRIVE: the model packages the same document as quoted JSON
+    // (the advertised string-leading union makes this the wire form).
+    const document = JSON.stringify({ action: "proceed", count: 2 });
+    const store = new SessionVariableStore();
+    declareShape(store);
+    store.set("decision", document);
+    // Deep equality ONLY (fresh parse-output reference - an identity
+    // claim would fabricate a failure), twin-equivalent to the native
+    // drive by construction.
+    expect(store.get("decision")).toEqual({ action: "proceed", count: 2 });
+    expect(store.get("decision")).toEqual(native.get("decision"));
+  });
+
+  it('JSON-scalar text materializes per the DECLARED CHECK: "42" stores 42 over z.number() and "true" stores true over z.boolean() - decoded scalars settle natively exactly as their native twins do', () => {
+    const store = new SessionVariableStore();
+    store.declare("count", { label: "count-shape", schema: z.number() });
+    store.set("count", "42");
+    expect(store.get("count")).toBe(42);
+    store.declare("flag", { label: "flag-shape", schema: z.boolean() });
+    store.set("flag", "true");
+    expect(store.get("flag")).toBe(true);
+    // Native-twin parity: the identical native drive settles identically
+    // (deep equality over the scalar read-back).
+    const twin = new SessionVariableStore();
+    twin.declare("count", { label: "count-shape", schema: z.number() });
+    twin.set("count", 42);
+    expect(store.get("count")).toEqual(twin.get("count"));
+  });
+
+  it('NON-DOCUMENT text rides the schema AS-IS (decode-or-raw stability guard): a transform spec stores the transformed RAW text verbatim ("  hi " -> "  HI ") and junk text over an object spec settles the family-voice defect line MINTING NOTHING - the settled raw-text fault bytes stay byte-frozen', () => {
+    const store = new SessionVariableStore();
+    store.declare("shout", {
+      label: "shouting-text",
+      schema: z.string().transform((text) => text.toUpperCase()),
+    });
+    store.set("shout", "  hi ");
+    expect(store.get("shout")).toBe("  HI ");
+    // Family-voice fault over an object spec: no decode possible, no
+    // mint - the composed-defect bytes hold unedited.
+    store.declare("pair", {
+      label: "pair-shape",
+      schema: z.object({ k: z.string() }),
+    });
+    expectFamilyFault(
+      () => store.set("pair", "just some words"),
+      varSpecDefectLine(
+        "pair",
+        "Invalid input: expected object, received string",
+      ),
+    );
+    expect(store.get("pair")).toBeUndefined();
+    expect(store.list()).toEqual(["shout"]);
+  });
+});
+
 describe("SessionVariableStore — program-owned erasure (clear)", () => {
   it("empties the entry while the DECLARATION SURVIVES: untyped get reads back undefined, list() drops the name, the declarations() snapshot stays BYTE-IDENTICAL pre/post and declarationDisplay() is unchanged, and post-clear writes re-enter the funnel from scratch (conforming admits AND non-conforming faults again — the check is alive)", () => {
     const store = new SessionVariableStore();

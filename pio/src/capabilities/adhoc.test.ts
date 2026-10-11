@@ -1022,6 +1022,71 @@ describe("happy chain (R1 - binding leg, physics world)", () => {
   });
 });
 
+/** THE standing convention witness over model-driven store channels: any
+ * row driving the REAL setVar tool carries a MIS-PACKAGED drive (quoted
+ * document where a document is owed) - the real generative-model component
+ * packages decisions as JSON strings over the advertised string-leading
+ * union, so the funnel materializes incoming text against the declared type
+ * BEFORE the authored shape check (SOLE owner of the mechanic: the spec-lane
+ * arm of set() in ../capability/pio-session.ts). */
+describe("wire doctrine (model text arrives quoted - product regression)", () => {
+  it("the QUOTED JSON-string decision settles natively through the REAL setVar tool: gather settles ON RUN 1 and the sitting dispatches with the R1 happy-chain physics (three top prompts, the compact-JSON success echo over the decoded value, the hop pins, the lane absent afterwards)", async () => {
+    const root = newTempRoot();
+    const world = await setupWorld({ root, env: "set", physics: true });
+    const tools = await recoverTools();
+    const results: DrivenSettlement[] = [];
+    // THE mis-packaged wire: the model's decision arrives as a JSON STRING
+    // (string-leading advertised union) - the funnel decodes it against the
+    // declaration; non-document text would ride the schema raw instead.
+    scriptLanePass(
+      world.round.session,
+      tools,
+      DISPATCH_REQUEST_VAR,
+      JSON.stringify(DECISION_OBJECT),
+      true,
+      results,
+    );
+    scriptHappyHop(world, {
+      childId: "child-wire",
+      postHop: (parent): void => {
+        scriptQuiet(parent); // report
+        scriptValve(parent); // row-end valve (fresh gather burst)
+      },
+    });
+    const adhoc = new AdhocCapability({ session: world.instance });
+    const result = await adhoc.run();
+    expect(result).toStrictEqual(VALVE_RESULT);
+    // R1 happy-chain physics unchanged by the wire: THREE top prompts
+    // (gather, report, fresh baseline), all on the parent file.
+    const prompts = topPrompts(world);
+    expect(prompts).toHaveLength(3);
+    expect(sdkKit.state.promptLog).toHaveLength(3); // zero child-file prompts
+    const baseline = promptOf("gather", gatherBaselineReplica());
+    expect(sentText(prompts, 0)).toBe(baseline);
+    const abs = expectedAbsolutePath(stubKit.STUB_TOKEN);
+    expect(sentText(prompts, 1)).toContain(renderPhaseMarker("report"));
+    expect(sentText(prompts, 1)).toContain(REPORT_SETTLED_LINE("research"));
+    expect(sentText(prompts, 1)).toContain(
+      `Outputs: ${JSON.stringify({ report: abs })}`,
+    );
+    expect(sentText(prompts, 2)).toBe(baseline);
+    // The lane reads back ABSENT: the re-arm's round-top clear disarmed the
+    // consumed pick (deliberate-window rule).
+    expect(world.instance.vars.get(DISPATCH_REQUEST_VAR)).toBeUndefined();
+    // SUCCESS ECHO over the DECODED value: compact JSON, byte-identical to
+    // the native drive's echo (identity-over-goldens over the settled bytes).
+    expect(results[0]?.content[0]?.text).toBe(
+      setSuccessReplica(DISPATCH_REQUEST_VAR, DECISION_OBJECT),
+    );
+    // Dispatch pins: the callee ran with the decoded inputs.
+    expect(stubKit.state.bag).toEqual({});
+    expect(stubKit.state.inputs).toStrictEqual({ topic: TOPIC });
+    expect(world.runtime.switchSession).toHaveBeenCalledTimes(2);
+    expect(stderrText()).toBe("");
+    expect(stdoutText()).toBe("");
+  });
+});
+
 describe("quiet-cycle shape (R2 - top world, ruled silent-round cost)", () => {
   it("each silent cycle costs EXACTLY four gather prompts (baseline + the three escalating guard notes naming the request lane) before the verdict is caught and the next cycle begins - two consecutive cycles + valve = 9 prompts; the lane absent throughout; no report prompts; no hop", async () => {
     const root = newTempRoot();

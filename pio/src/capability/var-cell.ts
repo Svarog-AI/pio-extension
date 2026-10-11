@@ -2,10 +2,10 @@
 // the phase-binding view core. One cell per declared variable - NO
 // container, NO registry, NO name-index retains the population: a
 // capability holds the references returned by declareVar and hands cells
-// into phases as bindings. Each cell carries its own declaration (name +
-// flavor), its value-or-unset state, and OWNS its settle policy - the
+// into phases as bindings. Each cell carries its own declaration (name + admitted
+// typing), its value-or-unset state, and OWNS its settle policy - the
 // legacy funnel's two arms collapsed into the per-cell setter (one settle
-// path per flavor).
+// path per lane).
 //
 // GRANTS NEVER LIVE ON THE CELL - they ride the binding { cell, write? }
 // (ruling R1: READ IS GRANTED BY DEFAULT for every bound variable;
@@ -14,7 +14,7 @@
 // deterministic) and refuse the SOLE surviving name conflict loudly: two
 // bindings of the same name in one set.
 //
-// ADMISSION is one shared pre-mint validator (admitVarFlavor) feeding BOTH
+// ADMISSION is one shared pre-mint validator (admitVarDeclaration) feeding BOTH
 // the free minter and the session host's legacy store declare() (single
 // source of truth for every admission line): the six built-in literals
 // admit verbatim; a non-null non-array object enters the spec lane under
@@ -73,7 +73,7 @@ export interface CustomVarSpec {
 
 /**
  * Bookkeeping corruption over the variable ADMISSION at cell mint: a
- * malformed flavor payload (the re-declare concept does not exist here -
+ * malformed declaration payload (the re-declare concept does not exist here -
  * there is no name to conflict with). Developer-facing, PURE ASCII (no em
  * dashes), model-invisible - the separate ASCII fault voice class (à la
  * ExecutionStateError) deliberately DISTINCT from the model-visible
@@ -138,20 +138,24 @@ function renderVarMalformedBaseTypeLine(
   return `var registry: invalid base type '${payload}' for variable '${name}'`;
 }
 
-/** THE shared pre-mint admission validator (SOLE source of truth for every
- * admission line): cast-free FIRST-FAULT triage over the RUNTIME payload,
- * exactly the delivered dispatch. A STRING payload takes the literal lane
- * (the six literals admit; a foreign string settles the malformed-base-
- * type line); a NON-NULL, NON-ARRAY OBJECT enters the SPEC LANE under the
- * FIXED FIRST-FAULT triage (label well-formed, no built-in shadowing,
- * schema recognized - the first fault settles LOUDLY, collect-all barred,
- * nothing mints); EVERYTHING ELSE (numbers, booleans, null, symbols,
- * functions, bigints, AND arrays) settles the legacy line with its
- * historical ${payload} spelling through the single template site above.
- * FEEDS BOTH minters: declareVar (delegated through the cell constructor)
- * and the session host's legacy store declare(). Returns the DISPLAY name
- * (literal self / spec label); throws the bookkeeping voice on any fault. */
-export function admitVarFlavor(name: string, payload: unknown): string {
+/**
+ * THE shared pre-mint admission validator over a variable DECLARATION
+ * (SOLE source of truth for every admission line): cast-free FIRST-FAULT
+ * triage over the RUNTIME payload, exactly the delivered dispatch. A
+ * STRING payload takes the literal lane (the six literals admit; a foreign
+ * string settles the malformed-base-type line); a NON-NULL, NON-ARRAY
+ * OBJECT enters the SPEC LANE under the FIXED FIRST-FAULT triage (label
+ * well-formed, no built-in shadowing, schema recognized via the
+ * pinned-major instanceof z.ZodType guard - the first fault settles
+ * loudly, collect-all barred, nothing mints); EVERYTHING ELSE (numbers,
+ * booleans, null, symbols, functions, bigints, AND arrays) settles the
+ * legacy line with its historical ${payload} spelling through the single
+ * template site above. FEEDS BOTH minters: declareVar (delegated through
+ * the cell constructor) and the session host's legacy store declare().
+ * Returns the DISPLAY name (literal self / spec label); throws the
+ * bookkeeping voice on any fault.
+ */
+export function admitVarDeclaration(name: string, payload: unknown): string {
   if (typeof payload === "string") {
     if (isBuiltinVarType(payload)) return payload;
     throw new VarAdmissionError(renderVarMalformedBaseTypeLine(name, payload));
@@ -187,8 +191,10 @@ export function admitVarFlavor(name: string, payload: unknown): string {
  * Feeds the cell's derived display accessor, the admission return, and the
  * legacy store's declarations()/declarationDisplay() faces (delegated
  * inward) - zero casts on either face. */
-export function displayVarFlavor(flavor: VarType | CustomVarSpec): string {
-  return typeof flavor === "string" ? flavor : flavor.label;
+export function displayVarDeclaration(
+  declaration: VarType | CustomVarSpec,
+): string {
+  return typeof declaration === "string" ? declaration : declaration.label;
 }
 
 /** Closed fault taxonomy of the shared conversion core: one category per
@@ -267,7 +273,7 @@ function walkVarIntegrity(value: unknown): VarConversion {
 
 /** THE shared admission/conversion core (one voice, one table): the SAME
  * pure function serves BOTH the session host's legacy store (the validated
- * write funnel and the typed reads) AND the cell's per-flavor settle \u2014
+ * write funnel and the typed reads) AND the cell's per-lane settle \u2014
  * consistency by construction (what set admits, read converts).
  * Type-preserving: the converted value equals the declared type. Never
  * throws; a fault resolves to the closed category the clause renderers
@@ -480,8 +486,9 @@ export function materializeWireJson(value: unknown): unknown {
 /**
  * THE value cell - the unit of the no-store variable substrate: one minted
  * cell per declared variable. Each cell carries its own declaration (name
- * + flavor), its value-or-unset state, and OWNS its settle policy (the
- * legacy funnel's two arms collapsed into the per-flavor setter). Design
+ * + admitted typing), its value-or-unset state, and OWNS its settle policy
+ * (the legacy funnel's two arms collapsed into the per-lane setter).
+ * Design
  * fences: NO grants live on the cell (they ride the phase binding), NO
  * cross-cell linkage (there is no name-index anywhere in this module), NO
  * display-name storage (the display derives through the resolver).
@@ -491,11 +498,11 @@ export class VarCell {
    * registry key - addresses tool params, names every failure line, keys
    * the intra-phase duplicate refusal. */
   readonly name: string;
-  /** THE single FLAVOR slot: EXACTLY ONE present (a built-in literal or a
-   * custom spec), admission-validated PRE-MINT. The disjoint string/object
-   * shapes make the invariant structural; discriminate by
-   * typeof === "string". */
-  readonly #flavor: VarType | CustomVarSpec;
+  /** THE single DECLARATION slot: EXACTLY ONE admitted typing present
+   * (a built-in literal or a custom spec), admission-validated PRE-MINT.
+   * The disjoint string/object shapes make the invariant structural;
+   * discriminate by typeof === "string". */
+  readonly #declaration: VarType | CustomVarSpec;
   /** Presence FLAG - the SOLE presence authority (never value identity):
    * a spec schema may lawfully parse to undefined, leaving a SET cell
    * whose read reports undefined; ONLY isEmpty() sees through that corner. */
@@ -507,10 +514,10 @@ export class VarCell {
    * is admitted identically (declareVar delegates here - one validation
    * pass, no bypass hazard). A fault mints NOTHING: the throw strictly
    * precedes every assignment. */
-  constructor(name: string, flavor: VarType | CustomVarSpec) {
-    admitVarFlavor(name, flavor);
+  constructor(name: string, declaration: VarType | CustomVarSpec) {
+    admitVarDeclaration(name, declaration);
     this.name = name;
-    this.#flavor = flavor;
+    this.#declaration = declaration;
     this.#hasValue = false;
     this.#value = undefined;
   }
@@ -520,15 +527,15 @@ export class VarCell {
    * resolver. Renders the view-scoped listing's "types" member (a downstream consumer)
    * and any line needing a human-facing name. */
   get displayName(): string {
-    return displayVarFlavor(this.#flavor);
+    return displayVarDeclaration(this.#declaration);
   }
 
   /** THE single validated settle entry for EVERY origin (capability code
    * and the model's setVar alike) \u2014 the legacy funnel's two arms collapsed
-   * into the per-flavor policy: the built-in flavor runs the pure shared
+   * into the per-lane policy: the literal lane runs the pure shared
    * conversion into the pinned reject-clause family (a rejected write
    * THROWS the family carrying the pinned coercion-reject line); the spec
-   * flavor skips base conversion entirely, materializes ANY STRING payload
+   * lane skips base conversion entirely, materializes ANY STRING payload
    * against a JSON read BEFORE the shape check, then parses the
    * MATERIALIZED CANDIDATE through the schema's safeParse behind the
    * wrap-catch (a FAULTING check degrades to the contained dedicated fault
@@ -538,14 +545,19 @@ export class VarCell {
    * presence state INTACT (store-on-success). Null flows through the
    * ordinary parse path like any other incoming value. */
   set(raw: unknown): void {
-    const flavor = this.#flavor;
-    if (typeof flavor === "string") {
+    const declaration = this.#declaration;
+    if (typeof declaration === "string") {
       // LEGACY LITERAL LANE: the shared table converts and the CONVERSION
       // RESULT is what stores.
-      const result = convertVarValue(raw, flavor);
+      const result = convertVarValue(raw, declaration);
       if ("rejected" in result) {
         throw new VariableRejectionError([
-          renderVarCoercionRejectLine(this.name, flavor, raw, result.rejected),
+          renderVarCoercionRejectLine(
+            this.name,
+            declaration,
+            raw,
+            result.rejected,
+          ),
         ]);
       }
       this.#value = result.converted;
@@ -553,13 +565,13 @@ export class VarCell {
       return;
     }
     // SPEC LANE: the admission settled the members, the settle trusts them
-    // (bottom-type discipline: the guard narrowed the flavor to the spec).
+    // (bottom-type discipline: the guard narrowed the declaration to the spec).
     const candidate = materializeWireJson(raw);
     let parsed: z.ZodSafeParseResult<unknown>;
     // Wrapping ONLY the parse call: author schema code can throw even on
     // merely-failing values, and every thrown kind settles the fault line.
     try {
-      parsed = flavor.schema.safeParse(candidate);
+      parsed = declaration.schema.safeParse(candidate);
     } catch {
       throw new VariableRejectionError([renderVarSpecFaultLine(this.name)]);
     }
@@ -594,7 +606,7 @@ export class VarCell {
 
   /** Sole program-owned erasure: drops the value, the cell SURVIVES,
    * idempotent over absence (calling on an unset cell is a clean no-op).
-   * The declaration (name + flavor) is untouched - post-reset writes
+   * The declaration is untouched - post-reset writes
    * re-enter the same settle path from scratch. */
   reset(): void {
     this.#hasValue = false;
@@ -610,9 +622,9 @@ export class VarCell {
  * anywhere in this module). */
 export function declareVar(
   name: string,
-  flavor: VarType | CustomVarSpec,
+  declaration: VarType | CustomVarSpec,
 ): VarCell {
-  return new VarCell(name, flavor);
+  return new VarCell(name, declaration);
 }
 
 /** THE owner-locked grant model (ruling R1): READ IS GRANTED BY DEFAULT

@@ -15,9 +15,9 @@ import { VariableRejectionError } from "./errors.ts";
 import { captureError } from "./status.ts";
 import type { CustomVarSpec, PhaseVarBinding, VarType } from "./var-cell.ts";
 import {
-  admitVarFlavor,
+  admitVarDeclaration,
   declareVar,
-  displayVarFlavor,
+  displayVarDeclaration,
   emptyBindingNames,
   listWriteGrants,
   projectReadSet,
@@ -274,25 +274,25 @@ describe("VarCell \u2014 admission (declareVar)", () => {
   });
 
   it("the shared admission core RETURNS the DISPLAY name on success (the store-delegation seam's feed): a literal returns ITSELF, a well-formed spec returns ITS LABEL \u2014 a malformed payload never returns", () => {
-    expect(admitVarFlavor("l", "string")).toBe("string");
+    expect(admitVarDeclaration("l", "string")).toBe("string");
     expect(
-      admitVarFlavor("s", { label: "decision-shape", schema: z.string() }),
+      admitVarDeclaration("s", { label: "decision-shape", schema: z.string() }),
     ).toBe("decision-shape");
-    expect(() => admitVarFlavor("f", foreignVarType)).toThrow();
+    expect(() => admitVarDeclaration("f", foreignVarType)).toThrow();
   });
 
   it("DISPLAY derivation (resolver-owned, NO stored field): a built-in cell displays its LITERAL, a spec cell displays its LABEL \u2014 delegated to the relocated display resolver, consistent with the admission return", () => {
     const builtin = declareVar("note", "string");
     expect(builtin.displayName).toBe("string");
-    expect(displayVarFlavor("string")).toBe("string");
+    expect(displayVarDeclaration("string")).toBe("string");
     const spec = declareVar("pair", {
       label: "pair-shape",
       schema: z.string(),
     });
     expect(spec.displayName).toBe("pair-shape");
-    expect(displayVarFlavor({ label: "pair-shape", schema: z.string() })).toBe(
-      "pair-shape",
-    );
+    expect(
+      displayVarDeclaration({ label: "pair-shape", schema: z.string() }),
+    ).toBe("pair-shape");
   });
 });
 
@@ -666,7 +666,7 @@ describe("VarCell \u2014 stored-by-reference integrity walk (deep structure)", (
   });
 });
 
-describe("VarCell \u2014 spec-lane funnel (set, custom-spec flavor)", () => {
+describe("VarCell \u2014 spec-lane funnel (set, custom-spec declarations)", () => {
   it("a CONFORMING write stores EXACTLY the parse output: the identity lane deep-equals the input (deep equality ONLY \u2014 object parse yields a fresh reference, so no reference-identity claim), the SCALAR passthrough conformance round-trips verbatim, and the TRANSFORM PROOF row stores the transformed output differing in value from the raw input (side-effect-free)", () => {
     const decision = declareVar("decision", {
       label: "decision-shape",

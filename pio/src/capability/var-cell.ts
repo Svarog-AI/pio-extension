@@ -14,7 +14,7 @@
 // deterministic) and refuse the SOLE surviving name conflict loudly: two
 // bindings of the same name in one set.
 //
-// ADMISSION is one shared pre-mint validator (admitVarDeclaration) feeding BOTH
+// ADMISSION is one shared pre-mint validator (admitVarType) feeding BOTH
 // the free minter and the session host's legacy store declare() (single
 // source of truth for every admission line): the six built-in literals
 // admit verbatim; a non-null non-array object enters the spec lane under
@@ -73,7 +73,7 @@ export interface CustomVarSpec {
 
 /**
  * Bookkeeping corruption over the variable ADMISSION at cell mint: a
- * malformed declaration payload (the re-declare concept does not exist here -
+ * malformed type payload (the re-declare concept does not exist here -
  * there is no name to conflict with). Developer-facing, PURE ASCII (no em
  * dashes), model-invisible - the separate ASCII fault voice class (à la
  * ExecutionStateError) deliberately DISTINCT from the model-visible
@@ -139,7 +139,7 @@ function renderVarMalformedBaseTypeLine(
 }
 
 /**
- * THE shared pre-mint admission validator over a variable DECLARATION
+ * THE shared pre-mint admission validator over a variable TYPE
  * (SOLE source of truth for every admission line): cast-free FIRST-FAULT
  * triage over the RUNTIME payload, exactly the delivered dispatch. A
  * STRING payload takes the literal lane (the six literals admit; a foreign
@@ -155,31 +155,27 @@ function renderVarMalformedBaseTypeLine(
  * Returns the DISPLAY name (literal self / spec label); throws the
  * bookkeeping voice on any fault.
  */
-export function admitVarDeclaration(name: string, payload: unknown): string {
-  if (typeof payload === "string") {
-    if (isBuiltinVarType(payload)) return payload;
-    throw new VarAdmissionError(renderVarMalformedBaseTypeLine(name, payload));
+export function admitVarType(name: string, type: unknown): string {
+  if (typeof type === "string") {
+    if (isBuiltinVarType(type)) return type;
+    throw new VarAdmissionError(renderVarMalformedBaseTypeLine(name, type));
   }
-  if (
-    typeof payload !== "object" ||
-    payload === null ||
-    Array.isArray(payload)
-  ) {
-    throw new VarAdmissionError(renderVarMalformedBaseTypeLine(name, payload));
+  if (typeof type !== "object" || type === null || Array.isArray(type)) {
+    throw new VarAdmissionError(renderVarMalformedBaseTypeLine(name, type));
   }
   // SPEC LANE: member reads over the unknown boundary ride Reflect so the
   // triage stays cast-free (the interface types lie past erasure, so every
   // member is re-adjudicated at runtime - the first fault settles, collect-
   // all is barred; the voice is single-line single-fault). Nothing mints
   // before the triage settles.
-  const label: unknown = Reflect.get(payload, "label");
+  const label: unknown = Reflect.get(type, "label");
   if (typeof label !== "string" || label === "") {
     throw new VarAdmissionError(renderVarSpecLabelLine(name));
   }
   if (isBuiltinVarType(label)) {
     throw new VarAdmissionError(renderVarSpecShadowLine(name, label));
   }
-  const schema: unknown = Reflect.get(payload, "schema");
+  const schema: unknown = Reflect.get(type, "schema");
   if (!(schema instanceof z.ZodType)) {
     throw new VarAdmissionError(renderVarSpecSchemaLine(name));
   }
@@ -191,10 +187,8 @@ export function admitVarDeclaration(name: string, payload: unknown): string {
  * Feeds the cell's derived display accessor, the admission return, and the
  * legacy store's declarations()/declarationDisplay() faces (delegated
  * inward) - zero casts on either face. */
-export function displayVarDeclaration(
-  declaration: VarType | CustomVarSpec,
-): string {
-  return typeof declaration === "string" ? declaration : declaration.label;
+export function displayVarType(type: VarType | CustomVarSpec): string {
+  return typeof type === "string" ? type : type.label;
 }
 
 /** Closed fault taxonomy of the shared conversion core: one category per
@@ -498,11 +492,11 @@ export class VarCell {
    * registry key - addresses tool params, names every failure line, keys
    * the intra-phase duplicate refusal. */
   readonly name: string;
-  /** THE single DECLARATION slot: EXACTLY ONE admitted typing present
-   * (a built-in literal or a custom spec), admission-validated PRE-MINT.
-   * The disjoint string/object shapes make the invariant structural;
-   * discriminate by typeof === "string". */
-  readonly #declaration: VarType | CustomVarSpec;
+  /** THE single TYPE slot: EXACTLY ONE present (a built-in literal or a
+   * custom spec), admission-validated PRE-MINT. The disjoint string/object
+   * shapes make the invariant structural; discriminate by
+   * typeof === "string". */
+  readonly #type: VarType | CustomVarSpec;
   /** Presence FLAG - the SOLE presence authority (never value identity):
    * a spec schema may lawfully parse to undefined, leaving a SET cell
    * whose read reports undefined; ONLY isEmpty() sees through that corner. */
@@ -514,10 +508,10 @@ export class VarCell {
    * is admitted identically (declareVar delegates here - one validation
    * pass, no bypass hazard). A fault mints NOTHING: the throw strictly
    * precedes every assignment. */
-  constructor(name: string, declaration: VarType | CustomVarSpec) {
-    admitVarDeclaration(name, declaration);
+  constructor(name: string, type: VarType | CustomVarSpec) {
+    admitVarType(name, type);
     this.name = name;
-    this.#declaration = declaration;
+    this.#type = type;
     this.#hasValue = false;
     this.#value = undefined;
   }
@@ -527,7 +521,7 @@ export class VarCell {
    * resolver. Renders the view-scoped listing's "types" member (a downstream consumer)
    * and any line needing a human-facing name. */
   get displayName(): string {
-    return displayVarDeclaration(this.#declaration);
+    return displayVarType(this.#type);
   }
 
   /** THE single validated settle entry for EVERY origin (capability code
@@ -545,19 +539,14 @@ export class VarCell {
    * presence state INTACT (store-on-success). Null flows through the
    * ordinary parse path like any other incoming value. */
   set(raw: unknown): void {
-    const declaration = this.#declaration;
-    if (typeof declaration === "string") {
+    const type = this.#type;
+    if (typeof type === "string") {
       // LEGACY LITERAL LANE: the shared table converts and the CONVERSION
       // RESULT is what stores.
-      const result = convertVarValue(raw, declaration);
+      const result = convertVarValue(raw, type);
       if ("rejected" in result) {
         throw new VariableRejectionError([
-          renderVarCoercionRejectLine(
-            this.name,
-            declaration,
-            raw,
-            result.rejected,
-          ),
+          renderVarCoercionRejectLine(this.name, type, raw, result.rejected),
         ]);
       }
       this.#value = result.converted;
@@ -565,13 +554,13 @@ export class VarCell {
       return;
     }
     // SPEC LANE: the admission settled the members, the settle trusts them
-    // (bottom-type discipline: the guard narrowed the declaration to the spec).
+    // (bottom-type discipline: the guard narrowed the type to the spec).
     const candidate = materializeWireJson(raw);
     let parsed: z.ZodSafeParseResult<unknown>;
     // Wrapping ONLY the parse call: author schema code can throw even on
     // merely-failing values, and every thrown kind settles the fault line.
     try {
-      parsed = declaration.schema.safeParse(candidate);
+      parsed = type.schema.safeParse(candidate);
     } catch {
       throw new VariableRejectionError([renderVarSpecFaultLine(this.name)]);
     }
@@ -622,9 +611,9 @@ export class VarCell {
  * anywhere in this module). */
 export function declareVar(
   name: string,
-  declaration: VarType | CustomVarSpec,
+  type: VarType | CustomVarSpec,
 ): VarCell {
-  return new VarCell(name, declaration);
+  return new VarCell(name, type);
 }
 
 /** THE owner-locked grant model (ruling R1): READ IS GRANTED BY DEFAULT

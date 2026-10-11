@@ -15,9 +15,9 @@ import { VariableRejectionError } from "./errors.ts";
 import { captureError } from "./status.ts";
 import type { CustomVarSpec, PhaseVarBinding, VarType } from "./var-cell.ts";
 import {
-  admitVarDeclaration,
+  admitVarType,
   declareVar,
-  displayVarDeclaration,
+  displayVarType,
   emptyBindingNames,
   listWriteGrants,
   projectReadSet,
@@ -274,25 +274,25 @@ describe("VarCell \u2014 admission (declareVar)", () => {
   });
 
   it("the shared admission core RETURNS the DISPLAY name on success (the store-delegation seam's feed): a literal returns ITSELF, a well-formed spec returns ITS LABEL \u2014 a malformed payload never returns", () => {
-    expect(admitVarDeclaration("l", "string")).toBe("string");
+    expect(admitVarType("l", "string")).toBe("string");
     expect(
-      admitVarDeclaration("s", { label: "decision-shape", schema: z.string() }),
+      admitVarType("s", { label: "decision-shape", schema: z.string() }),
     ).toBe("decision-shape");
-    expect(() => admitVarDeclaration("f", foreignVarType)).toThrow();
+    expect(() => admitVarType("f", foreignVarType)).toThrow();
   });
 
   it("DISPLAY derivation (resolver-owned, NO stored field): a built-in cell displays its LITERAL, a spec cell displays its LABEL \u2014 delegated to the relocated display resolver, consistent with the admission return", () => {
     const builtin = declareVar("note", "string");
     expect(builtin.displayName).toBe("string");
-    expect(displayVarDeclaration("string")).toBe("string");
+    expect(displayVarType("string")).toBe("string");
     const spec = declareVar("pair", {
       label: "pair-shape",
       schema: z.string(),
     });
     expect(spec.displayName).toBe("pair-shape");
-    expect(
-      displayVarDeclaration({ label: "pair-shape", schema: z.string() }),
-    ).toBe("pair-shape");
+    expect(displayVarType({ label: "pair-shape", schema: z.string() })).toBe(
+      "pair-shape",
+    );
   });
 });
 

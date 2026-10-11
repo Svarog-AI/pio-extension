@@ -192,9 +192,9 @@ import { decideVarWrite } from "./guards/var-gate.ts";
 import { decideWrite } from "./guards/write-gate.ts";
 import type { CustomVarSpec, VarType } from "./var-cell.ts";
 import {
-  admitVarDeclaration,
+  admitVarType,
   convertVarValue,
-  displayVarDeclaration,
+  displayVarType,
   materializeWireJson,
   renderVarCoercionRejectLine,
   renderVarSpecDefectLine,
@@ -631,7 +631,7 @@ export class SessionVariableStore {
   /** THE base-type registry writer (mandatory-type doctrine): registers
    * the base type OR a capability-authored CUSTOM SPEC ({label, schema})
    * for a name, scoped to this session instance. Pre-mint ADMISSION
-   * delegates INWARD to the substrate's shared validator (admitVarDeclaration
+   * delegates INWARD to the substrate's shared validator (admitVarType
    * — single source of truth for every admission line: the literal lane
    * admits the six literals, a non-null non-array object enters the spec
    * lane under the fixed first-fault triage, everything else settles the
@@ -651,10 +651,10 @@ export class SessionVariableStore {
     // THE shared pre-mint admission (delegated inward): yields the DISPLAY
     // name on success; a fault throws the bookkeeping voice before
     // anything mints.
-    const display = admitVarDeclaration(name, type);
+    const display = admitVarType(name, type);
     const existing = this.#types.get(name);
     if (existing !== undefined) {
-      const existingDisplay = displayVarDeclaration(existing);
+      const existingDisplay = displayVarType(existing);
       if (existingDisplay !== display) {
         throw new VarAdmissionError(
           `var registry: cannot declare '${name}' as '${display}': already declared as '${existingDisplay}'`,
@@ -761,7 +761,7 @@ export class SessionVariableStore {
   declarations(): Readonly<Record<string, string>> {
     const snapshot: Record<string, string> = {};
     for (const [name, type] of this.#types) {
-      snapshot[name] = displayVarDeclaration(type);
+      snapshot[name] = displayVarType(type);
     }
     return snapshot;
   }
@@ -775,7 +775,7 @@ export class SessionVariableStore {
   declarationDisplay(name: string): string | undefined {
     const stored = this.#types.get(name);
     if (stored === undefined) return undefined;
-    return displayVarDeclaration(stored);
+    return displayVarType(stored);
   }
 }
 

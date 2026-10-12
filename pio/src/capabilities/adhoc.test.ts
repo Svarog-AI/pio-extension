@@ -403,9 +403,10 @@ const FAIL_REPORT_TRAILER_REPLICA =
   "State these facts plainly and briefly in your reply. Do not re-run or dispatch anything yourself, and do not ask the user anything. End your turn right after stating them.";
 
 /** Replica of the uniform report instruction (SOLE OWNER:
- * UNIFORM_REPORT_INSTRUCTION in ./adhoc.ts) - the fixed opener pointing at
- * the just-posted outcome facts, joined to the trailer verbatim. */
-const UNIFORM_REPORT_INSTRUCTION_REPLICA = `The outcome facts were posted to your context lane immediately before this phase - the custom message that precedes this prompt in the conversation.\n${FAIL_REPORT_TRAILER_REPLICA}`;
+ * UNIFORM_REPORT_INSTRUCTION in ./adhoc.ts) - the bare fixed opener over
+ * the outcome facts (no carriage phrasing - the visible post carries the
+ * referent), joined to the trailer verbatim. */
+const UNIFORM_REPORT_INSTRUCTION_REPLICA = `Report the outcome facts.\n${FAIL_REPORT_TRAILER_REPLICA}`;
 
 /** Replica of the admission-refusal fact renderer (SOLE OWNER:
  * renderAdmissionRefusalFacts in ./adhoc.ts) - the refusal line plus the

@@ -66,11 +66,11 @@ function renderGatherInstructions(listing: string): string {
 const REPORT_TRAILER = `State these facts plainly and briefly in your reply. Do not re-run or dispatch anything yourself, and do not ask the user anything. End your turn right after stating them.`;
 
 /** THE single uniform report instruction (SOLE OWNER of these bytes):
- * BYTE-IDENTICAL across ALL outcomes - the fixed opener points at the
- * outcome facts just posted to the context lane (the custom message
- * preceding this prompt in transcript order) and the trailer discipline
+ * BYTE-IDENTICAL across ALL outcomes - the bare fixed opener names the
+ * reportable subject and the VISIBLE post carries the referent (owner
+ * simplification: no carriage phrasing), while the trailer discipline
  * trails VERBATIM. Pure ASCII. */
-const UNIFORM_REPORT_INSTRUCTION = `The outcome facts were posted to your context lane immediately before this phase - the custom message that precedes this prompt in the conversation.\n${REPORT_TRAILER}`;
+const UNIFORM_REPORT_INSTRUCTION = `Report the outcome facts.\n${REPORT_TRAILER}`;
 
 const INTERRUPT_DEGRADED_LINE = `Partial outputs could not be verified (state-root derivation fault); any durable files it committed remain under the project workspace.`;
 

@@ -13,7 +13,7 @@
 // assertion failure.
 //
 // Physics mirror (installed 0.85.1 dist): handles bookkeep LIVE listeners
-// — subscribe returns a functional per-listener unsubscribe and dispose
+// - subscribe returns a functional per-listener unsubscribe and dispose
 // clears the live list (agent-session.js L584–L604); scripted swaps apply
 // the MEASURED teardown-then-apply order (agent-session-runtime.js
 // L102–L143): dispose the OUTGOING handle FIRST, then apply the FRESH
@@ -41,7 +41,6 @@ import type {
 } from "@earendil-works/pi-coding-agent";
 import type { IdSeams } from "../sandbox/layout.ts";
 import { ContractViolationError } from "./errors.ts";
-import type { SessionVariableStore } from "./pio-session.ts";
 import { PioSession } from "./pio-session.ts";
 import type {
   CapabilityResult,
@@ -79,7 +78,7 @@ interface PhysicsHandle {
    * callable through the interface. */
   subscribe: ReturnType<typeof vi.fn> & ((listener: Listener) => () => void);
   dispose: ReturnType<typeof vi.fn> & (() => void);
-  /** Every listener ever subscribed — append-only counting observability. */
+  /** Every listener ever subscribed - append-only counting observability. */
   readonly captured: Listener[];
   /** Live listeners: subscribe adds; unsubscribe / mirrored dispose remove. */
   readonly live: Listener[];
@@ -103,7 +102,7 @@ const sdkHarness = vi.hoisted(() => {
   let mints = 0;
   // Deterministic platform-named file UNDER THE GIVEN DIR (the filename
   // counter stands for the platform's own minted id); NO filesystem side
-  // effects — the fake mint creates neither dir nor file.
+  // effects - the fake mint creates neither dir nor file.
   const create = vi.fn((cwd: string, sessionDir?: string) => {
     const fileName = `20260101T000000Z_${String(++mints).padStart(8, "0")}.jsonl`;
     return {
@@ -173,7 +172,7 @@ type SwapStep =
   | {
       kind: "swap";
       /** The REOPENED handle's sessionId (a fresh id for a switched-in
-       * child; the RETAINED id for a switched-back parent — file-backed
+       * child; the RETAINED id for a switched-back parent - file-backed
        * identity). */
       sessionId: string;
       /** Scripted transcript persistence landing the JSONL file at the
@@ -225,7 +224,7 @@ function buildPhysicsWorld(root: string, cwd: string): PhysicsWorld {
         _path: string,
         _options?: { readonly cwdOverride?: string },
       ): Promise<{ cancelled: boolean }> => {
-        // Placeholder physics — rows queue their own steps.
+        // Placeholder physics - rows queue their own steps.
         return { cancelled: false };
       },
     ),
@@ -266,7 +265,7 @@ function scriptSwitches(world: PhysicsWorld, ...steps: SwapStep[]): void {
 }
 
 /** Row-owned signal-registration fake: structural KillCaptureTarget
- * conformance over an append-only handler list — dispatch runs by INDEX
+ * conformance over an append-only handler list - dispatch runs by INDEX
  * (the row drives handlers explicitly; last-prepended-runs-first is the
  * row's business, not this fake's). */
 function makeSignalFake(): {
@@ -286,7 +285,7 @@ function makeSignalFake(): {
 
 /** A manually-openable promise pair for PENDING composed bodies: the body
  * reports ENTER (switch-out + push landed) and then parks on the opened
- * promise (never opened in trigger rows — the latch reject channel settles
+ * promise (never opened in trigger rows - the latch reject channel settles
  * instead). Trigger rows await entered BEFORE firing. */
 function rowGate(): {
   readonly entered: Promise<void>;
@@ -383,7 +382,7 @@ function countStatusFiles(dir: string): number {
   return count;
 }
 
-/** Recursive relative-path listing (sorted) — the audit-tree observation.
+/** Recursive relative-path listing (sorted) - the audit-tree observation.
  */
 function recursiveListing(dir: string): string[] {
   const out: string[] = [];
@@ -402,7 +401,7 @@ function recursiveListing(dir: string): string[] {
 
 /** Pin the canonical record byte shape shared by the H rows: raw-string
  * pins (trailing newline, 2-space indent start, exact top-level key order)
- * + durationMs UNPINNED (composed emitters take no clock seam — module
+ * + durationMs UNPINNED (composed emitters take no clock seam - module
  * defaults own the clock; accepted boundary, documented in-row). Returns
  * the parsed record for field pins. */
 function expectCanonicalRecord(
@@ -421,7 +420,7 @@ function expectCanonicalRecord(
   return parsed;
 }
 
-/** Mutable observation state behind the fake top frame — mutated AFTER
+/** Mutable observation state behind the fake top frame - mutated AFTER
  * install by the liveness rows. */
 interface FakeFrameState {
   tokens: number;
@@ -466,14 +465,14 @@ beforeEach(() => {
   sdkHarness.reset();
 });
 
-// THE installed guard of the current row (module-scoped state — the guard
+// THE installed guard of the current row (module-scoped state - the guard
 // registry is per-file; afterEach uninstalls so no row leaks the wrapper).
 let currentGuard: ShutdownGuard | undefined;
 
 const tempRoots: string[] = [];
 let tempCursor = 0;
 
-/** One row-owned tmpdir root; afterEach removes it recursively — FORCED
+/** One row-owned tmpdir root; afterEach removes it recursively - FORCED
  * TEARDOWN: the removal runs even on assertion failure. */
 function newTempRoot(): string {
   const root = mkdtempSync(
@@ -589,7 +588,7 @@ function attachHarnessTopEmitter(
 }
 
 /** Guard-seam builder: exit spy + signal fake (reused when provided) + the
- * REAL installExitGuard (rows ALWAYS supply the exit seam — no row wraps
+ * REAL installExitGuard (rows ALWAYS supply the exit seam - no row wraps
  * the real process sink). Registered for the afterEach uninstall hygiene
  * (module-scoped state). */
 function buildGuardSeams(existingSignals?: ReturnType<typeof makeSignalFake>): {
@@ -901,7 +900,7 @@ describe("hop matrix (H rows — materializeFrame over the physics world)", () =
       const backArgs = world.runtime.switchSession.mock.calls[1] as unknown[];
       expect(outArgs).toEqual([childFile, { cwdOverride: "/work/alpha" }]);
       expect(backArgs).toEqual([parentFile, { cwdOverride: "/work/alpha" }]);
-      // Current handle: the REOPENED parent — fresh instance, retained
+      // Current handle: the REOPENED parent - fresh instance, retained
       // file-backed identity (the measured reopen quirk).
       const current = world.runtime.session;
       expect(current.sessionId).toBe("sess-fake-0001");
@@ -909,8 +908,8 @@ describe("hop matrix (H rows — materializeFrame over the physics world)", () =
       expect(current).not.toBe(world.parentHandle);
       expect(world.parentHandle.disposed).toBe(true);
       // THE re-arm observable (stage-⑪ adjacency): the fresh post-switch-back
-      // parent handle carries EXACTLY ONE live listener — the persistent
-      // top-frame observer re-subscribed by the ledger's rebind closure —
+      // parent handle carries EXACTLY ONE live listener - the persistent
+      // top-frame observer re-subscribed by the ledger's rebind closure -
       // and it DELIVERS: one synthetic usage payload (Σ14 hand-computed)
       // advances the top frame's counters by exactly its sum.
       expect(current.live).toHaveLength(1);
@@ -923,7 +922,7 @@ describe("hop matrix (H rows — materializeFrame over the physics world)", () =
       expect(entryRef!.sessionFile()).toBe(childFile);
       // LIVE tokens over the adopted child host.
       expect(entryRef!.tokens()).toBe(40);
-      // THE canonical child record bytes (rooted at the child scope dir —
+      // THE canonical child record bytes (rooted at the child scope dir -
       // the measured origin derivation; durationMs UNPINNED: composed
       // emitters take no clock seam, module defaults own the clock).
       const raw = readFileSync(
@@ -963,7 +962,7 @@ describe("hop matrix (H rows — materializeFrame over the physics world)", () =
       // No terminal or signal side channel of any kind.
       expect(stdoutSpy).not.toHaveBeenCalled();
       expect(world.stderr).not.toHaveBeenCalled();
-      // Constructed ONCE total (at world setup — the module contributes
+      // Constructed ONCE total (at world setup - the module contributes
       // zero constructions), and stop called ZERO times during the hop.
       expect(world.terminal.constructions).toBe(1);
       expect(world.terminal.stop).toHaveBeenCalledTimes(0);
@@ -972,7 +971,7 @@ describe("hop matrix (H rows — materializeFrame over the physics world)", () =
     }
   });
 
-  it("H2 nested grandchildren (two stacked hops): scopes nest TWO segments under the root, inner child mints under the OUTER child's scope dir, four switch calls run out-A, out-B, back-to-A, back-to-parent, records land at <outer>/<inner>/top and <outer>/top, the harness top-frame record lands at <root>/top, outputs reference the inner settled payload BY REFERENCE, variable stores stay frame-private, one live handle throughout, all ledgers pop, ONE IM across the whole chain", async () => {
+  it("H2 nested grandchildren (two stacked hops): scopes nest TWO segments under the root, inner child mints under the OUTER child's scope dir, four switch calls run out-A, out-B, back-to-A, back-to-parent, records land at <outer>/<inner>/top and <outer>/top, the harness top-frame record lands at <root>/top, outputs reference the inner settled payload BY REFERENCE, one live handle throughout, all ledgers pop, ONE IM across the whole chain", async () => {
     const { root, world, top, parentFile } = buildAlphaWorld("/work/nest");
     const outerChildDir = join(root, CHILD_ID_A, "top");
     const outerChildFile = join(outerChildDir, MINTED_FILE(1));
@@ -1023,20 +1022,11 @@ describe("hop matrix (H rows — materializeFrame over the physics world)", () =
       },
     );
     const innerOutputs: Record<string, unknown> = { value: 42 };
-    let outerStoreRef: SessionVariableStore | undefined;
-    let innerStoreRef: SessionVariableStore | undefined;
     let innerSettledRef: CapabilityResult | undefined;
     const settled = await materializeFrame({
       capability: CONTRACT_ALPHA,
       idSeams: SEAMS_A,
-      body: async (frame: PioSession): Promise<Record<string, unknown>> => {
-        const outerStore = frame.vars;
-        // W2C mechanical preamble (mandatory-type ruling): declare before
-        // the first write; row intent unchanged.
-        outerStore.declare("ovar", "number");
-        outerStore.set("ovar", 3);
-        outerStoreRef = outerStore;
-        expect(outerStore.get("ovar")).toBe(3);
+      body: async (): Promise<Record<string, unknown>> => {
         // Pre-attach guard: the inner record does not exist before its
         // attach (checked here, mid-hop, strictly BEFORE the inner
         // dispatch mutates anything).
@@ -1047,13 +1037,6 @@ describe("hop matrix (H rows — materializeFrame over the physics world)", () =
           capability: CONTRACT_BETA,
           idSeams: SEAMS_B,
           body: async (grand: PioSession): Promise<Record<string, unknown>> => {
-            const innerStore = grand.vars;
-            // W2C mechanical preamble (mandatory-type ruling).
-            innerStore.declare("ivar", "number");
-            innerStore.set("ivar", 99);
-            innerStoreRef = innerStore;
-            expect(innerStore.list()).toEqual(["ivar"]);
-            expect(innerStore.get("ovar")).toBeUndefined();
             expect(grand.counters().tokens).toBe(0);
             // Mid-inner-hop: three frames stacked (top, A, B).
             const frames = activeFrames();
@@ -1069,12 +1052,11 @@ describe("hop matrix (H rows — materializeFrame over the physics world)", () =
         expect(
           existsSync(join(root, CHILD_ID_A, CHILD_ID_B, "top", "status.json")),
         ).toBe(true);
-        expect(outerStore.get("ivar")).toBeUndefined();
         return { inner: innerSettled };
       },
     });
     // By-reference nesting: the outer outputs hold the inner settled
-    // object, which holds the inner outputs — no round-trips.
+    // object, which holds the inner outputs - no round-trips.
     expect(settled.ok).toBe(true);
     expect((settled.outputs as { inner: CapabilityResult }).inner).toBe(
       innerSettledRef,
@@ -1112,7 +1094,7 @@ describe("hop matrix (H rows — materializeFrame over the physics world)", () =
     expect(live).toHaveLength(1);
     expect(live[0]).toBe(current);
     // THE two child records at their measured placements (rooted at the
-    // child scope dirs — origin = dirname(scopeDir) — so the refs carry
+    // child scope dirs - origin = dirname(scopeDir) - so the refs carry
     // the <childId> segment; durationMs unpinned as in H1).
     const outerRaw = readFileSync(
       join(root, CHILD_ID_A, "top", "status.json"),
@@ -1153,7 +1135,7 @@ describe("hop matrix (H rows — materializeFrame over the physics world)", () =
       source: "builtin",
     });
     // Measured placement artifact: the emitter roots at the child scope
-    // dir, so the ref origin is one segment up — a grandchild ref carries
+    // dir, so the ref origin is one segment up - a grandchild ref carries
     // only its OWN id.
     expect(innerParsed.transcriptRef).toBe(
       `${CHILD_ID_B}/top/${MINTED_FILE(2)}`,
@@ -1185,7 +1167,7 @@ describe("hop matrix (H rows — materializeFrame over the physics world)", () =
     });
     // Same origin derivation as the child records: relative to one segment
     // UP from the emitter's sessionsRoot (here the mkdtemp root, so the ref
-    // carries the root's basename — deterministic per run).
+    // carries the root's basename - deterministic per run).
     expect(topParsed.transcriptRef).toBe(
       `${basename(root)}/top/parent-transcript.jsonl`,
     );
@@ -1210,12 +1192,6 @@ describe("hop matrix (H rows — materializeFrame over the physics world)", () =
       outerChildDir,
       innerChildDir,
     ]);
-    // Variable stores: frame-private, separate after the unwind, nothing
-    // persisted on the shared runtime (it carries no variable state).
-    expect(outerStoreRef!.get("ovar")).toBe(3);
-    expect(outerStoreRef!.get("ivar")).toBeUndefined();
-    expect(innerStoreRef!.get("ivar")).toBe(99);
-    expect(innerStoreRef!.get("ovar")).toBeUndefined();
     // ONE IM across the WHOLE CHAIN: the harness-minted terminal was
     // constructed once at world setup (the module contributed zero
     // constructions) and stop was called never through either hop.
@@ -1242,7 +1218,7 @@ describe("hop matrix (H rows — materializeFrame over the physics world)", () =
       body: async (): Promise<Record<string, unknown>> => ({}),
     });
     expect(settled.ok).toBe(true);
-    // Single record under the whole root (no top-slot emission occurred —
+    // Single record under the whole root (no top-slot emission occurred -
     // the harness emitter belongs to engaged entries, not to this row).
     expect(countStatusFiles(root)).toBe(1);
     expect(existsSync(join(root, "top", "status.json"))).toBe(false);
@@ -1290,7 +1266,7 @@ describe("hop matrix (H rows — materializeFrame over the physics world)", () =
           // Pre-re-arm tripwire vantage: the scripted-swap observe hook fires
           // BEFORE the module-driven re-arm lands. A hostile emission on the
           // fresh handle reaches no listener (the persistent observer is
-          // still detached — only it may be re-attached); the counter read
+          // still detached - only it may be re-attached); the counter read
           // captured HERE is what the post-await pins must equal.
           emitLive(incoming, assistantMessageEnd(99, 99, 99, 99));
           preReArmRead = top.counters().tokens;
@@ -1306,7 +1282,7 @@ describe("hop matrix (H rows — materializeFrame over the physics world)", () =
       idSeams: SEAMS_A,
       body: async (frame: PioSession): Promise<Record<string, unknown>> => {
         expect(frame.counters().tokens).toBe(0);
-        // MID vector: usage lands on the CURRENT handle — the child's.
+        // MID vector: usage lands on the CURRENT handle - the child's.
         emitLive(world.runtime.session, assistantMessageEnd(11, 22, 3, 4));
         await Promise.resolve();
         expect(frame.counters().tokens).toBe(MID_M);
@@ -1318,7 +1294,7 @@ describe("hop matrix (H rows — materializeFrame over the physics world)", () =
       },
     });
     expect(settled.ok).toBe(true);
-    // THE immediate post-switch-back read — including the tripwire vantage
+    // THE immediate post-switch-back read - including the tripwire vantage
     // captured BEFORE the re-arm landed, AFTER a hostile emission on the
     // fresh handle: N EXACT. The reopen replayed NOTHING and moved NOTHING
     // until the module-driven re-arm delivered.
@@ -1355,50 +1331,6 @@ describe("hop matrix (H rows — materializeFrame over the physics world)", () =
     // Isolation both ways: the parent-side traffic never reached the child
     // host either.
     expect(entryRef!.tokens()).toBe(MID_M);
-  });
-
-  it("H5 the child frame's variable store: set/get/list round-trips in the body and persists across microtasks there, while staying UNPERSISTED across the unwind — frame-private stores, nothing written to the shared runtime or the filesystem", async () => {
-    const { root, world, top } = buildAlphaWorld("/work/vars");
-    scriptSwitches(
-      world,
-      {
-        kind: "swap",
-        sessionId: "sess-child-a",
-        persist: (path: string): void => {
-          seedTranscript(path, "<seed>\n");
-        },
-      },
-      { kind: "swap", sessionId: "sess-fake-0001" },
-    );
-    let storeRef: SessionVariableStore | undefined;
-    const settled = await materializeFrame({
-      capability: CONTRACT_ALPHA,
-      idSeams: SEAMS_A,
-      body: async (frame: PioSession): Promise<Record<string, unknown>> => {
-        const store = frame.vars;
-        // W2C mechanical preamble (mandatory-type ruling): declare before
-        // the first write; row intent unchanged.
-        store.declare("hopvar", "number");
-        store.set("hopvar", 99);
-        storeRef = store;
-        expect(store.get("hopvar")).toBe(99);
-        expect(store.list()).toEqual(["hopvar"]);
-        await Promise.resolve();
-        expect(store.get("hopvar")).toBe(99);
-        return {};
-      },
-    });
-    expect(settled.ok).toBe(true);
-    // After the unwind: the store persists WITH the adopted host object...
-    expect(storeRef!.get("hopvar")).toBe(99);
-    // ...while the top frame's own store stayed clean...
-    expect(top.vars.list()).toEqual([]);
-    // ...and nothing landed on disk beyond the expected minimal tree.
-    expect(recursiveListing(root)).toEqual([
-      `${CHILD_ID_A}/top/${MINTED_FILE(1)}`,
-      `${CHILD_ID_A}/top/status.json`,
-      "top/parent-transcript.jsonl",
-    ]);
   });
 
   /** THE specified three-variant body-fault table: each variant drives a
@@ -1476,7 +1408,7 @@ describe("hop matrix (H rows — materializeFrame over the physics world)", () =
         },
       });
       // THE await RESOLVED (never rejected) with the EXACT single-element
-      // capture — this variant's shipped ladder shape.
+      // capture - this variant's shipped ladder shape.
       expect(settled).toStrictEqual({
         ok: false,
         errors: [variant.expected],
@@ -1686,7 +1618,7 @@ describe("hop matrix (H rows — materializeFrame over the physics world)", () =
     const parentFile = join(root, "top", "parent-transcript.jsonl");
     mkdirSync(join(root, "top"), { recursive: true });
     writeFileSync(parentFile, "<seed>\n");
-    // Retain the installed holder context's terminalStop reference — the
+    // Retain the installed holder context's terminalStop reference - the
     // death simulation invokes it exactly once at row end.
     const terminalStopImpl = vi.fn((): void => world.terminal.stop());
     installTopFrame(world, root, terminalStopImpl);
@@ -1799,12 +1731,12 @@ describe("hop matrix (H rows — materializeFrame over the physics world)", () =
       join(root, CHILD_ID_B, CHILD_ID_C, "top"),
     ]);
     // One terminal construction for the lifetime of the row (world setup)
-    // — the module contributed ZERO.
+    // - the module contributed ZERO.
     expect(world.terminal.constructions).toBe(1);
     expect(world.stderr).not.toHaveBeenCalled();
     // DEATH SIMULATION: the holder context's terminalStop invoked exactly
     // once reaches the harness IM stop EXACTLY ONCE in total (acceptance
-    // #6's scripted proof part 1 — the one-live-UI lifetime pin; part 2
+    // #6's scripted proof part 1 - the one-live-UI lifetime pin; part 2
     // rides the abort rows).
     terminalStopImpl();
     expect(terminalStopImpl).toHaveBeenCalledTimes(1);
@@ -1816,7 +1748,7 @@ describe("hop matrix (H rows — materializeFrame over the physics world)", () =
     expect(world.runtime.dispose).toHaveBeenCalledTimes(0);
     await world.runtime.dispose();
     expect(world.runtime.dispose).toHaveBeenCalledTimes(1);
-    // The mirrored dispose touches ONLY its own recorder bookkeeping — the
+    // The mirrored dispose touches ONLY its own recorder bookkeeping - the
     // current handle stays live and undisposed.
     expect(world.parentHandle.disposed).toBe(false);
     expect(world.parentHandle.live).toHaveLength(0);
@@ -1932,7 +1864,7 @@ describe("shutdown pass matrix (K rows — trigger × depth over the physics wor
         join(root, "top", "parent-transcript.jsonl"),
       );
       expect(node.children).toStrictEqual([]);
-      // THE typed line — byte-exact, on the holder stderr sink, nothing else.
+      // THE typed line - byte-exact, on the holder stderr sink, nothing else.
       expect(world.stderr).toHaveBeenCalledTimes(1);
       expect(world.stderr.mock.calls[0]?.[0]).toBe(
         typedLineReplica("top", "0.0.0", 0, "user-abort"),
@@ -1986,7 +1918,7 @@ describe("shutdown pass matrix (K rows — trigger × depth over the physics wor
           parkedSettled.value = true;
         },
       );
-      // Usage lands on the CURRENT handle — the child's (hand-computed Σ33).
+      // Usage lands on the CURRENT handle - the child's (hand-computed Σ33).
       emitLive(world.runtime.session, assistantMessageEnd(17, 9, 5, 2));
       // THE row plays the IM internals, then triggers the wrapper.
       world.terminal.stop();
@@ -2002,7 +1934,7 @@ describe("shutdown pass matrix (K rows — trigger × depth over the physics wor
         "utf8",
       );
       // Latch rejection consumed by expectation (no unhandled-rejection
-      // noise) — REAL captureError reduction.
+      // noise) - REAL captureError reduction.
       const rejected = await promise.catch((error: unknown): unknown => error);
       expect(rejected).toBeInstanceOf(FrameKillError);
       expect(captureError(rejected)).toStrictEqual({
@@ -2042,7 +1974,7 @@ describe("shutdown pass matrix (K rows — trigger × depth over the physics wor
         `${CHILD_ID_A}/top/${MINTED_FILE(1)}`,
       );
       expect(childParsed.tokens).toBe(33);
-      // THE top partial — the LIVE current-handle transcript AT TRIGGER is
+      // THE top partial - the LIVE current-handle transcript AT TRIGGER is
       // the child file (each frame's record honesty rule).
       const topParsed = expectCanonicalRecord(rawTopBefore, [
         "ok",
@@ -2097,7 +2029,7 @@ describe("shutdown pass matrix (K rows — trigger × depth over the physics wor
       // Pass-originated zeros (totals remain the row's simulated 1/1).
       expect(world.terminal.stop).toHaveBeenCalledTimes(1);
       expect(world.runtime.dispose).toHaveBeenCalledTimes(1);
-      // THE parked top latch STILL UNSETTLED (never settled — process death
+      // THE parked top latch STILL UNSETTLED (never settled - process death
       // reclaims it; the unhandled-rejection hazard is avoided by skipping).
       expect(parkedSettled.value).toBe(false);
       expect(recursiveListing(root)).toEqual([
@@ -2170,7 +2102,7 @@ describe("shutdown pass matrix (K rows — trigger × depth over the physics wor
           parkedSettled.value = true;
         },
       );
-      // Usage lands on the CURRENT handle — the grandchild's (Σ11).
+      // Usage lands on the CURRENT handle - the grandchild's (Σ11).
       emitLive(world.runtime.session, assistantMessageEnd(2, 3, 5, 1));
       world.terminal.stop();
       await world.runtime.dispose();
@@ -2323,7 +2255,7 @@ describe("shutdown pass matrix (K rows — trigger × depth over the physics wor
   it("K4 sigterm × top-only (THE SINGLE-FRAME BACK-COMPAT ROW): the guard handler (index 1 — legacy armed FIRST on the fake, guard SECOND) drives the async pass over the SHARED assembly core: the TOP record matches the shipped SIGTERM kill shape ({type:'SIGTERM', cause:'kill'}, same path as the legacy path) and the DELEGATION sub-pin holds (drive the LEGACY handler next ⇒ NO second write — hasClaimed deferral, bytes stable); the one-node snapshot pins cause 'sigterm'; the typed line names top@0.0.0 (depth 0) ended by sigterm; the exit sink receives [1] — NOT 130 (sigterm normalization); PASS-ORIGINATED stop = 1 + dispose = 1 reach the harness recorder via the holder closures; stderr === [typed line]; stdout zero", async () => {
     const { root, world, top } = buildAlphaWorld("/work/k4");
     // THE shared fake: the legacy arm lands FIRST (index 0), the guard's
-    // prepend SECOND (index 1) — last-prepended-runs-first.
+    // prepend SECOND (index 1) - last-prepended-runs-first.
     const sharedSignals = makeSignalFake();
     const harness = attachHarnessTopEmitter(
       world,
@@ -2337,7 +2269,7 @@ describe("shutdown pass matrix (K rows — trigger × depth over the physics wor
       .spyOn(process.stdout, "write")
       .mockImplementation((): boolean => true);
     try {
-      // Order pin: the fake received EXACTLY two SIGTERM handlers — legacy
+      // Order pin: the fake received EXACTLY two SIGTERM handlers - legacy
       // FIRST (armed before the guard install), guard SECOND (last-
       // prepended-runs-first). Drive the GUARD's handler (index 1).
       expect(signals.handlers).toHaveLength(2);
@@ -2345,7 +2277,7 @@ describe("shutdown pass matrix (K rows — trigger × depth over the physics wor
       await vi.waitFor(() => {
         expect(exitSpy).toHaveBeenCalledTimes(1);
       });
-      expect(exitSpy.mock.calls.map((call: unknown[]) => call[0])).toEqual([1]); // sigterm normalization — NOT 130
+      expect(exitSpy.mock.calls.map((call: unknown[]) => call[0])).toEqual([1]); // sigterm normalization - NOT 130
       // THE top record: the shipped SIGTERM kill shape.
       const raw = readFileSync(join(root, "top", "status.json"), "utf8");
       const parsed = expectCanonicalRecord(raw, [
@@ -2366,7 +2298,7 @@ describe("shutdown pass matrix (K rows — trigger × depth over the physics wor
       });
       expect(parsed.tokens).toBe(0);
       expect(harness.emitter.hasClaimed()).toBe(true);
-      // DELEGATION sub-pin: drive the LEGACY handler next (index 0) — a
+      // DELEGATION sub-pin: drive the LEGACY handler next (index 0) - a
       // kill-owned claim defers entirely: NO second write.
       const before = readFileSync(join(root, "top", "status.json"), "utf8");
       signals.handlers[0]();
@@ -2380,13 +2312,13 @@ describe("shutdown pass matrix (K rows — trigger × depth over the physics wor
       ) as Record<string, unknown>;
       expect(snap.cause).toBe("sigterm");
       expect(snap.activeScope).toBe(root);
-      // THE typed line — the single stderr line.
+      // THE typed line - the single stderr line.
       expect(world.stderr).toHaveBeenCalledTimes(1);
       expect(world.stderr.mock.calls[0]?.[0]).toBe(
         typedLineReplica("top", "0.0.0", 0, "sigterm"),
       );
       // Pass-originated stop = 1 + dispose = 1 (reached the harness
-      // recorder via the holder closures — no IM simulation in this row).
+      // recorder via the holder closures - no IM simulation in this row).
       expect(world.terminal.stop).toHaveBeenCalledTimes(1);
       expect(world.runtime.dispose).toHaveBeenCalledTimes(1);
       expect(stdoutSpy).not.toHaveBeenCalled();
@@ -2455,7 +2387,7 @@ describe("shutdown pass matrix (K rows — trigger × depth over the physics wor
         { type: "SIGTERM", cause: "kill" },
       ]);
       // THE top record: EXISTS exactly once, closed-vocabulary cause
-      // PRESENT — shape deliberately unpinned (the accepted claim-race
+      // PRESENT - shape deliberately unpinned (the accepted claim-race
       // window: a racily-claimed frame may settle as completion-with-kill-
       // capture or as partial; the pin is presence + exactly-once + cause).
       const rawTop = readFileSync(join(root, "top", "status.json"), "utf8");
@@ -2487,7 +2419,7 @@ describe("shutdown pass matrix (K rows — trigger × depth over the physics wor
       // Pass-originated stops/disposes: exactly one each.
       expect(world.terminal.stop).toHaveBeenCalledTimes(1);
       expect(world.runtime.dispose).toHaveBeenCalledTimes(1);
-      // Cascade drained home: ALL record files byte-stable post-drain —
+      // Cascade drained home: ALL record files byte-stable post-drain -
       // the ZERO double-write pin anywhere.
       await new Promise((resolve) => setTimeout(resolve, 0));
       expect(
@@ -2662,7 +2594,7 @@ describe("shutdown pass matrix (K rows — trigger × depth over the physics wor
       ) as Record<string, unknown>;
       expect(snap.cause).toBe("fatal");
       expect(snap.activeScope).toBe(root);
-      // THE typed line — the single stderr line.
+      // THE typed line - the single stderr line.
       expect(world.stderr).toHaveBeenCalledTimes(1);
       expect(world.stderr.mock.calls[0]?.[0]).toBe(
         typedLineReplica("top", "0.0.0", 0, "fatal"),
@@ -2812,13 +2744,13 @@ describe("shutdown pass matrix (K rows — trigger × depth over the physics wor
       // treatment): at depth 2 the winner between the pass's per-frame
       // partial ({fatal, kill} literal) and the frames' OWN settlement
       // emission (the CAUSED CAPTURE form, queued by leg-(a)'s rejection
-      // landing before the partial emission) alternates BETWEEN RUNS —
+      // landing before the partial emission) alternates BETWEEN RUNS -
       // engine-spec promise-job scheduling outside the contract's
       // guarantee. What IS contractual and pinned: canonical record
       // shape, kill-family CLOSED-VOCABULARY error (literal OR caused
       // capture), exactly-once, and byte-stability under the racing
       // cascade. (The rejection-FIRST leg order is deliberately kept:
-      // latches die even if every downstream leg faults — fail-safe.
+      // latches die even if every downstream leg faults - fail-safe.
       //)
       const rawC = readFileSync(
         join(root, CHILD_ID_B, CHILD_ID_C, "top", "status.json"),
@@ -2901,7 +2833,7 @@ describe("shutdown guard behaviors (G rows)", () => {
     await h1.emitter.emit({ ok: true, outputs: {} }); // settles the claim
     const s1 = buildGuardSeams();
     s1.guard.exit(0);
-    // CLEAN PASSTHROUGH: the original code VERBATIM (0 — NOT normalized).
+    // CLEAN PASSTHROUGH: the original code VERBATIM (0 - NOT normalized).
     expect(s1.exitSpy).toHaveBeenCalledTimes(1);
     expect(s1.exitSpy.mock.calls.map((call: unknown[]) => call[0])).toEqual([
       0,
@@ -3043,9 +2975,9 @@ describe("shutdown guard behaviors (G rows)", () => {
     const { root, world, top } = buildAlphaWorld("/work/g4");
     attachHarnessTopEmitter(world, top, root);
     const { exitSpy, signals, guard } = buildGuardSeams();
-    // Coverage boundary: the native exit wrap/restore leg is never exercised hermetically (seam discipline — this row drives seam sinks only; nothing mutates the real process sink); it is structurally covered here and observed in the manual E2E abort leg (#4).
+    // Coverage boundary: the native exit wrap/restore leg is never exercised hermetically (seam discipline - this row drives seam sinks only; nothing mutates the real process sink); it is structurally covered here and observed in the manual E2E abort leg (#4).
     guard.uninstall();
-    guard.uninstall(); // idempotent — no throw
+    guard.uninstall(); // idempotent - no throw
     guard.exit(7);
     expect(exitSpy).toHaveBeenCalledTimes(1);
     expect(exitSpy.mock.calls.map((call: unknown[]) => call[0])).toEqual([7]);

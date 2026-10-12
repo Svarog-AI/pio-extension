@@ -1,9 +1,9 @@
 // Hermetic unit suite for the standing compose-same-session-demo capability.
-// Self-contained island (sibling suites are self-contained — no cross-suite
+// Self-contained island (sibling suites are self-contained - no cross-suite
 // harness imports): ONE scripted-event top world in this file.
 //
 // SCRIPTED-EVENT TOP WORLD (research-suite idiom): a fake SDK root mocking
-// exactly the eight faked value symbols drives PioSession.create(cwd) — fake
+// exactly the eight faked value symbols drives PioSession.create(cwd) - fake
 // manager/services/runtime/session with subscribe/prompt/getToolDefinition/
 // sessionId/dispose plus the RECORDING sendCustomMessage mock (the
 // session-present span stamps land on it); scripted prompt resolutions emit
@@ -13,34 +13,35 @@
 // PI_CODING_AGENT_DIR pointed at <tmp>/.pi/agent (rows choose SET or
 // UNSET/MALFORMED per their pin; saved/restored in afterEach) and
 // process.chdir into <tmp>/work (restored). Every session-driven row mints
-// EXACTLY ONE session handle through the SDK kit — the single-host
+// EXACTLY ONE session handle through the SDK kit - the single-host
 // invariant IS the row-1 proof: the composed callee rides the CALLER'S
 // handle by reference, so no second mint ever happens.
 //
 // THE D1 PLACEMENT: the demo constructs the stubbed `research` WITH the
 // caller's session instance BY REFERENCE, so the REAL base run()'s
-// SESSION-PRESENT branch carries the scripted settlement in-process — the
-// stub records the CONSTRUCTION BAG + received inputs (+ vars vantage
-// points) and settles a scripted payload (success token / kill capture /
-// bare error / empty-or-absent outputs variants). Its success mode executes
+// SESSION-PRESENT branch carries the scripted settlement in-process - the
+// stub records the CONSTRUCTION BAG + received inputs (+ the callee-
+// minted cell reference) and settles a scripted payload (success token /
+// kill capture / bare error / empty-or-absent outputs variants). Its
+// success mode executes
 // ONE phase THROUGH the inherited handle (real base execute_phase →
 // marker-lined prompt on the shared handle), and the REAL settle seam
 // transforms the stub's SLOT-RELATIVE token to the bubble's absolute
-// placement — expected settled values compute in-row through the same
+// placement - expected settled values compute in-row through the same
 // public channels (never a recomputed fingerprint or key). Fault values are
 // MINTED LOCALLY (bare Error + assigned name + pinned message replica
 // citing the owner): the captureError ladder keys off name + message for
 // generic errors, so the forwarded captures stay observationally identical
 // to the shipped classes without importing them.
 //
-// Doctrine (load-bearing): anti-bloat — ordering/placement pins ride PUBLIC
+// Doctrine (load-bearing): anti-bloat - ordering/placement pins ride PUBLIC
 // EFFECTS (construction bags, the unified per-handle TIMELINE of prompt
 // sends and recorded custom-message appends, prompt counts/text/order,
 // stderr spies, env channels); no stage-position recorders over private
 // internals. Replicated product literals carry a comment naming the SOLE
 // OWNER. Mock scope is file-local: the loader/cli suites load the REAL
 // research module and stay drift-free. NOTE the em dashes are U+2014 EM
-// DASH characters — escaped so the pinned codepoints survive editor and
+// DASH characters - escaped so the pinned codepoints survive editor and
 // toolkit glyph mangling; never normalize.
 
 import {
@@ -63,6 +64,8 @@ import {
   renderCapabilityMarker,
   renderPhaseMarker,
 } from "../capability/pio-session.ts";
+import type { VarCell } from "../capability/var-cell.ts";
+import { declareVar } from "../capability/var-cell.ts";
 import { deriveProjectKey } from "../sandbox/layout.ts";
 import ComposeSameSessionDemoCapability, {
   DEMO_TOPIC,
@@ -144,7 +147,7 @@ const sdkKit = vi.hoisted(() => {
       }
     });
     // Defined-by-default lookups (the demo flow never consults tool
-    // definitions — the preflight belongs to the real research module, not
+    // definitions - the preflight belongs to the real research module, not
     // the stub).
     const getToolDefinition = vi.fn((name: string) => ({
       name,
@@ -231,7 +234,7 @@ vi.mock("@earendil-works/pi-coding-agent", () => ({
 // hoisted factory and the suite body).
 const stubKit = vi.hoisted(() => {
   /** The stub's frozen success token (owner: THIS suite). The child's real
-   * fingerprint machinery is intentionally not exercised — the pin is
+   * fingerprint machinery is intentionally not exercised - the pin is
    * passthrough absolutization of whatever token crosses the await. */
   const STUB_REPORT_TOKEN = "research/9f8e7d6c5b4a.md";
   /** Replica of the shipped preflight thrown message (SOLE OWNER: the
@@ -245,7 +248,7 @@ const stubKit = vi.hoisted(() => {
    * shipping class. */
   const KILL_CAPTURE_REPLICA =
     "terminal-takeover: frame interrupted \u2014 the ordered shutdown pass terminated the process";
-  /** The stub's scripted success-phase instructions (owner: THIS suite — a
+  /** The stub's scripted success-phase instructions (owner: THIS suite - a
    * placeholder standing for the real research loop's template). */
   const STUB_RESEARCH_INSTRUCTIONS =
     "Stubbed research phase (placeholder for the bounded web-research loop): one quiet settled run.";
@@ -253,16 +256,14 @@ const stubKit = vi.hoisted(() => {
     bag: undefined as unknown,
     inputs: undefined as Record<string, unknown> | undefined,
     mode: "success" as StubMode,
-    /** The stub's OWN declared contract (introspected at construction — the
+    /** The stub's OWN declared contract (introspected at construction - the
      * callee-isolation pin observes exactly this). */
     contract: undefined as unknown,
-    /** The single store object reached from the CALLEE'S vantage point
-     * (recorded inside its span). */
-    varsRef: undefined as unknown,
-    /** Caller-side seed read FROM the shared store during the callee's span. */
-    seenCallerVar: undefined as unknown,
+    /** The cell minted INSIDE THE CALLEE'S SPAN (recorded by reference -
+     * the same-instance share observable after the run). */
+    calleeNoteCell: undefined as VarCell | undefined,
     /** The absolute path the bound-success stop rule observes per run (set
-     * by the row; the observer plane only — nothing lands on disk). */
+     * by the row; the observer plane only - nothing lands on disk). */
     boundReportPath: undefined as string | undefined,
   };
   const reset = (): void => {
@@ -270,8 +271,7 @@ const stubKit = vi.hoisted(() => {
     state.inputs = undefined;
     state.mode = "success";
     state.contract = undefined;
-    state.varsRef = undefined;
-    state.seenCallerVar = undefined;
+    state.calleeNoteCell = undefined;
     state.boundReportPath = undefined;
   };
   return {
@@ -287,7 +287,7 @@ const stubKit = vi.hoisted(() => {
 vi.mock("../capabilities/research.ts", async () => {
   const baseMod = await import("../capability/base.ts");
   // THE tunable referenced by the bound-shape row rides the REAL owner's
-  // export (single-owner doctrine — never a duplicated literal).
+  // export (single-owner doctrine - never a duplicated literal).
   const actual = await vi.importActual<
     typeof import("../capabilities/research.ts")
   >("../capabilities/research.ts");
@@ -314,16 +314,13 @@ vi.mock("../capabilities/research.ts", async () => {
       inputs: Record<string, unknown>,
     ): Promise<Record<string, unknown>> {
       stubKit.state.inputs = inputs;
-      // Vars vantage points (AC#3 evidence): the shared store is reached
-      // THROUGH the inherited handle's public surface — one object from
-      // both sides.
+      // W2C mechanical preamble: the callee-side write mints ITS OWN cell
+      // and settles it inside its own span - captured BY REFERENCE for the
+      // post-run observation (no bridging/coercion/validation probed).
+      const noteCell = declareVar("callee-written", "string");
+      noteCell.set("from-callee-span");
       if (this.s !== undefined) {
-        stubKit.state.varsRef = this.s.vars;
-        stubKit.state.seenCallerVar = this.s.vars.get("caller-seeded");
-        // W2C mechanical preamble (mandatory-type ruling): declare before
-        // the first write; row intent unchanged.
-        this.s.vars.declare("callee-written", "string");
-        this.s.vars.set("callee-written", "from-callee-span");
+        stubKit.state.calleeNoteCell = noteCell;
       }
       switch (stubKit.state.mode) {
         case "kill": {
@@ -343,7 +340,7 @@ vi.mock("../capabilities/research.ts", async () => {
         case "bound-success": {
           // Bound shape over the REAL engine: every settling run COMMITS the
           // stub report path, so the stop rule demands continuation through
-          // the ceiling — the phase exits BOUNDED (iterations === the cap)
+          // the ceiling - the phase exits BOUNDED (iterations === the cap)
           // and the settlement below carries the slot-relative token exactly
           // as the shipped capability would on a bound hit.
           const target = stubKit.state.boundReportPath ?? "";
@@ -380,7 +377,7 @@ const GREETING_REPLICA = `You are starting a same-session research demonstration
 2. Do nothing else in this turn \u2014 no tools, no questions. End your turn right after the greeting.`;
 
 /** Pinned summary template (SOLE OWNER: the summaryInstructions owner in
- * ./compose-same-session-demo.ts — byte-unchanged from the temporary
+ * ./compose-same-session-demo.ts - byte-unchanged from the temporary
  * sibling; its wording is placement-neutral). Em dashes are U+2014
  * (escaped). */
 const summaryReplica = (reportPath: string): string =>
@@ -393,7 +390,7 @@ ${reportPath}
 
 /** THE pinned single fixed sentence behind the successful-but-empty
  * settlement (SOLE OWNER: EMPTY_REPORT_SETTLEMENT_MESSAGE in
- * ./compose-same-session-demo.ts — row-2 bytes with only the product
+ * ./compose-same-session-demo.ts - row-2 bytes with only the product
  * prefix renamed). Em dash U+2014 (escaped). */
 const EMPTY_REPORT_REPLICA =
   "compose-same-session-demo: the research child settled successfully but its outputs carry no report to read \u2014 nothing to summarize";
@@ -417,7 +414,7 @@ const VIOLATION_MESSAGE = `Contract violation: ${VIOLATION_LINE}`;
 const CUSTOM_TYPE_REPLICA = "pio-capability";
 
 /** The two recorded marker payloads (contents checked against the RENDERER
- * OWNER directly — reference, not reconstructed bytes). */
+ * OWNER directly - reference, not reconstructed bytes). */
 const demoMarkerPayload = (): unknown => ({
   customType: CUSTOM_TYPE_REPLICA,
   content: renderCapabilityMarker("compose-same-session-demo"),
@@ -447,7 +444,7 @@ const summaryPromptText = (absolutePath: string): string =>
 
 /** Self-consistent absolute-path derivation via the SAME public channels the
  * BASE SETTLE SEAM derives (expected settled value of the stub's
- * slot-relative token — never a recomputed fingerprint or key). */
+ * slot-relative token - never a recomputed fingerprint or key). */
 function expectedAbsolutePath(token: string): string {
   return join(
     deriveStateRootFromAgentDir(process.env.PI_CODING_AGENT_DIR),
@@ -466,7 +463,7 @@ let stderrSpy: ReturnType<typeof vi.spyOn>;
 const tempRoots: string[] = [];
 let tempCursor = 0;
 
-/** One row-owned tmpdir root; afterEach removes it recursively — FORCED
+/** One row-owned tmpdir root; afterEach removes it recursively - FORCED
  * TEARDOWN: the removal runs even on assertion failure. */
 function newTempRoot(): string {
   const root = mkdtempSync(
@@ -483,7 +480,7 @@ beforeEach(() => {
   stubKit.reset();
   sdkKit.reset();
   originalEnv = process.env.PI_CODING_AGENT_DIR;
-  delete process.env.PI_CODING_AGENT_DIR; // start UNSET — rows opt in
+  delete process.env.PI_CODING_AGENT_DIR; // start UNSET - rows opt in
   originalCwd = process.cwd();
   stderrSpy = vi.spyOn(process.stderr, "write");
 });
@@ -540,7 +537,7 @@ function quietSettle(): object[] {
 }
 
 /** A settle that COMMITS the given absolute path to the observer plane
- * (and ONLY the observer plane — nothing lands on disk). */
+ * (and ONLY the observer plane - nothing lands on disk). */
 function writeSettle(absolutePath: string, toolCallId: string): object[] {
   return [
     { type: "agent_start" },
@@ -612,7 +609,7 @@ describe("admission, composition, summary, settlement (C rows)", () => {
     const result = await demo.run();
     // Settlement: ok:true with the SETTLED absolute value (the CALLEE'S own
     // base seam transformed the stub's slot-relative token in this bubble;
-    // the demo's own VALUE slot passes it through untransformed) — the
+    // the demo's own VALUE slot passes it through untransformed) - the
     // Outcome returns INLINE at the await and the demo continued to its
     // remaining work (the summary).
     expect(result.ok).toBe(true);
@@ -623,7 +620,7 @@ describe("admission, composition, summary, settlement (C rows)", () => {
     // THE unified timeline on the ONE shared handle: the demo's marker
     // STRICTLY BEFORE the greeting prompt, the research marker STRICTLY
     // BEFORE the first callee-phase prompt, the summary LAST with no further
-    // marker (implicit span-return) — each stamped EXACTLY ONCE.
+    // marker (implicit span-return) - each stamped EXACTLY ONCE.
     expect(round.timeline).toEqual([
       { kind: "custom", payload: demoMarkerPayload() },
       { kind: "prompt", text: greetingPromptText() },
@@ -640,19 +637,19 @@ describe("admission, composition, summary, settlement (C rows)", () => {
     expect(round.session.sendCustomMessage).toHaveBeenCalledTimes(2);
     // THE D1 placement: the construction bag deep-equals EXACTLY
     // { session } and bag.session IS the caller's own handle BY REFERENCE
-    // (identity, not equality) — nothing else crosses the boundary.
+    // (identity, not equality) - nothing else crosses the boundary.
     expect(stubKit.state.bag).toStrictEqual({ session: instance });
     expect((stubKit.state.bag as { session: PioSession }).session).toBe(
       instance,
     );
     // Inputs: the hard-coded topic flowed untransformed (imported-constant
-    // reference — never a duplicated literal).
+    // reference - never a duplicated literal).
     expect(stubKit.state.inputs).toStrictEqual({ topic: DEMO_TOPIC });
     // Single-host invariant (the row-1 proof): EXACTLY ONE session mint
     // through the SDK kit.
     expect(sdkKit.state.rounds).toHaveLength(1);
     // Zero demo-side writes anywhere under the owned tree (read-only
-    // summary — the pin is the instructed path, not a real read).
+    // summary - the pin is the instructed path, not a real read).
     expect(readdirSync(tmp).sort()).toEqual(["work"]);
     expect(readdirSync(join(tmp, "work"))).toEqual([]);
     // No product lines on stderr.
@@ -880,7 +877,7 @@ describe("frame governance and resume (AC#2 evidence)", () => {
     const result = await demo.run();
     expect(result.ok).toBe(true);
     if (!result.ok) throw new Error("unreachable");
-    // Callee isolation: the stub's frame is exactly its OWN contract — a
+    // Callee isolation: the stub's frame is exactly its OWN contract - a
     // pinned deep-copy of the REAL research contract literal (SOLE OWNER:
     // the contract field on ResearchCapability in
     // capabilities/research.ts), NOT the demo's.
@@ -907,7 +904,7 @@ describe("frame governance and resume (AC#2 evidence)", () => {
       writes: [],
     });
     // Structural resume: the post-call continuation (the summary) executes
-    // under caller-only references — its prompt, LAST on the timeline, names
+    // under caller-only references - its prompt, LAST on the timeline, names
     // only the demo-owned template with the SETTLED value interpolated (no
     // callee-owned bytes).
     const summaryIndex = round.timeline.findIndex(
@@ -919,7 +916,7 @@ describe("frame governance and resume (AC#2 evidence)", () => {
     expect(summaryIndex).toBe(round.timeline.length - 1);
     expect(round.timeline[summaryIndex]?.kind).toBe("prompt");
     // The marker channel attributes each segment to its owning capability
-    // IN CALL ORDER: the caller's span first, the callee's second — nothing
+    // IN CALL ORDER: the caller's span first, the callee's second - nothing
     // opens a third span after the callee's (implicit span-return, no
     // unstamp).
     const customPayloads = round.timeline
@@ -936,26 +933,21 @@ describe("frame governance and resume (AC#2 evidence)", () => {
 });
 
 describe("sharing (AC#3 evidence)", () => {
-  it("A2 VAR-FREE store identity: under D1 (one instance ⇒ one store, one observer) the single instance's .vars store is ONE object reachable from BOTH vantage points — the caller-side seed is visible INSIDE the callee's span and the callee-side write is visible AFTER the run (no bridging/coercion/validation probed or added)", async () => {
+  it("A2 VAR-FREE identity: under D1 (one instance ⇒ one observer, one process) the callee's span settles a value into a cell minted INSIDE ITS OWN body, and the CALLER side reads that cell back AFTER the run through the CAPTURED reference (same-instance share at process level - nothing bridged, coerced, or validated)", async () => {
     const tmp = newTempRoot();
     enterWorkTree(tmp);
     const { instance, round } = await host();
-    // W2C mechanical preamble (mandatory-type ruling): declare before the
-    // first write; row intent unchanged.
-    instance.vars.declare("caller-seeded", "string");
-    instance.vars.set("caller-seeded", "visible-across-spans");
     scriptRuns(round, quietSettle(), quietSettle(), quietSettle());
     const demo = new ComposeSameSessionDemoCapability({ session: instance });
     const result = await demo.run();
     expect(result.ok).toBe(true);
     if (!result.ok) throw new Error("unreachable");
-    // ONE store object from both vantage points (reference identity): the
-    // callee reached the SAME instance's store through the inherited handle.
-    expect(stubKit.state.varsRef).toBe(instance.vars);
-    // Caller-side set visible INSIDE the callee's span.
-    expect(stubKit.state.seenCallerVar).toBe("visible-across-spans");
-    // Callee-side write visible AFTER the run, on the caller's instance.
-    expect(instance.vars.get("callee-written")).toBe("from-callee-span");
+    // Callee-side write visible AFTER the run through the captured cell
+    // reference (the callee minted it by reference in its own span - the
+    // caller observes it without any bridge of its own).
+    const noteCell = stubKit.state.calleeNoteCell;
+    expect(noteCell).toBeDefined();
+    expect(noteCell?.read()).toBe("from-callee-span");
     // The shared handle served both spans: exactly one mint.
     expect(sdkKit.state.rounds).toHaveLength(1);
     expect(stderrText()).toBe("");
@@ -989,7 +981,7 @@ describe("pre-execution violation (AC#4 evidence)", () => {
         },
       ]);
       // Zero side effects: nothing prompted, nothing stamped (the timeline
-      // is EMPTY — no body prompt, no stamp), zero stderr.
+      // is EMPTY - no body prompt, no stamp), zero stderr.
       expect(round.timeline).toEqual([]);
       expect(round.session.prompt).toHaveBeenCalledTimes(0);
       expect(round.session.sendCustomMessage).toHaveBeenCalledTimes(0);
@@ -1010,7 +1002,7 @@ interface ClauseShape {
   readonly specifier: string;
 }
 
-/** Extract the static import clauses (multi-line-safe; brace-clause form —
+/** Extract the static import clauses (multi-line-safe; brace-clause form -
  * the module's canonical post-lint shape). */
 function staticImportClauses(source: string): ClauseShape[] {
   const out: ClauseShape[] = [];

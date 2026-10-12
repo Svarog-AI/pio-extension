@@ -11,6 +11,8 @@
 import { readFileSync } from "node:fs";
 import type { ExecutionSnapshot } from "../../session-execution-state.ts";
 import { VariableRejectionError } from "../errors.ts";
+import type { PhaseVarBinding } from "../var-cell.ts";
+import { declareVar, listWriteGrants } from "../var-cell.ts";
 import type { CapabilitySources, PathAnchors } from "./guard-vocabulary.ts";
 import * as varGateModule from "./var-gate.ts";
 import { decideVarWrite } from "./var-gate.ts";
@@ -38,9 +40,9 @@ const RESEARCH: CapabilitySources = {
 
 // ---------------------------------------------------------------------------
 // Suite-side replicas of the refusal line shapes - SOLE OWNER of every byte
-// shape is ./var-gate.ts (its module-private renderers, composed THROUGH the
-// error home's family); these witnesses bind decideVarWrite()'s `reason` to
-// the pinned bytes. U+2014 arrives escaped in the module literal identically
+// shape is ./var-gate.ts (its exported renderers, composed THROUGH the error
+// home's family); these witnesses bind decideVarWrite()'s `reason` to the
+// pinned bytes. U+2014 arrives escaped in the module literal identically
 // here - compare unescaped.
 // ---------------------------------------------------------------------------
 
@@ -69,18 +71,29 @@ function asRefusal(verdict: { block: true; reason: string } | undefined): {
   return verdict;
 }
 
-/** Governing-phase snapshot builder (plain structural literal). */
-const governingSnap = (vars: readonly string[]): ExecutionSnapshot => ({
+/** Governing-phase snapshot builder (plain structural literal) over a REAL
+ * binding set built fresh per call. */
+const governingSnap = (
+  bindings: readonly PhaseVarBinding[],
+): ExecutionSnapshot => ({
   sources: RESEARCH,
   phase: {
     id: "p",
     declared: [],
     allowProjectWrites: false,
     tmpDirAllowed: false,
-    vars,
+    vars: bindings,
   },
   paths: PATHS,
 });
+
+/** Real minted cells bound WITH the write grant (binding order preserved). */
+const grantedBindings = (...names: string[]): PhaseVarBinding[] =>
+  names.map((name) => ({ cell: declareVar(name, "string"), write: true }));
+
+/** Real minted cells bound WITHOUT any write grant (default-read only). */
+const readOnlyBindings = (...names: string[]): PhaseVarBinding[] =>
+  names.map((name) => ({ cell: declareVar(name, "string") }));
 
 // ---------------------------------------------------------------------------
 // (a) ADJUDICATION CORE - the pinned verdict order over hand-built snapshots:
@@ -88,14 +101,14 @@ const governingSnap = (vars: readonly string[]): ExecutionSnapshot => ({
 // ---------------------------------------------------------------------------
 
 describe("adjudication core - governing phase and the tail", () => {
-  it("allow on EVERY declared name: each member of the moment's declaration yields NO verdict (setVar only)", () => {
-    const snap = governingSnap(["alpha", "beta"]);
+  it("allow on EVERY granted name: each member of the moment's write-grant listing yields NO verdict (setVar only)", () => {
+    const snap = governingSnap(grantedBindings("alpha", "beta"));
     expect(decideVarWrite(snap, "setVar", { name: "alpha" })).toBeUndefined();
     expect(decideVarWrite(snap, "setVar", { name: "beta" })).toBeUndefined();
   });
 
-  it("deny an undeclared name with the PHASE line family bytes (golden: names the variable AND the moment's allowed set, deduplicated declaration order)", () => {
-    const snap = governingSnap(["alpha", "beta"]);
+  it("deny an out-of-grant name with the PHASE line family bytes (golden: names the variable AND the moment's write-grant listing, binding order)", () => {
+    const snap = governingSnap(grantedBindings("alpha", "beta"));
     const golden = familyMessage(
       replicaPhaseLine("gamma", "p", ["alpha", "beta"]),
     );
@@ -164,13 +177,68 @@ describe("adjudication core - governing phase and the tail", () => {
     expect(refEmpty.reason).not.toContain("'empty-vars'");
   });
 
-  it("duplicate declaration entries DEDUPE to first occurrence in the listing (declaration order preserved; parity with the file gate's survivor doctrine)", () => {
-    const snap = governingSnap(["alpha", "beta", "alpha"]);
-    expect(decideVarWrite(snap, "setVar", { name: "alpha" })).toBeUndefined();
-    const refusal = asRefusal(decideVarWrite(snap, "setVar", { name: "zzz" }));
-    expect(refusal.reason).toBe(
-      familyMessage(replicaPhaseLine("zzz", "p", ["alpha", "beta"])),
-    );
+  it("bindings WITHOUT write grants fall to the UNIVERSAL line: byte-IDENTICAL to the depth-0/span-without-phase forms (premise-now-verbatim proof - read-only bindings declare no write permission)", () => {
+    const readOnly: ExecutionSnapshot = {
+      sources: RESEARCH,
+      phase: {
+        id: "ro-vars",
+        declared: [],
+        allowProjectWrites: false,
+        tmpDirAllowed: false,
+        vars: readOnlyBindings("alpha", "beta"),
+      },
+      paths: PATHS,
+    };
+    const depth0: ExecutionSnapshot = {
+      sources: null,
+      phase: null,
+      paths: PATHS,
+    };
+    const refRo = asRefusal(decideVarWrite(readOnly, "setVar", { name: "x" }));
+    const refDepth = asRefusal(decideVarWrite(depth0, "setVar", { name: "x" }));
+    expect(refRo.reason).toBe(refDepth.reason);
+    expect(refRo.reason).toBe(familyMessage(replicaUniversalLine("x")));
+    // the phase-line marker is ABSENT from the bytes - nothing named:
+    expect(refRo.reason).not.toContain("during phase");
+    expect(refRo.reason).not.toContain("'ro-vars'");
+  });
+
+  it("duplicate-binding set PROPAGATES THE SUBSTRATE REFUSAL instead of judging silently (defensive corner - names are unique per phase by construction; identity over the real projection's fault)", () => {
+    const cellA = declareVar("dup", "string");
+    const cellB = declareVar("dup", "string");
+    const duplicate = [
+      { cell: cellA, write: true },
+      { cell: cellB, write: true },
+    ];
+    let substrateFault: unknown;
+    try {
+      listWriteGrants(duplicate);
+    } catch (error) {
+      substrateFault = error;
+    }
+    expect(substrateFault).toBeDefined();
+    const snap: ExecutionSnapshot = {
+      sources: RESEARCH,
+      phase: {
+        id: "dup-phase",
+        declared: [],
+        allowProjectWrites: false,
+        tmpDirAllowed: false,
+        vars: duplicate,
+      },
+      paths: PATHS,
+    };
+    let thrown: unknown;
+    try {
+      decideVarWrite(snap, "setVar", { name: "dup" });
+    } catch (error) {
+      thrown = error;
+    }
+    // The substrate voice escapes VERBATIM (name + message bytes identical
+    // to the projection's own fault):
+    expect(thrown).toBeInstanceOf(Error);
+    expect((thrown as Error).name).toBe((substrateFault as Error).name);
+    expect((thrown as Error).message).toBe((substrateFault as Error).message);
   });
 });
 
@@ -190,14 +258,14 @@ describe("self-filter - setVar is the single intercepted tool name", () => {
   ];
 
   it("every non-setVar tool name yields NO verdict over a VALID admitted input (the governing phase would have allowed it had it been consulted)", () => {
-    const snap = governingSnap(["alpha"]);
+    const snap = governingSnap(grantedBindings("alpha"));
     for (const toolName of OTHER_TOOLS) {
       expect(decideVarWrite(snap, toolName, { name: "alpha" })).toBeUndefined();
     }
   });
 
   it("every non-setVar tool name yields NO verdict over a REFUSING input (the self-filter precedes any adjudication - the write/edit/bash lanes stay untouched by this gate)", () => {
-    const snap = governingSnap(["alpha"]);
+    const snap = governingSnap(grantedBindings("alpha"));
     for (const toolName of OTHER_TOOLS) {
       expect(
         decideVarWrite(snap, toolName, { name: "outside-the-declaration" }),
@@ -206,7 +274,7 @@ describe("self-filter - setVar is the single intercepted tool name", () => {
   });
 
   it("non-setVar tool names yield NO verdict even over MALFORMED inputs (no extraction attempt whatsoever)", () => {
-    const snap = governingSnap(["alpha"]);
+    const snap = governingSnap(grantedBindings("alpha"));
     for (const toolName of OTHER_TOOLS) {
       expect(decideVarWrite(snap, toolName, null)).toBeUndefined();
       expect(decideVarWrite(snap, toolName, {})).toBeUndefined();
@@ -222,7 +290,7 @@ describe("self-filter - setVar is the single intercepted tool name", () => {
 // ---------------------------------------------------------------------------
 
 describe("malformed-input lane - silent allow, shape is the tool layer's domain", () => {
-  const snap = governingSnap(["alpha"]);
+  const snap = governingSnap(grantedBindings("alpha"));
 
   it.each([
     ["null input", null],
@@ -278,6 +346,7 @@ describe("consultation proof + per-call judgment over the GIVEN value", () => {
     ).toBe(asRefusal(decideVarWrite(uniB, "setVar", { name: "v" })).reason);
     // Phase-denial shape across varied anchors + sources (the phase record
     // alone decides):
+    const govBinding = grantedBindings("one");
     const govA: ExecutionSnapshot = {
       sources: SOURCES_X,
       phase: {
@@ -285,7 +354,7 @@ describe("consultation proof + per-call judgment over the GIVEN value", () => {
         declared: [],
         allowProjectWrites: false,
         tmpDirAllowed: false,
-        vars: ["one"],
+        vars: govBinding,
       },
       paths: SENTINEL_A,
     };
@@ -296,7 +365,7 @@ describe("consultation proof + per-call judgment over the GIVEN value", () => {
         declared: [],
         allowProjectWrites: false,
         tmpDirAllowed: false,
-        vars: ["one"],
+        vars: govBinding,
       },
       paths: SENTINEL_B,
     };
@@ -317,15 +386,16 @@ describe("consultation proof + per-call judgment over the GIVEN value", () => {
         declared: [],
         allowProjectWrites: false,
         tmpDirAllowed: false,
-        vars: ["alpha"],
+        vars: grantedBindings("alpha"),
       },
       paths: PATHS,
     };
     const input = { name: "alpha" };
     // (i) governing: allowed.
     expect(decideVarWrite(snap, "setVar", input)).toBeUndefined();
-    // (ii) mutate the declaration away on the SAME object: refused.
-    snap.phase!.vars = ["other"];
+    // (ii) swap the granted bindings away on the SAME object: refused now
+    // (the phase line still names the phase).
+    snap.phase!.vars = grantedBindings("other");
     expect(asRefusal(decideVarWrite(snap, "setVar", input)).reason).toContain(
       "'flip'",
     );
@@ -346,7 +416,7 @@ describe("consultation proof + per-call judgment over the GIVEN value", () => {
       declared: [],
       allowProjectWrites: false,
       tmpDirAllowed: false,
-      vars: ["alpha"],
+      vars: grantedBindings("alpha"),
     };
     expect(decideVarWrite(snap, "setVar", input)).toBeUndefined();
   });
@@ -361,7 +431,7 @@ describe("consultation proof + per-call judgment over the GIVEN value", () => {
 
 describe("family composition identity - one voice through the family", () => {
   it("phase-line denial: reason === family message over the replica line", () => {
-    const snap = governingSnap(["alpha"]);
+    const snap = governingSnap(grantedBindings("alpha"));
     const refusal = asRefusal(decideVarWrite(snap, "setVar", { name: "beta" }));
     expect(refusal.reason).toBe(
       new VariableRejectionError([replicaPhaseLine("beta", "p", ["alpha"])])
@@ -521,7 +591,7 @@ describe("mechanical island sweep - module source and suite source", () => {
     expect(SUITE_SOURCE.includes(SDK_SPECIFIER)).toBe(false);
   });
 
-  it("module value imports are EXACTLY ['../errors.ts'] - the family edge alone (statement-aware, ORDER-PRESERVING extraction; zero node: builtins)", () => {
+  it("module value imports are EXACTLY ['../errors.ts', '../var-cell.ts'] - the family edge plus the substrate projection edge alone (statement-aware, ORDER-PRESERVING extraction; zero node: builtins)", () => {
     expect(MODULE_SOURCE.includes("node:")).toBe(false);
     const normalized = MODULE_SOURCE.replace(/\s+/g, " ");
     const valueSpecifiers = [
@@ -531,7 +601,7 @@ describe("mechanical island sweep - module source and suite source", () => {
     ]
       .filter((match) => match[1] === undefined)
       .map((match) => match[2]);
-    expect(valueSpecifiers).toEqual(["../errors.ts"]);
+    expect(valueSpecifiers).toEqual(["../errors.ts", "../var-cell.ts"]);
   });
 
   it("module type-only imports are EXACTLY ['../../session-execution-state.ts'] - the state edge erased at compile time (same relative depth as the sibling gate)", () => {
@@ -543,8 +613,14 @@ describe("mechanical island sweep - module source and suite source", () => {
     expect(typeSpecifiers).toEqual(["../../session-execution-state.ts"]);
   });
 
-  it("runtime export surface is EXACTLY ['decideVarWrite'] - the interface erases under erasable syntax", () => {
-    expect(Object.keys(varGateModule).sort()).toEqual(["decideVarWrite"]);
+  it("runtime export surface is EXACTLY ['decideVarWrite', 'renderVarGatePhaseLine', 'renderVarGateUniversalLine'] - the predicate plus the two promoted line renderers (the interface erases under erasable syntax)", () => {
+    expect(Object.keys(varGateModule).sort()).toEqual(
+      [
+        "decideVarWrite",
+        "renderVarGatePhaseLine",
+        "renderVarGateUniversalLine",
+      ].sort(),
+    );
   });
 
   it("zero dynamic import() occurrences in the module; ZERO class declarations (statelessness asserted mechanically)", () => {

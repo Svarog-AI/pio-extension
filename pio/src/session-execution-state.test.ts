@@ -13,6 +13,8 @@ import type {
   PathAnchors,
 } from "./capability/guards/guard-vocabulary.ts";
 import { decideWrite } from "./capability/guards/write-gate.ts";
+import type { PhaseVarBinding } from "./capability/var-cell.ts";
+import { declareVar } from "./capability/var-cell.ts";
 import type {
   AnchorChannels,
   ExecutionSnapshot,
@@ -472,17 +474,22 @@ describe("attach-stores-verbatim + decision-time composition", () => {
 });
 
 // ---------------------------------------------------------------------------
-// (f) THE VARIABLE-NAME DIMENSION - CARRIAGE + LISO COMPOSITION: the
-// var-name declaration rides the SAME raw-record doctrine (identity
-// passthrough, verbatim storage) and the standing LIFO suspension story.
+// (f) THE BINDING DIMENSION - CARRIAGE + LISO COMPOSITION: the phase's
+// binding list rides the SAME raw-record doctrine (identity passthrough,
+// verbatim storage by reference) and the standing LIFO suspension story.
 // ---------------------------------------------------------------------------
 
-describe("var-dimension carriage + LISO composition over var-bearing records", () => {
-  it("attach stores the variable names VERBATIM: identity passthrough of the passed array beside the paths' zero-copy pin, and the FULL FIVE-FIELD record reads back deep-equal (order-sensitive, duplicates preserved in storage)", () => {
+describe("binding-dimension carriage + LISO composition over binding-bearing records", () => {
+  it("attach stores the bindings VERBATIM BY REFERENCE: identity passthrough of the passed array beside the paths' zero-copy pin, and the FULL FIVE-FIELD record reads back deep-equal (order-sensitive; caller mutation is documented, not defended against)", () => {
     const state = new SessionExecutionState(channelsFor(SLOT_A, CWD_A));
     state.enterCapability(SOURCES_A);
     const declaredPathsArg: readonly string[] = [TARGET_A1];
-    const declaredVarsArg: readonly string[] = ["v-one", "v-two", "v-one"];
+    const oneCell = declareVar("v-one", "string");
+    const twoCell = declareVar("v-two", "string");
+    const declaredVarsArg: PhaseVarBinding[] = [
+      { cell: oneCell, write: true },
+      { cell: twoCell },
+    ];
     state.attachPhase(
       "var-carriage",
       declaredPathsArg,
@@ -495,30 +502,39 @@ describe("var-dimension carriage + LISO composition over var-bearing records", (
     // by identity, exactly as the paths dimension enjoys today:
     expect(snap.phase?.vars).toBe(declaredVarsArg);
     expect(snap.phase?.declared).toBe(declaredPathsArg);
-    // FULL FIVE-FIELD read-back: order-sensitive, duplicates preserved in
-    // storage (dedupe is a DECISION-TIME concern, never storage-side):
+    // FULL FIVE-FIELD read-back: order-sensitive, cells referenced by
+    // identity, grants carried per entry:
     expect(snap.phase).toEqual({
       id: "var-carriage",
       declared: declaredPathsArg,
       allowProjectWrites: false,
       tmpDirAllowed: false,
-      vars: ["v-one", "v-two", "v-one"],
+      vars: [{ cell: oneCell, write: true }, { cell: twoCell }],
     });
+    // MUTATION-VISIBILITY CORNER (the trust-boundary doctrine documented,
+    // not defended against): mutating the PASSED array is visible in the
+    // snapshot reading (same reference), and dropping entries is seen too.
+    const third = declareVar("v-three", "string");
+    declaredVarsArg.push({ cell: third });
+    expect(state.snapshot().phase?.vars).toHaveLength(3);
   });
 
-  it("attach-condition matrix at the STATE level: a VARS-ONLY attachment (empty paths, both flags FALSE, non-empty vars) is a legal frame, an ALL-FIVE-EMPTY attachment remains a valid no-op, and both detach symmetrically", () => {
+  it("attach-condition matrix at the STATE level: a VARS-ONLY attachment (empty paths, both flags FALSE, non-empty bindings) is a legal frame, an ALL-FIVE-EMPTY attachment remains a valid no-op, and both detach symmetrically", () => {
     const state = new SessionExecutionState(channelsFor(SLOT_A, CWD_A));
     state.enterCapability(SOURCES_A);
-    // Vars-only: a legal frame conferring the var governance alone:
+    const solo = declareVar("solo", "string");
+    // Bindings-only: a legal frame conferring the var governance alone:
     expect(() =>
-      state.attachPhase("vars-only", [], false, false, ["solo"]),
+      state.attachPhase("vars-only", [], false, false, [
+        { cell: solo, write: true },
+      ]),
     ).not.toThrow();
     expect(state.snapshot().phase).toEqual({
       id: "vars-only",
       declared: [],
       allowProjectWrites: false,
       tmpDirAllowed: false,
-      vars: ["solo"],
+      vars: [{ cell: solo, write: true }],
     });
     state.detachPhase();
     // All-five-empty: still a valid no-op attachment (confers no
@@ -537,10 +553,18 @@ describe("var-dimension carriage + LISO composition over var-bearing records", (
     expect(state.snapshot().phase).toBeNull();
   });
 
-  it("LISO COMPOSITION over var-bearing records: a child span+phase push SUSPENDS the parent layer and the pop RESTORES the parent's record VERBATIM (deep-equal INCLUDING the parent's vars - proven with ZERO save/restore code at the state level)", () => {
+  it("LISO COMPOSITION over binding-bearing records: a child span+phase push SUSPENDS the parent layer and the pop RESTORES the parent's record VERBATIM (deep-equal INCLUDING the parent's bindings - proven with ZERO save/restore code at the state level)", () => {
     const state = new SessionExecutionState(channelsFor(SLOT_A, CWD_A));
-    const parentVars: readonly string[] = ["parent-a", "parent-b"];
-    const childVars: readonly string[] = ["child-x"];
+    const parentA = declareVar("parent-a", "string");
+    const parentB = declareVar("parent-b", "string");
+    const parentVars: readonly PhaseVarBinding[] = [
+      { cell: parentA, write: true },
+      { cell: parentB },
+    ];
+    const childX = declareVar("child-x", "string");
+    const childVars: readonly PhaseVarBinding[] = [
+      { cell: childX, write: true },
+    ];
     state.enterCapability(SOURCES_A);
     state.attachPhase("parent-phase", [TARGET_A1], true, false, parentVars);
     // The child span suspends the parent layer: the innermost governs.
@@ -561,7 +585,7 @@ describe("var-dimension carriage + LISO composition over var-bearing records", (
       declared: [TARGET_A1],
       allowProjectWrites: true,
       tmpDirAllowed: false,
-      vars: ["parent-a", "parent-b"],
+      vars: [{ cell: parentA, write: true }, { cell: parentB }],
     });
     // Identity-level restore: the EXACT array the parent attached (no
     // copy or rebuild anywhere - the scalar slot held it while suspended):
@@ -903,25 +927,37 @@ describe("mechanical source guards", () => {
   const CAST_TOKEN = ["a", "s"].join("");
   const RAW_GLYPH = String.fromCharCode(0x2014);
 
-  it("EXACTLY ONE import clause in the state file - type-only, resolving to the vocabulary specifier (statement-aware, whitespace-tolerant)", () => {
+  it("EXACTLY TWO import clauses in the state file - BOTH type-only (vocabulary specifier first, then the substrate edge that erases under type stripping), statement-aware, whitespace-tolerant", () => {
     const importClauseLines = STATE_SOURCE.match(/^import\b/gm);
-    expect(importClauseLines?.length ?? 0).toBe(1);
-    expect(STATE_SOURCE.includes("import type {")).toBe(true);
+    expect(importClauseLines?.length ?? 0).toBe(2);
+    // Zero VALUE clauses anywhere: every clause carries the type keyword.
+    expect(STATE_SOURCE.match(/^import\s+(?!type)/m)).toBeNull();
     const fromSpecifiers = [
       ...STATE_SOURCE.matchAll(/\bfrom\s+"([^"]+)"/g),
     ].map((match) => match[1]);
-    expect(fromSpecifiers).toEqual(["./capability/guards/guard-vocabulary.ts"]);
-    const clause = STATE_SOURCE.match(/import\s+type\s*\{([\s\S]*?)\}/);
-    expect(clause).not.toBeNull();
-    const importedNames = clause![1]
-      .split(",")
-      .map((name) => name.trim())
-      .filter((name) => name.length > 0);
-    expect(importedNames.sort()).toEqual([
+    expect(fromSpecifiers).toEqual([
+      "./capability/guards/guard-vocabulary.ts",
+      "./capability/var-cell.ts",
+    ]);
+    // The vocabulary clause carries its three pinned names verbatim:
+    const vocabClause = STATE_SOURCE.match(
+      /import\s+type\s*\{\s*CapabilitySources,[\s\S]*?\}\s*from\s*"\.\/capability\/guards\/guard-vocabulary\.ts"/,
+    )?.[0];
+    expect(vocabClause).toBeDefined();
+    const importedNames = [...vocabClause!.matchAll(/[A-Z][a-zA-Z]+/g)].map(
+      (match) => match[0],
+    );
+    expect(importedNames).toEqual([
       "CapabilitySources",
       "PathAnchors",
       "PhasePermission",
     ]);
+    // The substrate clause is type-only and single-named:
+    expect(
+      STATE_SOURCE.includes(
+        'import type { PhaseVarBinding } from "./capability/var-cell.ts";',
+      ),
+    ).toBe(true);
   });
 
   it("zero node: specifiers, zero write-gate.ts specifier, zero SDK specifier occurrences in the state file", () => {

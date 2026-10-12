@@ -57,45 +57,49 @@ const GATHER_INSTRUCTIONS = `When the conversation has no context yet, open by a
 /** THE single gather-instruction composer: settled B8 bytes over the
  * catalog listing. NO teaching channel rides any prompt (owner-directed
  * full removal) - refusals settle in-conversation (schema defects) or ride
- * THE failure report (admission faults). */
+ * the context-lane fact post immediately ahead of the uniform report
+ * (admission faults). */
 function renderGatherInstructions(listing: string): string {
   return [GATHER_INSTRUCTIONS, listing].join("\n\n");
 }
 
 const REPORT_TRAILER = `State these facts plainly and briefly in your reply. Do not re-run or dispatch anything yourself, and do not ask the user anything. End your turn right after stating them.`;
 
+/** THE single uniform report instruction (SOLE OWNER of these bytes):
+ * BYTE-IDENTICAL across ALL outcomes - the fixed opener points at the
+ * outcome facts just posted to the context lane (the custom message
+ * preceding this prompt in transcript order) and the trailer discipline
+ * trails VERBATIM. Pure ASCII. */
+const UNIFORM_REPORT_INSTRUCTION = `The outcome facts were posted to your context lane immediately before this phase - the custom message that precedes this prompt in the conversation.\n${REPORT_TRAILER}`;
+
 const INTERRUPT_DEGRADED_LINE = `Partial outputs could not be verified (state-root derivation fault); any durable files it committed remain under the project workspace.`;
 
-function renderReportInstructions(
+/** THE dispatched-outcome fact renderer (SOLE OWNER of these fact lines):
+ * facts ONLY - no heading, no trailer; the carriage moved to the
+ * context-lane post ahead of the uniform report. The three internal
+ * branches retain the retired composer's computation verbatim. */
+function renderDispatchOutcomeFacts(
   name: string,
   outcome: CapabilityResult,
   calleeContract: Contract,
 ): string {
   if (outcome.ok) {
     return [
-      "Facts for the report:",
       `dispatch '${name}' settled.`,
       `Outputs: ${JSON.stringify(outcome.outputs ?? {})}`,
-      REPORT_TRAILER,
     ].join("\n");
   }
   const first = outcome.errors?.[0];
   const type = first?.type ?? "UnknownError";
   if (first?.type !== "PhaseInterruptionError") {
-    const lines: string[] = [
-      "Facts for the report:",
-      `dispatch '${name}' failed (${type}).`,
-    ];
+    const lines: string[] = [`dispatch '${name}' failed (${type}).`];
     if (first?.message !== undefined) {
       lines.push(first.message);
     }
-    lines.push(REPORT_TRAILER);
     return lines.join("\n");
   }
   const lines: string[] = [
-    "Facts for the report:",
     `dispatch '${name}' was cancelled by the operator while it ran; its run settles as interrupted.`,
-    "Any durable outputs it committed before the interruption remain readable under the project workspace.",
   ];
   try {
     const placement = join(
@@ -125,23 +129,16 @@ function renderReportInstructions(
   } catch {
     lines.push(INTERRUPT_DEGRADED_LINE);
   }
-  lines.push(REPORT_TRAILER);
   return lines.join("\n");
 }
 
-/** THE admission-failure composer (SOLE OWNER of these bytes): the
- * owner-directed full-removal narrative - an unadmitted pick neither
- * re-teaches nor re-gathers silently; it is NARRATED through the report
- * phase and the sit re-arms on the plain baseline. Pure ASCII. */
-function renderAdmissionFailureInstructions(
-  name: string,
-  refusal: string,
-): string {
+/** THE admission-refusal fact renderer (SOLE OWNER of these fact lines):
+ * the refusal line plus the runner line, byte-for-byte as carried by the
+ * retired composer - no heading, no trailer. Facts only. */
+function renderAdmissionRefusalFacts(name: string, refusal: string): string {
   return [
-    "Facts for the report:",
     `The gathered decision names '${name}' but the program side did not admit it: ${refusal}`,
     "No capability was run.",
-    REPORT_TRAILER,
   ].join("\n");
 }
 
@@ -235,8 +232,8 @@ type AdmissionOutcome =
  * guard, existence (loader table authority), inputs conformance against
  * the RESOLVED callee contract (per-callee specs - the shared static schema
  * can only assert structure). Byte-behavior-unchanged from the retired
- * between-turn gate; the refusal voice now feeds the failure report
- * instead of a teaching burst. */
+ * between-turn gate; the refusal voice now rides the context-lane fact
+ * post ahead of the uniform report instead of a teaching burst. */
 async function admitDecision(
   decision: DispatchDecision,
 ): Promise<AdmissionOutcome> {
@@ -305,31 +302,32 @@ export default class AdhocCapability extends PioCapability {
       try {
         const pick = await this.determineDecision(listing, requestCell);
         const admission = await admitDecision(pick);
+        let facts: string; // THE outcome-fact decision (only per-outcome fork)
         if (!admission.ok) {
-          // ADMISSION FAILURE (main-loop seat): the refused pick is
-          // narrated THROUGH the report phase - no teaching burst, no
-          // silent re-gather; the following outer pass re-arms the plain
-          // baseline where the operator steers in-conversation.
-          await this.execute_phase("report", {
-            instructions: renderAdmissionFailureInstructions(
-              pick.name,
-              admission.refusal,
-            ),
-            min: 1,
-          });
-          continue;
-        }
-        const decision = admission.decision;
-        // Session-absent construction: the callee's own base dispatch hops
-        // the terminal-takeover frame on the same mounted TUI.
-        const callee = new decision.resolution.ctor({});
-        const outcome = await callee.run(decision.decision.inputs);
-        await this.execute_phase("report", {
-          instructions: renderReportInstructions(
+          // ADMISSION FAILURE (main-loop seat): the refused pick's facts
+          // post to the context lane immediately ahead of the uniform
+          // report - no teaching burst, no silent re-gather; the following
+          // outer pass re-arms the plain baseline where the operator steers
+          // in-conversation.
+          facts = renderAdmissionRefusalFacts(pick.name, admission.refusal);
+        } else {
+          const decision = admission.decision;
+          // Session-absent construction: the callee's own base dispatch
+          // hops the terminal-takeover frame on the same mounted TUI.
+          const callee = new decision.resolution.ctor({});
+          const outcome = await callee.run(decision.decision.inputs);
+          facts = renderDispatchOutcomeFacts(
             decision.decision.name,
             outcome,
             decision.resolution.contract,
-          ),
+          );
+        }
+        // THE single convergence tail (ALL outcomes): ONE context-lane
+        // post (no options bag - the engine's flowed-through visible
+        // default), THEN ONE uniform report.
+        await this.send_context_message(facts);
+        await this.execute_phase("report", {
+          instructions: UNIFORM_REPORT_INSTRUCTION,
           min: 1,
         });
         // DELIBERATE WINDOW: between admission and the next round-top

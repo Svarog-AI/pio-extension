@@ -1,5 +1,5 @@
 // Session host for capability authoring: wraps one constructed agent
-// session runtime BY REFERENCE and feeds its counters store from the single
+// session runtime BY REFERENCE and feeds its counter state from the single
 // instance-scoped listener threaded through the construction seam.
 //
 // The listener is the sole event feed: it is minted here, passed as a
@@ -173,7 +173,6 @@ import type {
   AgentSessionEventListener,
   AgentSessionRuntime,
 } from "@earendil-works/pi-coding-agent";
-import type { z } from "zod";
 import { materializeEffectiveSet } from "../permission-mechanics.ts";
 import { slugify } from "../sandbox/layout.ts";
 import { createPioSession, EXECUTION_STATE_STAMP } from "../session.ts";
@@ -186,27 +185,12 @@ import {
   ContractViolationError,
   MissingVariableError,
   PhaseInterruptionError,
-  VariableRejectionError,
 } from "./errors.ts";
 import type { CapabilitySources } from "./guards/guard-vocabulary.ts";
 import { decideVarWrite } from "./guards/var-gate.ts";
 import { decideWrite } from "./guards/write-gate.ts";
-import type { CustomVarSpec, PhaseVarBinding, VarType } from "./var-cell.ts";
-import {
-  admitVarType,
-  convertVarValue,
-  displayVarType,
-  emptyBindingNames,
-  materializeWireJson,
-  projectReadSet,
-  renderVarCoercionRejectLine,
-  renderVarSpecDefectLine,
-  renderVarSpecFaultLine,
-  sliceVarShapeIssues,
-  varTypeSpelling,
-} from "./var-cell.ts";
-
-export type { CustomVarSpec, VarType } from "./var-cell.ts";
+import type { PhaseVarBinding } from "./var-cell.ts";
+import { emptyBindingNames, projectReadSet } from "./var-cell.ts";
 
 /** Tool names whose successful executions commit a file path. */
 const FILE_TOOL_NAMES: ReadonlySet<string> = new Set(["write", "edit"]);
@@ -432,9 +416,8 @@ export interface PhaseResult {
   readonly iterations: number;
   /** Concatenated settled-end payloads of the phase, in event order. */
   readonly messages: unknown[];
-  /** Unreported by design in v1: the store IS the live state every reader
-   * can consult directly; the change-record rationale was retired by owner
-   * ruling. */
+  /** Unreported by design in v1: the cells ARE the live state capability
+   * code reads directly; no change record rides alongside them. */
   readonly varsDelta: Record<string, unknown>;
   /** One fresh cumulative snapshot taken after the final run settles. */
   readonly counters: SessionCounters;
@@ -452,307 +435,6 @@ export interface SessionCounters {
   readonly toolUses: Record<string, number>;
   /** Sum of observed assistant usages: input + output + cacheRead + cacheWrite. */
   readonly tokens: number;
-}
-
-/** Concrete TypeScript type per declared base type — the compile-time
- * half of the typed-read guarantee (conditional type; erased at runtime).
- * null falls through as the final branch: a type that is none of the
- * five structural types can only be the null slot. */
-export type VarValueOf<T extends VarType> = T extends "boolean"
-  ? boolean
-  : T extends "number"
-    ? number
-    : T extends "string"
-      ? string
-      : T extends "array"
-        ? unknown[]
-        : T extends "object"
-          ? Record<string, unknown>
-          : null;
-
-/**
- * Bookkeeping corruption over the SURVIVING STORE-SIDE machinery: the
- * re-declare conflict and the clear-over-undeclared faults (both dissolve
- * with the machinery they guard). DEVELOPER-FACING, PURE ASCII
- * (no em dashes), model-invisible — same NAME and doctrine as the
- * substrate's own admission voice in ./var-cell.ts (that copy stays
- * unexported; each module owns its local voice instance, à la
- * ExecutionStateError). Unexported on purpose: the suites assert by name
- * only.
- */
-class VarAdmissionError extends Error {
-  constructor(message: string) {
-    super(message);
-    this.name = "VarAdmissionError";
-  }
-}
-
-/** ONE undeclared-write line (mandatory-type doctrine): names the variable
- * and the ABSENCE of a type ON PURPOSE — it names no incoming value or
- * candidate type (that would guess authoring data). */
-function renderVarUndeclaredWriteLine(name: string): string {
-  return `variable '${name}' has no declared base type \u2014 a base type must be declared before writing`;
-}
-
-/** ONE typed-read ABSENT line. */
-function renderVarReadAbsentLine(name: string, type: VarType): string {
-  return `read of variable '${name}' as '${type}' failed \u2014 variable is absent`;
-}
-
-/** ONE typed-read CONVERSION-FAULT line with the STORED VALUE spelling: a
- * stored null is spelled distinctly per the explicit ruling (overrides the
- * legacy Number(null)→0 / String(null)→"null" leniency outright). */
-function renderVarReadConvertLine(
-  name: string,
-  type: VarType,
-  stored: unknown,
-): string {
-  const description =
-    stored === null
-      ? "stored value is null"
-      : `stored value of type '${varTypeSpelling(stored)}'`;
-  return `read of variable '${name}' as '${type}' failed \u2014 ${description} cannot convert to '${type}'`;
-}
-
-/** Registry-voice erasure fault line for clear() over an undeclared name (pure-ASCII bookkeeping voice, no em dash). */
-function renderVarClearUndeclaredLine(name: string): string {
-  return `var registry: cannot clear variable '${name}': the variable is not declared`;
-}
-
-/** THE single type-level seam of the union storage: writes an admitted
- * declaration VALUE into the registry map through its WIDENED view — the
- * six-literal annotation stays exact at every FUNNEL READ site (the shared
- * conversion switch, set()/get()/list(), and the renderers all resolve
- * against the literal-typed getter) while a well-formed SPEC rides the
- * widened view into the ONE ordered map. Runtime behavior is identity
- * (Map.set unchanged); zero assertions on either side of the call. */
-function storeUnionDeclaration(
-  registry: Map<string, unknown>,
-  name: string,
-  value: unknown,
-): void {
-  registry.set(name, value);
-}
-
-/**
- * THE session variable store — settled validated-core design, extended IN
- * PLACE on this very class (not replaced, not renamed — the wrap decision's
- * landing form). One store per session instance: minted in the
- * PioSession constructor, reached as the vars handle (PioSession.vars,
- * IterationCtx.vars BY REFERENCE).
- *
- * MANDATORY-TYPE DOCTRINE: every variable carries a declared base type —
- * declare() is the SOLE registry writer (explicit authoring-side call;
- * no inference, no engine-side minting), and set() is THE single
- * validated entry point for ALL variable writes from EVERY origin, where
- * an unregistered name faults before any shape work, a built-in literal
- * stores the shared table's CONVERSION RESULT, and a custom spec skips
- * base conversion entirely — parsing through the schema's safe-parse
- * entry point over a candidate that first MATERIALIZES any string
- * payload against a JSON read (wire doctrine: model writes arrive as
- * text — decoded documents and scalars settle natively, non-document
- * text rides the schema as-is), storing the PARSE OUTPUT on
- * conformance, and settling a
- * contained refusal (composed defect line, or the dedicated check-fault
- * line behind the parse-only containment wrap) with the prior value
- * intact. Set polices SHAPE only, and bookkeeping faults (re-declare
- * conflict, clear-over-undeclared) ride the module-local pure-ASCII
- * VarAdmissionError mirror, never the model-visible family.
- *
- * ERASURE CHANNEL: clear(name) is the SOLE program-owned emptying
- * operation (the model lane never erases) — it bypasses set() entirely,
- * keeps the declaration while dropping a declared name's entry, and
- * faults an undeclared name in the pure-ASCII bookkeeping voice.
- *
- * READ SURFACE: get(name) stays the SAFE channel (stored value or
- * undefined; never throws); the overloaded typed read get(name, type)
- * returns the CONCRETE type (VarValueOf) and throws the family on
- * absent/unconvertible values — reads mutate nothing. The store IS the live
- * state every reader consults directly: current values, current
- * declarations, no change record riding elsewhere. Deliberately distinct
- * from the root tree's richer same-named class (different package,
- * different surface).
- */
-export class SessionVariableStore {
-  #entries: Map<string, unknown> = new Map();
-  /** Union-value registry (name to declaration VALUE, insertion-ordered), written ONLY by declare: six literals store VERBATIM and well-formed specs BY REFERENCE under the UNCHANGED six-literal annotation — the spec-lane arm of set() binds them cast-free via bottom-type assignment over the typeof-guarded never branch, and deep-equality over schema objects is deliberately never consulted. */
-  #types: Map<string, VarType> = new Map();
-
-  /** Safe channel: the stored value, or undefined when the name is
-   * absent. Never throws — the typed overload below is the faulting
-   * read surface. */
-  get(name: string): unknown;
-  /** Typed read: resolves the CONCRETE declared type (compile-time
-   * guarantee) and THROWS the family — never undefined — when the
-   * variable is absent or the stored value cannot convert to the claimed
-   * type (the shared conversion table governs read-conversion too).
-   * Mutates nothing. */
-  get<T extends VarType>(name: string, type: T): VarValueOf<T>;
-  get(name: string, type?: VarType): unknown {
-    const stored = this.#entries.get(name);
-    if (type === undefined) return stored;
-    if (!this.#entries.has(name)) {
-      throw new VariableRejectionError([renderVarReadAbsentLine(name, type)]);
-    }
-    const result = convertVarValue(stored, type);
-    if ("rejected" in result) {
-      throw new VariableRejectionError([
-        renderVarReadConvertLine(name, type, stored),
-      ]);
-    }
-    // The shared core returned the CONVERSION RESULT for this type; the
-    // overload pair carries the concrete-typing promise and the table the
-    // runtime truth (zero-cast discipline: no assertion needed here).
-    return result.converted;
-  }
-
-  /** THE base-type registry writer (mandatory-type doctrine): registers
-   * the base type OR a capability-authored CUSTOM SPEC ({label, schema})
-   * for a name, scoped to this session instance. Pre-mint ADMISSION
-   * delegates to the shared validator in the variable-substrate module
-   * (admitVarType
-   * — single source of truth for every admission line: the literal lane
-   * admits the six literals, a non-null non-array object enters the spec
-   * lane under the fixed first-fault triage, everything else settles the
-   * ${payload} malformed-base-type line; every fault rides the
-   * bookkeeping voice and mints NOTHING). Re-declaration over an
-   * already-registered name settles by KIND THEN DISPLAY: same-kind +
-   * same-display is an IDEMPOTENT no-op (the original registration wins
-   * inertly); ANY other mix conflicts LOUDLY in the developer-facing
-   * ASCII bookkeeping family with the UNCHANGED form, now fed with
-   * DISPLAY names (literals display themselves, specs their labels —
-   * literal-over-literal reproduces the legacy bytes exactly).
-   * Registration touches the registry ONLY — an already-stored value is
-   * never retroactively revalidated (every stored value passed validation
-   * at ITS write moment; a stale-shaped value, should one ever exist,
-   * faults per the table on typed read and an overwrite replaces it). */
-  declare(name: string, type: VarType | CustomVarSpec): void {
-    // THE shared pre-mint admission: yields the DISPLAY name on success;
-    // a fault throws the bookkeeping voice before anything mints.
-    const display = admitVarType(name, type);
-    const existing = this.#types.get(name);
-    if (existing !== undefined) {
-      const existingDisplay = displayVarType(existing);
-      if (existingDisplay !== display) {
-        throw new VarAdmissionError(
-          `var registry: cannot declare '${name}' as '${display}': already declared as '${existingDisplay}'`,
-        );
-      }
-      // SAME-KIND + SAME-DISPLAY: idempotent no-op — the ORIGINAL
-      // registration wins inertly (deep-equality over schema objects is
-      // deliberately NOT consulted: a same-label re-declaration with a
-      // differently-edited schema is a SILENT no-op, matching the
-      // "registration lands exactly once per name" doctrine).
-      return;
-    }
-    // Registration lands exactly once per name, at first declaration:
-    // the conflict case has already thrown above, so what remains here is
-    // a fresh name (insert). THE MARKED SEAM of the union storage: every
-    // RUNTIME admission decision has settled above it (shared triage,
-    // then idempotency/conflict), and the widened-view write lets the
-    // well-formed spec ride into a field whose declared type stays the
-    // six-literal funnel view: byte-conservatism holds, while spec
-    // payloads are adjudicated by the spec-lane arm of set(), which skips
-    // base conversion by the runtime-kind guard, so they never reach the
-    // shared switch.
-    storeUnionDeclaration(this.#types, name, type);
-  }
-
-  /** THE single validated write entry point for ALL origins (shape
-   * policing only — permission belongs to the per-phase guard): an
-   * unregistered name faults first with the pinned undeclared-write line;
-   * a literal-declared name converts via the shared conversion table and
-   * stores the CONVERSION RESULT; a spec-declared name skips base
-   * conversion, materializes ANY STRING payload against a JSON read BEFORE
-   * the shape check, then parses the MATERIALIZED CANDIDATE through the
-   * schema's safeParse, stores the PARSE OUTPUT on success, settles a
-   * structured failure as the composed defect line and a throwing check as
-   * the dedicated fault line — always with the prior value intact, and
-   * with null flowing through the ordinary parse path like any other
-   * incoming value. The conversion core, wire materialization, and both
-   * line renderers are owned by the variable-substrate module. */
-  set(name: string, value: unknown): void {
-    const type = this.#types.get(name);
-    if (type === undefined) {
-      throw new VariableRejectionError([renderVarUndeclaredWriteLine(name)]);
-    }
-    if (typeof type === "string") {
-      // LITERAL LANE: the shared conversion table converts and the
-      // CONVERSION RESULT is what stores.
-      const result = convertVarValue(value, type);
-      if ("rejected" in result) {
-        throw new VariableRejectionError([
-          renderVarCoercionRejectLine(name, type, value, result.rejected),
-        ]);
-      }
-      this.#entries.set(name, result.converted);
-      return;
-    }
-    // The registry triage above settled this branch to the spec type, so
-    // the binding stays cast-free.
-    const spec: CustomVarSpec = type;
-    let parsed: z.ZodSafeParseResult<unknown>;
-    // Wire materialization (model writes arrive as text — decoded
-    // documents and scalars settle natively, non-document text rides the
-    // schema as-is).
-    const candidate = materializeWireJson(value);
-    // Wrapping ONLY the parse call: author schema code can throw even on
-    // merely-failing values, and every thrown kind settles the fault line.
-    try {
-      parsed = spec.schema.safeParse(candidate);
-    } catch {
-      throw new VariableRejectionError([renderVarSpecFaultLine(name)]);
-    }
-    if (!parsed.success) {
-      // Narrow the findings to the structural slice (symbol segments
-      // dropped).
-      throw new VariableRejectionError([
-        renderVarSpecDefectLine(name, sliceVarShapeIssues(parsed.error.issues)),
-      ]);
-    }
-    this.#entries.set(name, parsed.data);
-  }
-
-  /** Sole program-owned erasure (the model lane never erases): an undeclared name faults the pure-ASCII bookkeeping voice leaving entries and registry verbatim, and a declared name drops its entry — idempotent over absence — while the declaration survives, with post-clear writes re-entering the funnel from scratch (set() bypassed entirely). */
-  clear(name: string): void {
-    if (!this.#types.has(name)) {
-      throw new VarAdmissionError(renderVarClearUndeclaredLine(name));
-    }
-    this.#entries.delete(name);
-  }
-
-  /** Insertion-ordered, deduplicated key list (stored names only; a
-   * declared-but-never-set name stays OUT). */
-  list(): string[] {
-    return [...this.#entries.keys()];
-  }
-
-  /** THE registry query surface: fresh plain object per call listing every
-   * declared name to its DISPLAY name in DECLARATION order (independent of
-   * stored values): six literals display themselves, specs display their
-   * label (the shared display resolver feeds this face and the
-   * declarationDisplay() companion below). Callers may retain freely
-   * (counters() doctrine); derive declared-or-not AND display from this
-   * snapshot (the single registry introspection face). */
-  declarations(): Readonly<Record<string, string>> {
-    const snapshot: Record<string, string> = {};
-    for (const [name, type] of this.#types) {
-      snapshot[name] = displayVarType(type);
-    }
-    return snapshot;
-  }
-
-  /** COMPANION QUERY over the registry: the DISPLAYED name of ONE
-   * declaration — a literal displays itself, a spec its label — or
-   * UNDEFINED for an undeclared name. Safe channel: introspection, not
-   * admission — never throws, mutates nothing, mints nothing (parallel to
-   * the untyped-safe get(name) channel doctrine). THE surface the
-   * model-facing lanes render listings WITHOUT spec-internals awareness. */
-  declarationDisplay(name: string): string | undefined {
-    const stored = this.#types.get(name);
-    if (stored === undefined) return undefined;
-    return displayVarType(stored);
-  }
 }
 
 // Additive usage totals mirroring the platform's five-field struct. Cost is
@@ -952,14 +634,6 @@ export class PioSession {
   readonly id: string;
   /** Constructed runtime by reference — reach path for runs and teardown. */
   readonly runtime: AgentSessionRuntime;
-  /** The per-instance variable store - minted in create(). The engine and
-   * the model trio resolve variables over the EXECUTION STATE's phase-frame
-   * bindings (late, per call); this member is the host's name-addressed
-   * storage face standing beside that channel. Composed hosts from
-   * fromRuntime mint their OWN stores through the constructor default
-   * (disjoint by design). */
-  readonly vars: SessionVariableStore;
-
   #observer: SessionObserver;
   /** Last-bound handle MARKER — rebind's same-handle comparison only. */
   #lastBound: AgentSession;
@@ -969,20 +643,15 @@ export class PioSession {
   #executionState: SessionExecutionState | undefined;
 
   /** Private by design: the two public factories (create / fromRuntime)
-   * are the only construction paths. The OPTIONAL fourth parameter binds
-   * a PRE-MINTED variable store (create passes its own mint); the
-   * DEFAULT is a fresh mint, so composed frames stay disjoint-store by
-   * construction (no placement branch, no flag). */
+   * are the only construction paths. */
   private constructor(
     runtime: AgentSessionRuntime,
     observer: SessionObserver,
     executionState: SessionExecutionState | undefined = undefined,
-    vars: SessionVariableStore = new SessionVariableStore(),
   ) {
     this.id = runtime.session.sessionId;
     this.#lastBound = runtime.session;
     this.runtime = runtime;
-    this.vars = vars;
     this.#observer = observer;
     this.#executionState = executionState;
   }
@@ -990,15 +659,13 @@ export class PioSession {
   /**
    * The only standalone construction path: mints the observer and its
    * single instance-scoped listener PLUS the one per-session execution
-   * state over the owned anchor channels PLUS the ONE variable store and
-   * the model-facing variable trio built over the EXECUTION STATE (threaded
-   * onto the UNCONDITIONAL customTools slot behind the fenced bash entry),
-   * threads
-   * the listener and the UNCONDITIONAL guard install (state + both
-   * tool-call handler closures) through the construction seam (exactly
-   * one live subscription at any instant), and returns the ready instance.
-   * The composed-frame sibling (fromRuntime) hosts an already-settled
-   * runtime instead.
+   * state over the owned anchor channels PLUS the model-facing variable
+   * trio built over the EXECUTION STATE (threaded onto the UNCONDITIONAL
+   * customTools slot behind the fenced bash entry), threads the listener
+   * and the UNCONDITIONAL guard install (state + both tool-call handler
+   * closures) through the construction seam (exactly one live subscription
+   * at any instant), and returns the ready instance. The composed-frame
+   * sibling (fromRuntime) hosts an already-settled runtime instead.
    */
   static async create(cwd: string, sessionsRoot?: string): Promise<PioSession> {
     const observer = new SessionObserver();
@@ -1032,11 +699,6 @@ export class PioSession {
     // closure above); the instance may persist while the frames it consults
     // churn.
     const landlockBash = createLandlockBash(cwd, executionState);
-    // THE one variable store: minted HERE strictly pre-construction so the
-    // finished host exposes it as its vars handle (the name-addressed
-    // storage face standing beside the state-resolved trio channel;
-    // composed frames take the constructor's fresh-mint default).
-    const vars = new SessionVariableStore();
     // THE model-facing variable trio: constructed ONCE over the execution
     // state BY REFERENCE and appended to the customTools slot behind the
     // fenced bash entry (set -> get -> list; bash keeps its stable leading
@@ -1052,7 +714,7 @@ export class PioSession {
         handlers: [writeToolCallHandler, varToolCallHandler],
       },
     });
-    return new PioSession(runtime, observer, executionState, vars);
+    return new PioSession(runtime, observer, executionState);
   }
 
   /**

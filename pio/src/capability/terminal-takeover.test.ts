@@ -41,7 +41,6 @@ import type {
 } from "@earendil-works/pi-coding-agent";
 import type { IdSeams } from "../sandbox/layout.ts";
 import { ContractViolationError } from "./errors.ts";
-import type { SessionVariableStore } from "./pio-session.ts";
 import { PioSession } from "./pio-session.ts";
 import type {
   CapabilityResult,
@@ -972,7 +971,7 @@ describe("hop matrix (H rows — materializeFrame over the physics world)", () =
     }
   });
 
-  it("H2 nested grandchildren (two stacked hops): scopes nest TWO segments under the root, inner child mints under the OUTER child's scope dir, four switch calls run out-A, out-B, back-to-A, back-to-parent, records land at <outer>/<inner>/top and <outer>/top, the harness top-frame record lands at <root>/top, outputs reference the inner settled payload BY REFERENCE, variable stores stay frame-private, one live handle throughout, all ledgers pop, ONE IM across the whole chain", async () => {
+  it("H2 nested grandchildren (two stacked hops): scopes nest TWO segments under the root, inner child mints under the OUTER child's scope dir, four switch calls run out-A, out-B, back-to-A, back-to-parent, records land at <outer>/<inner>/top and <outer>/top, the harness top-frame record lands at <root>/top, outputs reference the inner settled payload BY REFERENCE, one live handle throughout, all ledgers pop, ONE IM across the whole chain", async () => {
     const { root, world, top, parentFile } = buildAlphaWorld("/work/nest");
     const outerChildDir = join(root, CHILD_ID_A, "top");
     const outerChildFile = join(outerChildDir, MINTED_FILE(1));
@@ -1023,20 +1022,11 @@ describe("hop matrix (H rows — materializeFrame over the physics world)", () =
       },
     );
     const innerOutputs: Record<string, unknown> = { value: 42 };
-    let outerStoreRef: SessionVariableStore | undefined;
-    let innerStoreRef: SessionVariableStore | undefined;
     let innerSettledRef: CapabilityResult | undefined;
     const settled = await materializeFrame({
       capability: CONTRACT_ALPHA,
       idSeams: SEAMS_A,
-      body: async (frame: PioSession): Promise<Record<string, unknown>> => {
-        const outerStore = frame.vars;
-        // W2C mechanical preamble (mandatory-type ruling): declare before
-        // the first write; row intent unchanged.
-        outerStore.declare("ovar", "number");
-        outerStore.set("ovar", 3);
-        outerStoreRef = outerStore;
-        expect(outerStore.get("ovar")).toBe(3);
+      body: async (): Promise<Record<string, unknown>> => {
         // Pre-attach guard: the inner record does not exist before its
         // attach (checked here, mid-hop, strictly BEFORE the inner
         // dispatch mutates anything).
@@ -1047,13 +1037,6 @@ describe("hop matrix (H rows — materializeFrame over the physics world)", () =
           capability: CONTRACT_BETA,
           idSeams: SEAMS_B,
           body: async (grand: PioSession): Promise<Record<string, unknown>> => {
-            const innerStore = grand.vars;
-            // W2C mechanical preamble (mandatory-type ruling).
-            innerStore.declare("ivar", "number");
-            innerStore.set("ivar", 99);
-            innerStoreRef = innerStore;
-            expect(innerStore.list()).toEqual(["ivar"]);
-            expect(innerStore.get("ovar")).toBeUndefined();
             expect(grand.counters().tokens).toBe(0);
             // Mid-inner-hop: three frames stacked (top, A, B).
             const frames = activeFrames();
@@ -1069,7 +1052,6 @@ describe("hop matrix (H rows — materializeFrame over the physics world)", () =
         expect(
           existsSync(join(root, CHILD_ID_A, CHILD_ID_B, "top", "status.json")),
         ).toBe(true);
-        expect(outerStore.get("ivar")).toBeUndefined();
         return { inner: innerSettled };
       },
     });
@@ -1210,12 +1192,6 @@ describe("hop matrix (H rows — materializeFrame over the physics world)", () =
       outerChildDir,
       innerChildDir,
     ]);
-    // Variable stores: frame-private, separate after the unwind, nothing
-    // persisted on the shared runtime (it carries no variable state).
-    expect(outerStoreRef!.get("ovar")).toBe(3);
-    expect(outerStoreRef!.get("ivar")).toBeUndefined();
-    expect(innerStoreRef!.get("ivar")).toBe(99);
-    expect(innerStoreRef!.get("ovar")).toBeUndefined();
     // ONE IM across the WHOLE CHAIN: the harness-minted terminal was
     // constructed once at world setup (the module contributed zero
     // constructions) and stop was called never through either hop.
@@ -1355,50 +1331,6 @@ describe("hop matrix (H rows — materializeFrame over the physics world)", () =
     // Isolation both ways: the parent-side traffic never reached the child
     // host either.
     expect(entryRef!.tokens()).toBe(MID_M);
-  });
-
-  it("H5 the child frame's variable store: set/get/list round-trips in the body and persists across microtasks there, while staying UNPERSISTED across the unwind — frame-private stores, nothing written to the shared runtime or the filesystem", async () => {
-    const { root, world, top } = buildAlphaWorld("/work/vars");
-    scriptSwitches(
-      world,
-      {
-        kind: "swap",
-        sessionId: "sess-child-a",
-        persist: (path: string): void => {
-          seedTranscript(path, "<seed>\n");
-        },
-      },
-      { kind: "swap", sessionId: "sess-fake-0001" },
-    );
-    let storeRef: SessionVariableStore | undefined;
-    const settled = await materializeFrame({
-      capability: CONTRACT_ALPHA,
-      idSeams: SEAMS_A,
-      body: async (frame: PioSession): Promise<Record<string, unknown>> => {
-        const store = frame.vars;
-        // W2C mechanical preamble (mandatory-type ruling): declare before
-        // the first write; row intent unchanged.
-        store.declare("hopvar", "number");
-        store.set("hopvar", 99);
-        storeRef = store;
-        expect(store.get("hopvar")).toBe(99);
-        expect(store.list()).toEqual(["hopvar"]);
-        await Promise.resolve();
-        expect(store.get("hopvar")).toBe(99);
-        return {};
-      },
-    });
-    expect(settled.ok).toBe(true);
-    // After the unwind: the store persists WITH the adopted host object...
-    expect(storeRef!.get("hopvar")).toBe(99);
-    // ...while the top frame's own store stayed clean...
-    expect(top.vars.list()).toEqual([]);
-    // ...and nothing landed on disk beyond the expected minimal tree.
-    expect(recursiveListing(root)).toEqual([
-      `${CHILD_ID_A}/top/${MINTED_FILE(1)}`,
-      `${CHILD_ID_A}/top/status.json`,
-      "top/parent-transcript.jsonl",
-    ]);
   });
 
   /** THE specified three-variant body-fault table: each variant drives a

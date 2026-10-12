@@ -18,7 +18,7 @@ export type CapabilityErrorCause =
  * this class just carries every collected violation.
  */
 export class ContractViolationError extends Error {
-  /** Every collected violation — the defining datum. */
+  /** Every collected violation - the defining datum. */
   readonly violations: string[];
   /** Refines built-in Error.cause?: unknown; always "contract". */
   readonly cause: CapabilityErrorCause;
@@ -60,24 +60,25 @@ export class MissingVariableError extends ContractViolationError {
 
 /**
  * The variable rejection family: one dedicated voice for every VARIABLE
- * concern — shape/coercion rejects from either origin (programmatic TS or
- * model tool), the model-side permission reject (the per-phase guard owns
- * those bytes), and typed-read faults (absent / unconvertible stored
- * value). Mirrors the ContractViolationError precedent in every load-
- * bearing detail: collect-all surface (a single-concern event carries
- * exactly ONE rendered line; multi-name failures compose as one instance),
- * optional explicit message preserved verbatim, defining `violations`
- * datum, pinned default-message prefix.
+ * concern - shape/coercion rejects settled by capability code over its own
+ * cells OR the model lane's setVar routing into a bound cell, plus the
+ * model-side permission reject whose bytes the per-phase guard owns.
+ * Mirrors the ContractViolationError precedent in every load-bearing
+ * detail: collect-all surface (a single-concern event carries exactly ONE
+ * rendered line; multi-name failures compose as one instance), optional
+ * explicit message preserved verbatim, defining `violations` datum, pinned
+ * default-message prefix.
  *
  * NO cause member on purpose: the closed five-member vocabulary is
- * undisturbed and no existing member semantically fits — ES Error.cause
+ * undisturbed and no existing member semantically fits - ES Error.cause
  * stays unset, so captureError's adoption step finds nothing to adopt and
  * instances reduce via the generic branch to bare identity {type, message}.
- * Developer-facing bookkeeping corruption (registry faults) NEVER rides
- * this family — it stays in its separate ASCII voice.
+ * Developer-facing bookkeeping corruption (the substrate's own pure-ASCII
+ * admission voice) NEVER rides this family - it stays in its separate
+ * ASCII voice.
  */
 export class VariableRejectionError extends Error {
-  /** Every collected violation line — the defining datum. */
+  /** Every collected violation line - the defining datum. */
   readonly violations: string[];
 
   constructor(violations: string[], message?: string) {
@@ -96,10 +97,10 @@ export class VariableRejectionError extends Error {
  *
  * NO cause member on purpose: the closed five-member vocabulary is
  * undisturbed and no member semantically fits (operator-caused, not
- * budget/kill/spawn/contract/author-halt) — ES Error.cause stays unset, so
+ * budget/kill/spawn/contract/author-halt) - ES Error.cause stays unset, so
  * captureError's adoption step finds nothing to adopt and instances reduce
  * via the generic branch to bare identity {type, message}: the exact shape
- * the adhoc coordinator detects by. Single concern by design — one pinned
+ * the adhoc coordinator detects by. Single concern by design - one pinned
  * form, NO violations member.
  */
 export class PhaseInterruptionError extends Error {

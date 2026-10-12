@@ -167,8 +167,7 @@ export function admitVarType(name: string, type: unknown): string {
 
 /** THE display resolver (SOLE byte owner of the literal-self / spec-label
  * mapping): six literals display THEMSELVES; a spec displays its LABEL.
- * Feeds the admission return, the cell's derived display accessor, and
- * the session store's declarations()/declarationDisplay() faces. */
+ * Feeds the admission return and the cell's derived display accessor. */
 export function displayVarType(type: VarType | CustomVarSpec): string {
   return typeof type === "string" ? type : type.label;
 }

@@ -826,9 +826,11 @@ export class PioSession {
    * undisturbed - and the call passes no options, so a turn can never
    * start. Zero cost: no prompt issues; neither the observer's counters
    * nor the budget bookkeeping move. Same single-handle reach as
-   * execute_phase (the runtime's CURRENT handle). Awaited placement - a
-   * subsequently issued phase prompt deterministically follows the post
-   * in transcript order.
+   * execute_phase (the runtime's CURRENT handle). The carrier maps the
+   * caller's flag verbatim with a VISIBLE default (options?.display ??
+   * true - only an explicit false hides the post). Awaited placement -
+   * a subsequently issued phase prompt deterministically follows the
+   * post in transcript order.
    */
   async send_context_message(
     content: string,
@@ -837,7 +839,7 @@ export class PioSession {
     await this.runtime.session.sendCustomMessage({
       customType: PIO_CONTEXT_CUSTOM_TYPE,
       content,
-      display: options?.display ?? false,
+      display: options?.display ?? true,
       details: undefined,
     });
   }

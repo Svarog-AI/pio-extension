@@ -607,7 +607,7 @@ describe("PioSession \u2014 send_context_message (non-turn context-post seam)", 
     expect(round.session.sendCustomMessage).toHaveBeenCalledWith({
       customType: CONTEXT_CUSTOM_TYPE_REPLICA,
       content: "Facts, with punctuation; multi-word.",
-      display: false,
+      display: true,
       details: undefined,
     });
     // Single positional argument - no second argument can carry the
@@ -625,31 +625,42 @@ describe("PioSession \u2014 send_context_message (non-turn context-post seam)", 
     ).toBe(true);
   });
 
-  it("maps the display flag verbatim onto the carrier (absent defaults hidden, explicit true shows), leaving every other field untouched", async () => {
+  it("maps the display flag verbatim onto the carrier (absent defaults VISIBLE, explicit false hides, explicit true shows), leaving every other field untouched", async () => {
     const { instance, round } = await host();
-    await instance.send_context_message("hidden by default");
+    await instance.send_context_message("visible by default");
+    await instance.send_context_message("hidden when flagged off", {
+      display: false,
+    });
     await instance.send_context_message("shown when flagged", {
       display: true,
     });
-    expect(round.session.sendCustomMessage).toHaveBeenCalledTimes(2);
-    // Absent option maps to HIDDEN (the 1:1 mapping options?.display ??
-    // false - absence never coerces to visible).
+    expect(round.session.sendCustomMessage).toHaveBeenCalledTimes(3);
+    // Absent option maps to VISIBLE (the 1:1 mapping options?.display ??
+    // true - the owner-ruling default after the visibility override).
     expect(round.session.sendCustomMessage).toHaveBeenNthCalledWith(1, {
       customType: CONTEXT_CUSTOM_TYPE_REPLICA,
-      content: "hidden by default",
+      content: "visible by default",
+      display: true,
+      details: undefined,
+    });
+    // Explicit false is the ONLY hiding face...
+    expect(round.session.sendCustomMessage).toHaveBeenNthCalledWith(2, {
+      customType: CONTEXT_CUSTOM_TYPE_REPLICA,
+      content: "hidden when flagged off",
       display: false,
       details: undefined,
     });
-    // Explicit true maps to VISIBLE with everything else unchanged.
-    expect(round.session.sendCustomMessage).toHaveBeenNthCalledWith(2, {
+    // ...and explicit true maps to VISIBLE with everything else unchanged.
+    expect(round.session.sendCustomMessage).toHaveBeenNthCalledWith(3, {
       customType: CONTEXT_CUSTOM_TYPE_REPLICA,
       content: "shown when flagged",
       display: true,
       details: undefined,
     });
-    // No second argument on either post.
+    // No second argument on any post.
     expect(round.session.sendCustomMessage.mock.calls[0]).toHaveLength(1);
     expect(round.session.sendCustomMessage.mock.calls[1]).toHaveLength(1);
+    expect(round.session.sendCustomMessage.mock.calls[2]).toHaveLength(1);
   });
 
   it("is counter-neutral across back-to-back posts (fresh snapshots deep-equal)", async () => {
@@ -716,7 +727,7 @@ describe("PioSession \u2014 send_context_message (non-turn context-post seam)", 
     expect(round.session.sendCustomMessage).toHaveBeenCalledWith({
       customType: CONTEXT_CUSTOM_TYPE_REPLICA,
       content: "concurrent facts",
-      display: false,
+      display: true,
       details: undefined,
     });
     expect(round.session.sendCustomMessage.mock.calls[0]).toHaveLength(1);
@@ -766,7 +777,7 @@ describe("PioSession \u2014 send_context_message (non-turn context-post seam)", 
     expect(round.session.sendCustomMessage).toHaveBeenNthCalledWith(2, {
       customType: CONTEXT_CUSTOM_TYPE_REPLICA,
       content: "context fact one",
-      display: false,
+      display: true,
       details: undefined,
     });
     expect(round.session.sendCustomMessage).toHaveBeenNthCalledWith(3, {

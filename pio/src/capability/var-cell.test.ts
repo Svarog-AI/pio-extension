@@ -1,8 +1,8 @@
 // Hermetic unit suite for the no-store variable substrate (var-cell.ts).
 // Pure unit rows: direct declareVar / cell construction over inline zod
 // schemas - ZERO SDK, ZERO real fs/tmpdir, ZERO $HOME, ZERO network
-// (mirrors the hermetic store rows that construct the class directly;
-// status.ts leaf purity makes the captureError import SDK-free). Golden
+// (direct-construction discipline throughout; status.ts leaf purity makes
+// the captureError import SDK-free). Golden
 // lines below are REPLICAS - suites never share fixtures - and the sole
 // owner of every moved byte family is the module-private (plus exported
 // seam) renderers in ./var-cell.ts. The \u2014 escape is replicated
@@ -271,7 +271,7 @@ describe("VarCell \u2014 admission (declareVar)", () => {
     );
   });
 
-  it("the shared admission core RETURNS the DISPLAY name on success (the store-delegation seam's feed): a literal returns ITSELF, a well-formed spec returns ITS LABEL \u2014 a malformed payload never returns", () => {
+  it("the shared admission core RETURNS the DISPLAY name on success (the free minter's feed): a literal returns ITSELF, a well-formed spec returns ITS LABEL \u2014 a malformed payload never returns", () => {
     expect(admitVarType("l", "string")).toBe("string");
     expect(
       admitVarType("s", { label: "decision-shape", schema: z.string() }),

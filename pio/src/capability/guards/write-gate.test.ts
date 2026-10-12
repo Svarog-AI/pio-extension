@@ -1,11 +1,11 @@
 // Hermetic unit suite for the stateless write-guard predicate
-// (guards/write-gate.ts). Self-contained island: zero SDK imports — every row
+// (guards/write-gate.ts). Self-contained island: zero SDK imports - every row
 // drives the REAL module directly with HAND-BUILT SNAPSHOTS as plain
 // structural literals over LITERAL ABSOLUTE POSIX paths (path.resolve is
 // identity on them, so literals round-trip byte-exactly). The module never
 // touches disk: no minted directories, no provider closures, no async. The
 // layer-bookkeeping tier, the two-object interleave tier, and the
-// channel-fault rows live in the execution-state suite — that component owns
+// channel-fault rows live in the execution-state suite - that component owns
 // the lifecycle and the channels. Mechanical guards pin the import
 // partition, the escape discipline, and the retired-identifier absence
 // across all five swept files (the three guard siblings, the relocated
@@ -21,7 +21,7 @@ import * as writeGateModule from "./write-gate.ts";
 import { decideWrite, matchesAnchoredGlob } from "./write-gate.ts";
 
 // ---------------------------------------------------------------------------
-// Shared hermetic fixtures — plain structural literals. One anchor pair;
+// Shared hermetic fixtures - plain structural literals. One anchor pair;
 // literal absolute posix paths everywhere (resolve() is identity on them).
 // ---------------------------------------------------------------------------
 
@@ -302,9 +302,9 @@ describe("/tmp/ scratch class at decision time", () => {
 });
 
 // ---------------------------------------------------------------------------
-// (c) The PHASE-BRANCH DECISION-TIME MATRIX — five coverage outcomes driven
+// (c) The PHASE-BRANCH DECISION-TIME MATRIX - five coverage outcomes driven
 // over snapshots carrying RAW `declared` sets (attach stores verbatim; the
-// judgment runs per call — there is no attach-time clamp anywhere).
+// judgment runs per call - there is no attach-time clamp anywhere).
 // ---------------------------------------------------------------------------
 
 describe("phase-branch decision-time matrix", () => {
@@ -440,7 +440,7 @@ describe("phase-branch decision-time matrix", () => {
       allowProjectWrites: false,
     };
     const TARGET = "/outside/a.md";
-    // SENTINEL PLACEHOLDER anchors — unique marker substrings engineered to
+    // SENTINEL PLACEHOLDER anchors - unique marker substrings engineered to
     // be found if ever interpolated into the denial:
     const SENTINEL_PATHS: PathAnchors = {
       projectSlotRoot: "MKR-slot-sentinel",
@@ -468,7 +468,7 @@ describe("phase-branch decision-time matrix", () => {
     expect(
       asRefusal(decideWrite(wiped, "write", { path: TARGET })).reason,
     ).toBe(replicaUniversalDenial());
-    // Swap in DIFFERENT placeholder anchors: identical bytes — `paths` is
+    // Swap in DIFFERENT placeholder anchors: identical bytes - `paths` is
     // provably never consulted for the wiped phase.
     const OTHER_PATHS: PathAnchors = {
       projectSlotRoot: "MKR-other-slot",
@@ -950,7 +950,7 @@ describe("project-file admission under allowProjectWrites", () => {
 });
 
 // ---------------------------------------------------------------------------
-// (e) The pattern-direction membership predicate — the documented fsview
+// (e) The pattern-direction membership predicate - the documented fsview
 // dialect in permission direction. All TEN carried rows drive
 // matchesAnchoredGlob directly over fixed string roots (pure strings; the
 // predicate answers "would this candidate target fall inside this declared
@@ -961,7 +961,7 @@ describe("matchesAnchoredGlob - the documented fsview dialect in permission dire
   const R = "/state/projects/proj-x"; // fixed project-slot root
 
   it("brace-only pattern receives the full transform even when hasWildcard reports false", () => {
-    // 'docs/{a,b}.md' carries none of '* ? [' — the fast-path hint must not
+    // 'docs/{a,b}.md' carries none of '* ? [' - the fast-path hint must not
     // shortcut the brace handling (brace-only patterns are dialect members).
     expect(matchesAnchoredGlob("docs/{a,b}.md", R, `${R}/docs/a.md`)).toBe(
       true,
@@ -1070,7 +1070,7 @@ describe("matchesAnchoredGlob - the documented fsview dialect in permission dire
   });
 
   it("anchoring excludes out-of-root targets, the root itself, and suffix impostors", () => {
-    // Outside the root entirely (suffix matches textually — rejected).
+    // Outside the root entirely (suffix matches textually - rejected).
     expect(
       matchesAnchoredGlob("research/*.md", R, `/elsewhere/research/r.md`),
     ).toBe(false);
@@ -1394,7 +1394,7 @@ describe("goldens - lockstep byte-equality on every refusal shape", () => {
 });
 
 // ---------------------------------------------------------------------------
-// (g) Coverage is EXACTLY write/edit — non-writer tools and malformed inputs
+// (g) Coverage is EXACTLY write/edit - non-writer tools and malformed inputs
 // bail BEFORE touching the snapshot's pair fields: immediate `undefined`,
 // zero side effects. Driven against a well-formed snapshot AND a
 // MARKER-POISONED snapshot whose fields carry unique substrings engineered to
@@ -1428,7 +1428,7 @@ describe("coverage is exactly write/edit - short-circuit before any snapshot con
   };
 
   const NO_TARGET_INPUTS: Array<[string, unknown]> = [
-    // Non-writer tools — including bash (backlog territory) — yield no target:
+    // Non-writer tools - including bash (backlog territory) - yield no target:
     ["bash", { command: "touch /outside/x.md" }],
     ["read", { path: "/outside/x.md" }],
     ["vscode_apply_workspace_edit", {}],
@@ -1471,7 +1471,7 @@ describe("coverage is exactly write/edit - short-circuit before any snapshot con
 });
 
 // ---------------------------------------------------------------------------
-// (h) Channel-freedom + runtime-namespace surface pins — every public
+// (h) Channel-freedom + runtime-namespace surface pins - every public
 // signature takes PLAIN VALUES; the runtime module namespaces expose ONLY
 // the value exports (the types erase to nothing).
 // ---------------------------------------------------------------------------
@@ -1523,7 +1523,7 @@ describe("channel freedom + runtime namespace surface", () => {
 });
 
 // ---------------------------------------------------------------------------
-// (i) MECHANICAL SOURCE GUARDS — self-source reads (house idiom:
+// (i) MECHANICAL SOURCE GUARDS - self-source reads (house idiom:
 // readFileSync(new URL(file, import.meta.url))) covering ALL FIVE swept
 // files: import partition, statelessness, types-only surfaces, escape
 // discipline, retired-identifier absence.
@@ -1556,14 +1556,14 @@ describe("mechanical source guards - all swept files", () => {
    * matching close quote HONORING BACKSLASH ESCAPES (recording each raw
    * interior in `payloads`, blanking it in the returned `code` with the
    * quote characters kept around a `P` placeholder), and recognizes
-   * REGEX LITERALS — a `/` opens one only after an expression-start
+   * REGEX LITERALS - a `/` opens one only after an expression-start
    * character (a division `/` never does), consumed through the closing
    * `/` with `[...]` class and backslash-escape fidelity. The downstream
    * assertions are thereby sound: a block-comment opener inside a glob
    * string can no longer swallow real code, an apostrophe in prose can
    * no longer open a phantom literal, a quote inside a regex can no
    * longer desynchronize pairing, and no pairing crosses a line
-   * blindly. Raw glyphs in prose comments are house precedent — comments
+   * blindly. Raw glyphs in prose comments are house precedent - comments
    * elide here; literals are recorded, not elided. */
   const REGEX_STARTERS = "{[(,=;:!?&|+-*%~^<>";
   function partitionSource(source: string): {
@@ -1763,7 +1763,7 @@ describe("mechanical source guards - all swept files", () => {
     // Assembled at runtime so this guard does not self-match its own text.
     const CAST_TOKEN = ["a", "s"].join("");
     const castPattern = new RegExp(`\\b${CAST_TOKEN}\\b`, "g");
-    // Sweeps EXACTLY the production files — the suite itself uses `* as` in
+    // Sweeps EXACTLY the production files - the suite itself uses `* as` in
     // its namespace imports and one documented narrowing seam, both outside
     // the convention's reach.
     const offenders: string[] = [];

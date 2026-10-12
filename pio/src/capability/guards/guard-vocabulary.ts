@@ -1,10 +1,10 @@
-// ── guards/guard-vocabulary.ts — SHARED DECISION VOCABULARY (types only;
+// ── guards/guard-vocabulary.ts - SHARED DECISION VOCABULARY (types only;
 // NO RUNTIME IMPORTS - exactly ONE type-only substrate edge that erases
-// under type stripping; exactly THREE members — mechanically asserted) ──
+// under type stripping; exactly THREE members - mechanically asserted) ──
 
 import type { PhaseVarBinding } from "../var-cell.ts";
 
-/** Plain data — the running capability's sources (contract values as-is; the
+/** Plain data - the running capability's sources (contract values as-is; the
  * vocabulary deliberately does NOT import contract.ts, keeping it hermetic). */
 export interface CapabilitySources {
   // the running capability's name - LAYER identity (the refusal names the
@@ -46,7 +46,7 @@ export interface PhasePermission {
   vars: readonly PhaseVarBinding[];
 }
 
-/** The session's path anchors — PLAIN RESOLVED STRINGS, session-invariant.
+/** The session's path anchors - PLAIN RESOLVED STRINGS, session-invariant.
  * Resolved by the execution state (Step 2); every guard member only CONSUMES
  * them (channel-free by construction). */
 export interface PathAnchors {

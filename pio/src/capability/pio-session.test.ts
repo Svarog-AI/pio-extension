@@ -3,14 +3,14 @@
 // pure fake: the vi.mock factory references ONLY hoisted bindings and never
 // pulls in the original module, so the real @earendil-works/pi-coding-agent
 // graph is never evaluated. No filesystem, network, env, or process-stream
-// assumptions — except the filesystem-scoped expectation-gate rows, which
+// assumptions - except the filesystem-scoped expectation-gate rows, which
 // drive the disk-truth gate with real node:fs reads and writes against
 // per-row mkdtemp tmpdir targets (disk seeding is row duty there; every
 // other row remains fs/env-free). Each construction mints a fresh fake
 // session behind a fresh
 // fake runtime, so subscription counts and per-instance isolation are
 // directly observable. Synthetic events flow through the single documented
-// cast seam asEvent — the sole `as` over synthetic event payloads (the
+// cast seam asEvent - the sole `as` over synthetic event payloads (the
 // handle-typing seams asHandle / asRuntime below are the only other
 // presentation seams in this file, plus the
 // trio-drive seam driveVarEntry in the vars-tool threading describe,
@@ -20,7 +20,7 @@
 // argument).
 //
 // Physics-mirror harness (installed 0.85.1 dist): fake handles bookkeep
-// LIVE listeners — subscribe returns a functional per-listener unsubscribe
+// LIVE listeners - subscribe returns a functional per-listener unsubscribe
 // (agent-session.d.ts L278–L280); dispose clears the live list
 // (agent-session.js L584–L604); emitTo delivers to EVERY live listener, so
 // a double-subscribed handle counts every event twice and fails the exact
@@ -28,7 +28,7 @@
 // (agent-session-runtime.js L128–L143): dispose the outgoing handle, apply
 // a FRESH zero-listener handle, replay nothing (reopened transcripts
 // re-fire no events). No stdout spy anywhere: the module composes no
-// process-stream bytes — prompt text rides the session channel.
+// process-stream bytes - prompt text rides the session channel.
 //
 // Phase-running rows drive the runs themselves through the fake session
 // handle's prompt mock: each queued implementation emits synthetic events
@@ -117,10 +117,10 @@ interface FakeSession {
   /** The no-turn capability-span stamp seam (recording arg-shape). */
   sendCustomMessage: ReturnType<typeof vi.fn>;
   sessionId: string;
-  /** Mirrored dispose — plain callable type (the default Mock type is not
+  /** Mirrored dispose - plain callable type (the default Mock type is not
    * callable through the interface). */
   dispose: () => void;
-  /** Every listener ever subscribed — append-only counting observability. */
+  /** Every listener ever subscribed - append-only counting observability. */
   captured: Listener[];
   /** Live listeners: subscribe adds; unsubscribe / mirrored dispose remove. */
   live: Listener[];
@@ -532,7 +532,7 @@ function simulateSwap(round: Round, incoming: FakeSession): void {
   round.runtime.session = incoming;
 }
 
-/** Replica of the module's refusal message — the \u2014 escape replicated
+/** Replica of the module's refusal message - the \u2014 escape replicated
  * identically (never a literal em dash in string literals). */
 const REFUSAL_REPLICA =
   "pio-session: rebind refused \u2014 handle 'sess-other-9999' is not this frame's session ('sess-fake-0001')";
@@ -544,7 +544,7 @@ const CAPABILITY_CUSTOM_TYPE_REPLICA = "pio-capability";
 describe("renderCapabilityMarker (pure)", () => {
   it("renders the EXACT pinned capability-line bytes with no trailing newline", () => {
     // Codepoints: U+2014 U+2014 SPACE `capability:` SPACE label SPACE
-    // U+2014 U+2014 — the layout mirrors renderPhaseMarker with the
+    // U+2014 U+2014 - the layout mirrors renderPhaseMarker with the
     // reserved `capability:` prefix INSIDE the dash flank.
     const rendered = renderCapabilityMarker("demo");
     expect(rendered).toBe("\u2014\u2014 capability: demo \u2014\u2014");
@@ -570,7 +570,7 @@ describe("PioSession — markCapability (no-turn custom-message seam)", () => {
       display: true,
       details: undefined,
     });
-    // NO options object: the call carries EXACTLY one argument — the
+    // NO options object: the call carries EXACTLY one argument - the
     // triggerTurn switch stays at its SDK default (append, never a turn).
     expect(round.session.sendCustomMessage.mock.calls[0]).toHaveLength(1);
   });
@@ -581,7 +581,7 @@ describe("PioSession — markCapability (no-turn custom-message seam)", () => {
     await instance.markCapability("neutral");
     // Zero prompt invocations: the mark never starts a run on this plane.
     expect(round.session.prompt).toHaveBeenCalledTimes(0);
-    // Counters unchanged by reference-content — a fresh snapshot reads
+    // Counters unchanged by reference-content - a fresh snapshot reads
     // byte-equal to the pre-mark one (no assistant usage fed in).
     const after = instance.counters();
     expect(after).toStrictEqual(before);
@@ -610,7 +610,7 @@ function update(toolCallId: string, toolName: string, args?: unknown) {
   };
 }
 
-// The end event carries NO args field — the path must correlate from the
+// The end event carries NO args field - the path must correlate from the
 // matching start event through the toolCallId.
 function end(toolCallId: string, toolName: string, isError: boolean) {
   return {
@@ -895,7 +895,7 @@ describe("PioSession — filesWritten counter", () => {
       },
     });
     expect(seen).toHaveLength(1);
-    // Byte-for-byte the start's args.path — the only source of the value.
+    // Byte-for-byte the start's args.path - the only source of the value.
     expect(seen?.[0]).toBe("/correlated/deep.md");
     expect(instance.counters().filesWritten).toBe(1);
   });
@@ -1987,7 +1987,7 @@ describe("PioSession — phase result shape", () => {
       shouldStopLoop: async () => true,
     });
     // Fragment-assembled key: the raw placeholder identifier is confined to
-    // the owning module (residue-row doctrine — never in any test file).
+    // the owning module (residue-row doctrine - never in any test file).
     const placeholderKey = ["vars", "Delta"].join("");
     expect(Object.keys(result).sort()).toEqual([
       "counters",
@@ -2034,7 +2034,7 @@ describe("PioSession — composed-host surface (P-rows)", () => {
       runtimeFactory: harness.createAgentSessionRuntime.mock.calls.length,
     };
 
-    // SYNCHRONOUS — usable before any await.
+    // SYNCHRONOUS - usable before any await.
     const H = PioSession.fromRuntime(runtime);
     const zero = H.counters();
     expect(Object.keys(zero).sort()).toEqual([
@@ -2056,7 +2056,7 @@ describe("PioSession — composed-host surface (P-rows)", () => {
     expect(H.id).toBe("sess-fake-0001");
     expect(H.runtime).toBe(rawRuntime);
 
-    // PROVENANCE: zero standalone-construction reach — all four counts
+    // PROVENANCE: zero standalone-construction reach - all four counts
     // unchanged by the factory call.
     expect(harness.SessionManager.create.mock.calls.length).toBe(
       provenanceBefore.managerCreate,
@@ -2072,12 +2072,12 @@ describe("PioSession — composed-host surface (P-rows)", () => {
     );
 
     // OBSERVER FRESHNESS: a second host on the SAME runtime gets a
-    // DISTINCT observer — two live listeners on h0, each routing to its
+    // DISTINCT observer - two live listeners on h0, each routing to its
     // own.
     const H2 = PioSession.fromRuntime(runtime);
     expect(h0.live).toHaveLength(2);
     expect(h0.subscribe).toHaveBeenCalledTimes(2);
-    // Hand-computed per host: Σ10 (1+2+3+4) + Σ26 (5+6+7+8) = 36 — each
+    // Hand-computed per host: Σ10 (1+2+3+4) + Σ26 (5+6+7+8) = 36 - each
     // event counted once per host (no cross-routing, no self-doubling).
     emitTo(h0, messageEnd(assistantMessage(usage(1, 2, 3, 4))));
     expect(H.counters().tokens).toBe(10);
@@ -2090,7 +2090,7 @@ describe("PioSession — composed-host surface (P-rows)", () => {
   it("rebind continues cumulative counters across a simulated swap: the reopen itself adds nothing, emitting on the fresh handle without a rebind changes nothing, re-arming adds no phantom accumulation, post-events land, and the old handle stays inert", async () => {
     const { instance: H, round: R } = await host();
     const h0 = R.session;
-    // Pre-vector — hand-computed: Σ38 (10+20+5+3) tokens, one committed
+    // Pre-vector - hand-computed: Σ38 (10+20+5+3) tokens, one committed
     // write (its start also counts in toolUses), one bash start.
     emit(
       R,
@@ -2109,18 +2109,18 @@ describe("PioSession — composed-host surface (P-rows)", () => {
     expect(H.counters()).toEqual(pre);
 
     // Swap OUT to a child-like handle, BACK to a FRESH h1@S (file-backed
-    // identity retention — new object, zero listeners).
+    // identity retention - new object, zero listeners).
     simulateSwap(R, harness.mintFakeHandle("sess-child-0002"));
     const h1 = harness.mintFakeHandle(harness.sessionId);
     simulateSwap(R, h1);
     expect(R.runtime.session).toBe(h1);
     expect(h0.disposed).toBe(true);
 
-    // After swap-back, BEFORE any rebind: the reopen adds nothing — the
+    // After swap-back, BEFORE any rebind: the reopen adds nothing - the
     // fresh handle re-fires nothing; H's old subscription died with h0.
     expect(H.counters()).toEqual(pre);
 
-    // Without a rebind, h1 is invisible to H (zero live listeners) — the
+    // Without a rebind, h1 is invisible to H (zero live listeners) - the
     // re-arm is REQUIRED, not automatic.
     expect(h1.live).toHaveLength(0);
     emitTo(h1, messageEnd(assistantMessage(usage(1, 1, 1, 1))));
@@ -2132,7 +2132,7 @@ describe("PioSession — composed-host surface (P-rows)", () => {
     expect(h1.live).toHaveLength(1);
     expect(H.counters()).toEqual(pre);
 
-    // Post-events on h1 land: final = pre + post EXACT — hand-computed
+    // Post-events on h1 land: final = pre + post EXACT - hand-computed
     // 38 + 800 (100+250+400+50) = 838 tokens, 2 committed files.
     emitTo(
       h1,
@@ -2170,7 +2170,7 @@ describe("PioSession — composed-host surface (P-rows)", () => {
     expect(h0.live).toHaveLength(1);
 
     // Repeat: still exactly one subscription (reference-identity no-op
-    // gate — the observable is the stable subscription count).
+    // gate - the observable is the stable subscription count).
     H.rebind(asHandle(h0));
     expect(h0.subscribe).toHaveBeenCalledTimes(1);
     expect(h0.live).toHaveLength(1);
@@ -2182,7 +2182,7 @@ describe("PioSession — composed-host surface (P-rows)", () => {
     // (the no-op gate's tripwire).
     const { instance: H, round: R } = await host();
     const h0 = R.session;
-    // Pre-vector — hand-computed: Σ838 (38 + 800) tokens, two committed
+    // Pre-vector - hand-computed: Σ838 (38 + 800) tokens, two committed
     // paths in event order, toolUses {write: 2, ask_user: 1}.
     emit(
       R,
@@ -2208,14 +2208,14 @@ describe("PioSession — composed-host surface (P-rows)", () => {
     const h1 = harness.mintFakeHandle(harness.sessionId);
     simulateSwap(R, h1);
 
-    // Read IMMEDIATELY after swap-back (before rebind): pre-vector EXACT —
+    // Read IMMEDIATELY after swap-back (before rebind): pre-vector EXACT -
     // "replay adds nothing" over the full vector.
     expect(H.counters()).toEqual(pre);
 
     H.rebind(asHandle(h1));
     expect(h1.live).toHaveLength(1);
 
-    // Post-vector on h1 — hand-computed: further usage Σ34 (7+8+9+10),
+    // Post-vector on h1 - hand-computed: further usage Σ34 (7+8+9+10),
     // one more committed path, one more tool start.
     emitTo(
       h1,
@@ -2317,7 +2317,7 @@ describe("PioSession — composed-host surface (P-rows)", () => {
     expect(thrown).toBeInstanceOf(Error);
     const fault = thrown as SessionHandleRefusalError;
     expect(fault.name).toBe("SessionHandleRefusalError");
-    // Byte-equal to the replica — \u2014 escaped identically on both sides.
+    // Byte-equal to the replica - \u2014 escaped identically on both sides.
     expect(fault.message).toBe(REFUSAL_REPLICA);
     expect((thrown as { cause?: unknown }).cause).toBeUndefined();
 
@@ -2340,7 +2340,7 @@ describe("PioSession — composed-host surface (P-rows)", () => {
     expect(H.counters().tokens).toBe(10);
 
     // Capture-ladder pre-flight (real leaf-pure status.ts, no mock): bare
-    // identity reduces to EXACTLY { type, message } — no cause, no extras.
+    // identity reduces to EXACTLY { type, message } - no cause, no extras.
     const captured = captureError(
       new SessionHandleRefusalError(REFUSAL_REPLICA),
     );
@@ -2351,7 +2351,7 @@ describe("PioSession — composed-host surface (P-rows)", () => {
   });
 });
 // ---------------------------------------------------------------------
-// Expectation gate (write:) — engine-owned per-phase file expectations.
+// Expectation gate (write:) - engine-owned per-phase file expectations.
 // FixtureCapability is TEST-LOCAL (extends the real base, session-present,
 // never registered in the production loader table). Real node:fs writes
 // against per-row mkdtemp targets are row duty, never harness magic; the
@@ -2367,7 +2367,7 @@ class FixtureCapability extends PioCapability {
     outputs: [],
     writes: [],
   };
-  /** Observed phase results — the assertion channel for the BINDING legs. */
+  /** Observed phase results - the assertion channel for the BINDING legs. */
   readonly phaseResults: PhaseResult[] = [];
   #target: string;
 
@@ -2379,7 +2379,7 @@ class FixtureCapability extends PioCapability {
   async call(
     _inputs: Record<string, unknown>,
   ): Promise<Record<string, unknown>> {
-    // Declaration-only phase: write, no hook, no max — the gate plus its
+    // Declaration-only phase: write, no hook, no max - the gate plus its
     // ceiling are the sole settlement authority.
     this.phaseResults.push(
       await this.execute_phase("guarded", {
@@ -2399,7 +2399,7 @@ const GUARDED_BASELINE = `\u2014\u2014 guarded \u2014\u2014\nWrite the thing\n\n
 
 /** Pinned corrective-note replica (SOLE OWNER: the module-private template
  * in ./pio-session.ts): the flanked em-dash delimiter line labeled output
- * guard above the body sentence — every currently-missing resolved path,
+ * guard above the body sentence - every currently-missing resolved path,
  * declaration order, plus the settled-run count at the denial point;
  * U+2014 arrives as \u2014 escapes identically on both sides. */
 const correctiveNoteReplica = (iterations: number, missing: string[]): string =>
@@ -2433,7 +2433,7 @@ describe("PioSession — expectation gate (write:)", () => {
   it("BINDING leg 1 (auto re-run and normal settle): the scripted first pass does NOT write the declared file, the engine denies settlement and re-runs with the pinned corrective block, the second pass's real fs write lets the gate pass, and the FULL chain (fixture call() -> real base run() -> real emitter) settles ok:true with exit code 0", async () => {
     const target = path.join(tmp, "deliverable.md");
     const { instance, round } = await host();
-    // Pass one: quiet only — the gate alone drives the re-run.
+    // Pass one: quiet only - the gate alone drives the re-run.
     round.session.prompt.mockImplementationOnce(async () => {
       emit(round, ...quietRun());
     });
@@ -2522,7 +2522,7 @@ describe("PioSession — expectation gate (write:)", () => {
       sessionFile: () => undefined,
     });
     const result = await cap.run({});
-    // First pass + 3 corrective re-runs — the gate's own ceiling.
+    // First pass + 3 corrective re-runs - the gate's own ceiling.
     expect(round.session.prompt).toHaveBeenCalledTimes(4);
     const sent = sentTexts(round);
     expect(sent[0]).toBe(GUARDED_BASELINE);
@@ -2696,7 +2696,7 @@ describe("PioSession — expectation gate (write:)", () => {
     expect(first?.counters.filesWritten).toBe(4);
   });
   it("mechanical semantics (i): a resolvable DIRECTORY declared as an expected path passes mechanically — one prompt, all-baseline text, done: true", async () => {
-    // The mkdtemp root itself is an existing directory — declare IT.
+    // The mkdtemp root itself is an existing directory - declare IT.
     const { instance, round } = await host();
     scriptRuns(round, quietRun());
     const result = await instance.execute_phase("dir-expects", {
@@ -2813,7 +2813,7 @@ describe("PioSession — expectation gate (write:)", () => {
 });
 
 // ---------------------------------------------------------------------
-// Variable expectation gate (vars:) — the fresh-emptiness settlement
+// Variable expectation gate (vars:) - the fresh-emptiness settlement
 // consult over the retained binding list plus the duplicate-refusal first
 // check at the attach point. Structure mirrors the file-gate sibling:
 // host(), scriptRuns / quietRun, sentTexts, identity-over-goldens replica
@@ -2821,7 +2821,7 @@ describe("PioSession — expectation gate (write:)", () => {
 // never loader-registered). Cells are minted BY THE ROWS and handed to the
 // phases BY REFERENCE - the engine never mints anything. Round-trip legs
 // drive the REAL threaded trio bodies and the REAL predicate over a fresh
-// governing snapshot — no second mock of the system under test. Vars rows
+// governing snapshot - no second mock of the system under test. Vars rows
 // need no filesystem except the joint-corner rows (mkdtemp for the file
 // half).
 // ---------------------------------------------------------------------
@@ -2834,7 +2834,7 @@ class VarsFixtureCapability extends PioCapability {
     outputs: [],
     writes: [],
   };
-  /** Observed phase results — the assertion channel for the BINDING legs. */
+  /** Observed phase results - the assertion channel for the BINDING legs. */
   readonly phaseResults: PhaseResult[] = [];
   #bindings: readonly PhaseVarBinding[];
 
@@ -3403,7 +3403,7 @@ describe("PioSession — variable expectation gate (vars:)", () => {
     expect(sent[0]).toBe(
       `\u2014\u2014 spec-arm \u2014\u2014\nDefine the thing\n\n${expectedDisclosure()}`,
     );
-    // The corrective block names BOTH variables fresh per retry — the
+    // The corrective block names BOTH variables fresh per retry - the
     // spec-typed cell is indistinguishable from the literal one.
     expect(sent[3]).toBe(
       `\u2014\u2014 spec-arm \u2014\u2014\nDefine the thing\n\n${expectedDisclosure()}\n${varCorrectiveNoteReplica(3, ["plain", "shape"])}`,
@@ -3547,7 +3547,7 @@ describe("PioSession — variable expectation gate (vars:)", () => {
         sessionFile: () => undefined,
       });
       const result = await cap.run({});
-      // First pass + 3 corrective re-runs — the gate's own ceiling.
+      // First pass + 3 corrective re-runs - the gate's own ceiling.
       expect(round.session.prompt).toHaveBeenCalledTimes(4);
       const sent = sentTexts(round);
       expect(sent[0]).toBe(VAR_FIXTURE_BASELINE);
@@ -3745,7 +3745,7 @@ describe("PioSession — variable expectation gate (vars:)", () => {
         `${baseline}\n${correctiveNoteReplica(1, [target])}\n${varCorrectiveNoteReplica(1, ["jo"])}`,
       );
       // Thereafter: the satisfied dimension stops advancing its counter
-      // and its block drops off — pure file-face bytes.
+      // and its block drops off - pure file-face bytes.
       expect(sent[2]).toBe(
         `${baseline}\n${correctiveNoteReplica(2, [target])}`,
       );
@@ -4044,7 +4044,7 @@ describe("source guards (composed-host edge discipline over pio-session.ts)", ()
     expect(src.match(/from "@earendil-works\/pi-coding-agent"/g)?.length).toBe(
       1,
     );
-    // Normalized to the pinned single-line form — whitespace and the
+    // Normalized to the pinned single-line form - whitespace and the
     // formatter-mandated trailing comma are neutral (mechanical
     // punctuation).
     const sdkTypeClause = src.match(
@@ -5520,7 +5520,7 @@ describe("PioSession \u2014 Landlock-bash customTools threading", () => {
 // ---------------------------------------------------------------------
 // Vars-tool customTools threading: the grown UNCONDITIONAL four-entry
 // world - the fenced bash entry followed by the model-facing variable
-// trio over create's minted store. The rows drive the REAL
+// trio threading the REAL execution state. The rows drive the REAL
 // PioSession.create and observe the threaded entries cast-free off the
 // recorded from-services arg; the composed-wiring rows additionally drive
 // the REAL var-tool execute bodies through the single marked seam

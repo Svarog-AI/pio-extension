@@ -15,51 +15,51 @@ vi.mock("./sandbox/run.ts", () => ({
   runCapability: vi.fn(),
 }));
 
-// Help-tail lines — the SOLE OWNERS are HELP_LINES indices 8–9 in
+// Help-tail lines - the SOLE OWNERS are HELP_LINES indices 8–9 in
 // ./cli.ts; the copies keep the byte-pins meaningful. NOTE the em dash is
-// the U+2014 EM DASH character — pinned codepoint, never normalized.
+// the U+2014 EM DASH character - pinned codepoint, never normalized.
 const RESEARCH_ENTRY_LINE =
   "  research — bounded web-research loop producing a markdown file report";
 const CANONICAL_INVOCATION_LINE = '  pio run research --input topic="<topic>"';
-// Compose-demo help-tail lines — the SOLE OWNERS are HELP_LINES indices
+// Compose-demo help-tail lines - the SOLE OWNERS are HELP_LINES indices
 // 10–11 in ./cli.ts; the copies keep the byte-pins meaningful. NOTE the em
 // dash is the U+2014 EM DASH character (pinned codepoint), and the canonical
-// line is the BARE form — the demo takes nothing.
+// line is the BARE form - the demo takes nothing.
 const COMPOSE_DEMO_ENTRY_LINE =
   "  compose-new-session-demo — TEMPORARY: greets the operator, runs research in the taken-over terminal, then reports the top 3 findings";
 const COMPOSE_DEMO_INVOCATION_LINE = "  pio run compose-new-session-demo";
-// Same-session-demo help-tail lines — the SOLE OWNERS are HELP_LINES
+// Same-session-demo help-tail lines - the SOLE OWNERS are HELP_LINES
 // indices 12–13 in ./cli.ts; the copies keep the byte-pins meaningful.
 // NOTE the em dash is the U+2014 EM DASH character (pinned codepoint), and
-// the canonical line is the BARE form — the demo takes nothing.
+// the canonical line is the BARE form - the demo takes nothing.
 const SAME_SESSION_DEMO_ENTRY_LINE =
   "  compose-same-session-demo — greets the operator, runs research in the same session, then reports the top 3 findings";
 const SAME_SESSION_DEMO_INVOCATION_LINE = "  pio run compose-same-session-demo";
-// Guards-demo help-tail lines — the SOLE OWNERS are HELP_LINES indices 14–15
+// Guards-demo help-tail lines - the SOLE OWNERS are HELP_LINES indices 14–15
 // in ./cli.ts; the copies keep the byte-pins meaningful. NOTE the em dash is
 // the U+2014 EM DASH character (pinned codepoint), and the canonical line is
-// the BARE form — the demo takes nothing.
+// the BARE form - the demo takes nothing.
 const GUARDS_DEMO_ENTRY_LINE =
   "  guards-demo — PERMANENT guard demonstration: first pass skips the declared write, the expectation guard denies settlement with a corrective note naming the exact path, the compliant re-run settles, then a summary states the outcome";
 const GUARDS_DEMO_INVOCATION_LINE = "  pio run guards-demo";
-// Vars-demo help-tail lines — the SOLE OWNERS are HELP_LINES indices 16–17
+// Vars-demo help-tail lines - the SOLE OWNERS are HELP_LINES indices 16–17
 // in ./cli.ts; the copies keep the byte-pins meaningful. NOTE the em dash is
 // the U+2014 EM DASH character (pinned codepoint), and the canonical line is
-// the BARE form — the demo takes nothing.
+// the BARE form - the demo takes nothing.
 const VARS_DEMO_ENTRY_LINE =
-  "  vars-demo — PERMANENT variable-store demonstration: model and TS code read and write the same live session variables — visible expectation-guard retry, following-turn read-back";
+  "  vars-demo — PERMANENT no-store variable demonstration: model and TS code read and write the same live cells by reference — visible expectation-guard retry, following-turn read-back, and the refused out-of-permission write";
 const VARS_DEMO_INVOCATION_LINE = "  pio run vars-demo";
 
-// Replicated miss-line literal — the SOLE OWNER is capabilityRefusalLine in
+// Replicated miss-line literal - the SOLE OWNER is capabilityRefusalLine in
 // capability/loader.ts; the copy follows its owner into the entry suites so
 // the delegation byte-pins stay meaningful.
 const missLine = (name: string): string =>
   `pio: capability '${name}' is not implemented yet`;
 
-// Replicated host usage string — the SOLE OWNER is the RUN_USAGE constant in
+// Replicated host usage string - the SOLE OWNER is the RUN_USAGE constant in
 // ./cli.ts (help usage line + both error-template tails); the copy keeps the
 // byte-pins below meaningful (the U-alias idiom from run-session.test.ts).
-// NOTE the trailing ellipsis is the U+2026 HORIZONTAL ELLIPSIS character —
+// NOTE the trailing ellipsis is the U+2026 HORIZONTAL ELLIPSIS character -
 // pinned codepoint, not three dots.
 const USAGE = "pio run <capability> [--input k=v …]";
 
@@ -317,7 +317,7 @@ describe("parse (--input pair grammar — strictness edges, first violation wins
 
 describe("main (behavior matrix)", () => {
   // Full pinned-array equality: every line of the eighteen-line pinned form
-  // stays byte-identical — placement pinned, not merely presence (indices
+  // stays byte-identical - placement pinned, not merely presence (indices
   // 0–15 byte-stable under the pre-existing owner replicas; the two appended
   // indices ride their own owner replicas above).
   it("--help: exit 0, stdout deep-equals the full pinned line array, clean stderr", async () => {
@@ -458,7 +458,7 @@ describe("main (run path dispatch)", () => {
     runCapabilityMock.mockReset();
   });
 
-  // Miss rows: the CLI no longer owns any refusal bytes — it DELEGATES the
+  // Miss rows: the CLI no longer owns any refusal bytes - it DELEGATES the
   // name onward, and the miss line (loader-owned bytes, replicated above)
   // arrives THROUGH the very sink the run path receives.
   it("run <unknown>: exit 1, delegated onward — called with ('whatever', the injected io); the miss line arrives THROUGH that sink; clean stdout", async () => {
@@ -545,7 +545,7 @@ describe("main (run path dispatch)", () => {
 });
 
 describe("main (--input strictness edges — prefixed bytes + exit 1)", () => {
-  // The host parser rejects EVERY malformed shape BEFORE any dispatch — these
+  // The host parser rejects EVERY malformed shape BEFORE any dispatch - these
   // rows pin the rendered `pio: `-prefixed bytes end-to-end through main.
   const edgeRows: ReadonlyArray<
     readonly [argv: readonly string[], line: string]

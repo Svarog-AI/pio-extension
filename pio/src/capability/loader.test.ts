@@ -1,6 +1,6 @@
 // Hermetic unit suite for the built-in capability loader. The module's
 // static import graph is SDK-free, so every row drives the REAL resolution
-// pipeline over INLINE fixture tables — no vi.mock anywhere. Fixture
+// pipeline over INLINE fixture tables - no vi.mock anywhere. Fixture
 // classes are white-box test doubles: they extend the real bundled base
 // (or simulate foreign chains with deliberately-fake identities) and never
 // register anything or ship anywhere. Factory thunks flip hoisted
@@ -88,7 +88,7 @@ const FIXTURE_GAMMA = class extends PioCapability {
 };
 
 describe("miss path (default table)", () => {
-  it("the registration table ships EXACTLY the six entries in INSERTION order ('research' first, then the temporary demo, the permanent same-session demo, the PERMANENT guard-demonstration home 'guards-demo', the PERMANENT variable-store home 'vars-demo', and the PERMANENT universal dispatcher 'adhoc' last)", () => {
+  it("the registration table ships EXACTLY the six entries in INSERTION order ('research' first, then the temporary demo, the permanent same-session demo, the PERMANENT guard-demonstration home 'guards-demo', the PERMANENT variable-cell home 'vars-demo', and the PERMANENT universal dispatcher 'adhoc' last)", () => {
     expect(Object.keys(CAPABILITY_TABLE)).toEqual([
       "research",
       "compose-new-session-demo",
@@ -163,7 +163,7 @@ describe("default-table hits (shipped registrations)", () => {
     expect(result.ok).toBe(true);
     const cap = asOk(result);
     expect(cap.ctor).toBe(ResearchCapability);
-    // Pinned contract literal — the SOLE OWNER is the contract field on
+    // Pinned contract literal - the SOLE OWNER is the contract field on
     // ResearchCapability in capabilities/research.ts; the copy keeps the pin
     // meaningful.
     expect(cap.contract).toStrictEqual({
@@ -181,7 +181,7 @@ describe("default-table hits (shipped registrations)", () => {
     expect(result.ok).toBe(true);
     const cap = asOk(result);
     expect(cap.ctor).toBe(ComposeNewSessionDemoCapability);
-    // Pinned contract literal — the SOLE OWNER is the contract field on
+    // Pinned contract literal - the SOLE OWNER is the contract field on
     // ComposeNewSessionDemoCapability in
     // capabilities/compose-new-session-demo.ts; the copy keeps the pin
     // meaningful.
@@ -199,7 +199,7 @@ describe("default-table hits (shipped registrations)", () => {
     expect(result.ok).toBe(true);
     const cap = asOk(result);
     expect(cap.ctor).toBe(ComposeSameSessionDemoCapability);
-    // Pinned contract literal — the SOLE OWNER is the contract field on
+    // Pinned contract literal - the SOLE OWNER is the contract field on
     // ComposeSameSessionDemoCapability in
     // capabilities/compose-same-session-demo.ts; the copy keeps the pin
     // meaningful.
@@ -217,7 +217,7 @@ describe("default-table hits (shipped registrations)", () => {
     expect(result.ok).toBe(true);
     const cap = asOk(result);
     expect(cap.ctor).toBe(GuardsDemoCapability);
-    // Pinned contract literal — the SOLE OWNER is the contract field on
+    // Pinned contract literal - the SOLE OWNER is the contract field on
     // GuardsDemoCapability in capabilities/guards-demo.ts; the copy keeps the
     // pin meaningful.
     expect(cap.contract).toStrictEqual({
@@ -240,7 +240,7 @@ const IDENTITY_LINE = (name: string): string =>
  * Sever one fixture's prototype link. At the type level the fixture stays a
  * bona fide bundled subclass (fixture tables remain strictly typed without
  * an assertion), while the chain the walker observes starts at the given
- * foreign parent instead of the bundled base — exactly the second-runtime-
+ * foreign parent instead of the bundled base - exactly the second-runtime-
  * copy scenario under test.
  */
 function severChain(
@@ -251,7 +251,7 @@ function severChain(
 }
 
 // Shape-identical impostor base: the same surface names as the bundled base
-// but a different prototype chain — simulates a second runtime copy of the
+// but a different prototype chain - simulates a second runtime copy of the
 // authoring surface. Deliberately-fake identities; ships nowhere.
 class FakeBase {
   readonly contract: Contract;
@@ -396,7 +396,7 @@ describe("identity check (fixture tables)", () => {
 });
 
 /** One bundled-subclass constructor carrying the given authored contract.
- * Unproven shapes cross Object.assign — the checker asserts every field at
+ * Unproven shapes cross Object.assign - the checker asserts every field at
  * runtime; the annotation documents shape, not protection. */
 function withContract(contract: Contract): CapabilityConstructor {
   const Carrying = class extends PioCapability {
@@ -711,7 +711,7 @@ describe("lazy discipline and structural guards", () => {
   });
 });
 
-// Authored DESCRIPTION replicas — SOLE OWNERS are the same-named exports on
+// Authored DESCRIPTION replicas - SOLE OWNERS are the same-named exports on
 // the co-shipping built-in modules; the copies keep rows A/B's byte pins
 // meaningful (either side drifting fails loudly).
 const DESCRIPTION_REPLICAS: Readonly<Record<string, string>> = {
@@ -724,7 +724,7 @@ const DESCRIPTION_REPLICAS: Readonly<Record<string, string>> = {
   "guards-demo":
     "Demonstration of missing-deliverable protection: a run deliberately skips writing its required file, the engine forces a corrected retry until the file exists, and the outcome is stated.",
   "vars-demo":
-    "Demonstration of the shared variable store: within one run, the AI and the program code set and read the same variables, the program observes an AI write mid-run, and one guarded value is deliberately retried until it lands.",
+    "Demonstration of the no-store variable model: within one run, the AI and the program code set and read the SAME cells by reference, the program observes an AI write mid-run, one guarded value is deliberately retried until it lands, and one out-of-permission write renders its readable refusal.",
   adhoc:
     "Describe what you need in plain language and it matches your request against the registered built-ins, runs the chosen capability right here in this conversation, and reports the result - staying available for follow-ups until you exit.",
 };

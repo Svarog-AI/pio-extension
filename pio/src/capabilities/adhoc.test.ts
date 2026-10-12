@@ -7,8 +7,8 @@
 // calls). Replicated product bytes name their SOLE OWNER export in
 // ./adhoc.ts or the named co-shipping module; identity-over-goldens. The
 // single request lane settles decisions natively (the decision object onto
-// the request lane), malformed writes fail visibly
-// MID-TURN via twin-store capture, and fully-silent rounds pay the ruled
+// the request lane); defective writes settle MID-TURN equal to the cell
+// settle's own fault voice, and fully-silent rounds pay the ruled
 // four-prompt cost into the dedicated verdict class before the next fresh
 // round begins.
 import {
@@ -383,7 +383,7 @@ function listingReplica(): string {
     "- compose-new-session-demo: Temporary demonstration of handing the terminal between sessions: after a greeting, a brand-new session takes over your terminal to research a fixed topic, and you get the top 3 findings from its report once control comes back.",
     "- compose-same-session-demo: Demonstration of keeping everything in one session: after a greeting, research runs inside your current session without ever leaving it, and you get the top 3 findings from its report.",
     "- guards-demo: Demonstration of missing-deliverable protection: a run deliberately skips writing its required file, the engine forces a corrected retry until the file exists, and the outcome is stated.",
-    "- vars-demo: Demonstration of the shared variable store: within one run, the AI and the program code set and read the same variables, the program observes an AI write mid-run, and one guarded value is deliberately retried until it lands.",
+    "- vars-demo: Demonstration of the no-store variable model: within one run, the AI and the program code set and read the SAME cells by reference, the program observes an AI write mid-run, one guarded value is deliberately retried until it lands, and one out-of-permission write renders its readable refusal.",
     `- adhoc: ${ADHOC_DESCRIPTION_REPLICA}`,
   ].join("\n");
 }
@@ -1339,9 +1339,9 @@ describe("admission failures settle as failure reports (owner-directed full remo
 
 describe("mid-turn settlement (replaces the retired malformed-defect class)", () => {
   /** Shared assertion core over a defective REQUEST-lane write: the tool
-   * result settles MID-TURN equal to the twin-store throw (identity over
-   * goldens), the round then runs its silent-round physics into the caught
-   * verdict, and the following burst is the PLAIN baseline with NO
+   * result settles MID-TURN equal to the twin cell's settle fault (identity
+   * over goldens), the round then runs its silent-round physics into the
+   * caught verdict, and the following burst is the PLAIN baseline with NO
    * refusal fact appended. */
   async function driveRequestDefectRow(
     label: string,
@@ -1392,7 +1392,7 @@ describe("mid-turn settlement (replaces the retired malformed-defect class)", ()
     void label;
   }
 
-  it("null onto the request lane (exemplar by ruling): the authored plain-object defect line settles MID-TURN equal to the twin-store throw; the prior value - a decision - reads back INTACT on the twin; the sitting continues into the silent tail and the following burst is PLAIN", async () => {
+  it("null onto the request lane (exemplar by ruling): the authored plain-object defect line settles MID-TURN equal to the twin cell's settle fault; the prior value - a decision - reads back INTACT on the twin; the sitting continues into the silent tail and the following burst is PLAIN", async () => {
     await driveRequestDefectRow("null", null, DECISION_OBJECT);
   });
 

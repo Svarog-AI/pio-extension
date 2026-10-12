@@ -13,10 +13,10 @@
 // SOLE surviving name conflict loudly: two bindings of the same name in
 // one set.
 //
-// ADMISSION is one shared pre-mint validator (admitVarType) feeding BOTH
-// the free minter and the session store's declare() (single source of
-// truth for every admission line): the six built-in literals admit
-// verbatim; a non-null non-array object enters the spec lane under fixed
+// ADMISSION is one shared pre-mint validator (admitVarType) feeding the
+// free minter (single source of truth for every admission line): the six
+// built-in literals admit verbatim; a non-null non-array object enters
+// the spec lane under fixed
 // FIRST-FAULT triage (label well-formed, no built-in shadowing, schema
 // recognized via the instanceof z.ZodType guard); EVERYTHING ELSE settles
 // the ${payload} malformed-base-type line through ONE template site.
@@ -30,7 +30,8 @@
 // resolver, type spelling, clause renderer, coercion-reject line), the
 // spec-lane mechanics (structural issue slice, collect-all defect frame,
 // check-fault line, wire JSON materialization), the three spec-lane
-// admission fault lines (their "var registry:" prefix is frozen), and the
+// admission fault lines (whose shared prefix bytes are FROZEN verbatim),
+// and the
 // display resolver (literal-self / spec-label mapping). The session host
 // reaches these owners through its import clause and redefines none.
 //
@@ -129,9 +130,8 @@ function renderVarMalformedBaseTypeLine(
 
 /**
  * THE shared pre-mint admission validator over a variable TYPE - SOLE
- * source of truth for every admission line, feeding BOTH minters (the
- * free declareVar and the session store's declare()). Cast-free FIRST-
- * FAULT triage over the RUNTIME payload: a STRING takes the literal lane
+ * source of truth for every admission line, feeding the free minter
+ * (declareVar). Cast-free FIRST-FAULT triage over the RUNTIME payload: a STRING takes the literal lane
  * (the six built-ins admit; anything else faults); a NON-NULL, NON-ARRAY
  * OBJECT enters the SPEC LANE (label well-formed, no built-in shadowing,
  * schema recognized via the instanceof z.ZodType guard); EVERYTHING ELSE
@@ -247,8 +247,7 @@ function walkVarIntegrity(value: unknown): VarConversion {
 }
 
 /** THE shared conversion core (one voice, one table): the SAME pure
- * function serves BOTH the session store (the validated write funnel and
- * the typed reads) AND the cell's per-lane settle - consistency by
+ * function serves the cell's per-lane settle - consistency by
  * construction (what set admits, read converts). Type-preserving: the
  * converted value equals the declared type. Never throws; a fault resolves
  * to the closed category the clause renderers turn into the pinned line. */
@@ -377,8 +376,8 @@ function varRejectClause(reason: VarRejectReason, type: VarType): string {
   }
 }
 
-/** ONE coercion-reject line (every validated write path: store arm and
- * cell alike): names the VARIABLE, the incoming type spelling, the
+/** ONE coercion-reject line (every validated write path over the cell's
+ * settle lane): names the VARIABLE, the incoming type spelling, the
  * DECLARED TYPE, and the category clause. The value is never echoed; LF
  * discipline per the other renderers (lines stand alone; the family
  * constructor joins them). */
@@ -552,7 +551,7 @@ export class VarCell {
   }
 
   /** SAFE channel: the stored value, or undefined when absent. NEVER
-   * throws. There is no strict typed-read channel in this surface -
+   * throws. There is no strict typed read channel in this surface -
    * programmatic consumers read() and narrow or convert manually. */
   read(): unknown {
     return this.#hasValue ? this.#value : undefined;

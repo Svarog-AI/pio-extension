@@ -5,17 +5,17 @@
 // The listener is the sole event feed: it is minted here, passed as a
 // sessionListener option (attached exactly once at construction by the
 // seam), and routes events into instance-owned observation state. The live
-// subscription count stays at one at any instant — the construction seam
+// subscription count stays at one at any instant - the construction seam
 // owns the first attach, and rebind owns the re-attach on each reopened
 // handle (subscriptions die with the disposed handle; the returned
 // unsubscribe is dropped by design). No module-level mutable state.
 //
 // Composed frames ride the same instance surface: fromRuntime hosts a
-// frame on a SETTLED shared runtime — the synchronous sibling of create,
+// frame on a SETTLED shared runtime - the synchronous sibling of create,
 // placement-blind (no frame-world imports, no placement branches, no
 // placement flag). Counter continuity spans handle swaps: cumulative
 // observation state lives in the persistent observer (JS heap), and
-// reopened transcripts retain their sessionId while re-firing no events —
+// reopened transcripts retain their sessionId while re-firing no events -
 // re-arming the same observer after a swap-back yields exact continuity,
 // no loss, no double count.
 //
@@ -32,14 +32,14 @@
 // retries, compaction continuations, and queued messages all resolve inside
 // it), so the prompt promise alone is the settlement authority. Settled-end
 // payloads are appended to a flat monotonic master list tracked by a
-// baseline number — reads are non-consuming slices stable within a window,
+// baseline number - reads are non-consuming slices stable within a window,
 // explicit resets move only the baseline, and nothing ever truncates a list
 // or the cumulative counters. The same idiom spans both the committed-path
 // list and the payload list.
 //
 // Capability-span marking rides a no-turn carrier: markCapability appends
 // the span's section header (renderCapabilityMarker's line; customType
-// PIO_CAPABILITY_CUSTOM_TYPE) as a durable custom message — never folded
+// PIO_CAPABILITY_CUSTOM_TYPE) as a durable custom message - never folded
 // into prompt text, never a turn trigger. Phase ids stay BARE ids; the
 // `capability:` prefix is reserved for that mark (no runtime enforcement).
 // Only session-present runs are stamped, once per span (see base.ts).
@@ -47,7 +47,7 @@
 // Settlement gate (dual face: write + vars expectations): a phase that
 // declares deliverable paths and/or variable bindings cannot settle until EVERY
 // declared expectation holds. The gate sits strictly at the normal settlement
-// break (stop-rule verdict or budget break) — floor/hook continuations
+// break (stop-rule verdict or budget break) - floor/hook continuations
 // pre-break see no gate. Each settlement consults BOTH faces FRESH:
 // existsSync over the resolved declared paths (directories pass mechanically;
 // non-emptiness stays a capability-local quality bar) and EMPTINESS over the
@@ -61,7 +61,7 @@
 //
 // Durable-declaration retention: entries resolve ONCE at phase start
 // (absolute normalized; relative under process.cwd()) into a list retained
-// for the whole phase duration — never consumed transiently. The retained
+// for the whole phase duration - never consumed transiently. The retained
 // resolved entries arm BOTH the settlement gate (consulted at break points)
 // and the execution-state feed (attached verbatim at phase start alongside
 // the phase's normalized project-files scope flag, detached on every exit
@@ -89,9 +89,9 @@
 // settled (MAX_EXPECTATION_RETRIES for files, the mirrored
 // MAX_VAR_EXPECTATION_RETRIES for variables) and that face's expectations
 // still unmet, the phase throws the error home's ContractViolationError
-// COLLECTING ALL still-missing violations — file lines first (declaration
+// COLLECTING ALL still-missing violations - file lines first (declaration
 // order) followed by variable lines (binding order; a satisfied
-// face contributes zero lines) — unwrapped through the finally closeout into
+// face contributes zero lines) - unwrapped through the finally closeout into
 // the standard containment channels on both placements. The one side-aware
 // refinement: a VARIABLES-ONLY exhaustion settles the dedicated
 // MissingVariableError subclass over the same composed line bytes (structured
@@ -101,7 +101,7 @@
 // Arm-time binding refusal: BEFORE the first turn issues, the read-set
 // projection over the retained bindings runs its shared first-check and
 // refuses any same-name duplicate LOUDLY at the phase-start attach point in
-// the substrate's bookkeeping voice — nothing arms, no window opens, zero
+// the substrate's bookkeeping voice - nothing arms, no window opens, zero
 // prompts issue, and the throw escapes VERBATIM. Everything else is
 // constructively impossible: a binding references minted cells, so an
 // unsatisfiable phase is inexpressible rather than detected.
@@ -218,13 +218,13 @@ export function renderCapabilityMarker(label: string): string {
 const PIO_CAPABILITY_CUSTOM_TYPE = "pio-capability";
 
 /** Ceiling for corrective expectation re-runs (shrink-only, no per-phase
- * override; module-private — the export surface stays at the pinned five
+ * override; module-private - the export surface stays at the pinned five
  * keys and the suite pins the ceiling behaviorally). */
 const MAX_EXPECTATION_RETRIES = 3;
 
 /** One corrective MARKED BLOCK for a gate-triggered retry: the flanked
  * em-dash delimiter line (U+2014-escaped like every other pinned byte in
- * this module) labeled output guard above the body sentence — every
+ * this module) labeled output guard above the body sentence - every
  * currently-missing resolved path (declaration order) plus the settled-run
  * count at the denial point; fresh per retry, so landed paths drop off.
  * Two lines joined by a single LF; no trailing newline. */
@@ -251,7 +251,7 @@ function renderMissingOutputLine(
 const MAX_VAR_EXPECTATION_RETRIES = 3;
 
 /** One corrective MARKED BLOCK for a variable-gate denial: the flanked
- * em-dash delimiter line labeled variable guard above the body sentence —
+ * em-dash delimiter line labeled variable guard above the body sentence -
  * every still-empty bound cell's name (binding order) plus the
  * settled-run count at the denial point; fresh per retry. Two lines joined
  * by a single LF; no trailing newline. */
@@ -263,9 +263,9 @@ function renderVariableRetryLine(
 }
 
 /** ONE collect-all violation line per still-missing declared variable at
- * the exhausted ceiling (the name renders RAW — variables have no
+ * the exhausted ceiling (the name renders RAW - variables have no
  * resolved-path analog; the 3 embeds the cap CONSTANT like the file
- * renderer's shape — never a live counter value). */
+ * renderer's shape - never a live counter value). */
 function renderMissingVariableLine(phaseId: string, name: string): string {
   return `phase '${phaseId}' variable '${name}' missing \u2014 still undefined after ${MAX_VAR_EXPECTATION_RETRIES} variable expectation re-run(s); the ceiling is exhausted`;
 }
@@ -333,14 +333,14 @@ export interface PhaseOptions {
   readonly instructions?: string;
   /** Floor: the phase always executes at least this many runs. */
   readonly min?: number;
-  /** Ceiling: bounds execution — continuation still demanded at it ends
+  /** Ceiling: bounds execution - continuation still demanded at it ends
    * the loop; the phase resolves with the bounded result. */
   readonly max?: number;
   /** Runs after every settled run; `true` ends the phase, `false` demands another run. */
   readonly shouldStopLoop?: (ctx: IterationCtx) => Promise<boolean>;
   /** Declared deliverable PATHS the phase MUST produce before it may
    * settle (absent or empty = no expectations; presence turns enforcement
-   * ON — mandatory, always on, no opt-out). Entries are paths: absolute
+   * ON - mandatory, always on, no opt-out). Entries are paths: absolute
    * entries pass through normalized; relative entries resolve under
    * process.cwd(). Non-empty retained entries additionally feed the
    * session's execution state (attached verbatim at phase start), arming
@@ -525,7 +525,7 @@ class SessionObserver {
       }
       case "agent_end": {
         // Per-attempt payloads are disjoint, so appending composes across
-        // internal retries; the retry flag is deliberately unread — the
+        // internal retries; the retry flag is deliberately unread - the
         // prompt promise owns settlement.
         for (const payload of event.messages) {
           this.#payloadMaster.push(payload);
@@ -533,8 +533,8 @@ class SessionObserver {
         break;
       }
       default:
-        // Everything else — tool_execution_update, turn_*, agent_settled,
-        // queue/compaction/retry/summarization events — is
+        // Everything else - tool_execution_update, turn_*, agent_settled,
+        // queue/compaction/retry/summarization events - is
         // observation-neutral.
         break;
     }
@@ -575,7 +575,7 @@ class SessionObserver {
   }
 
   /** Non-consuming take of started ask-user executions since the last
-   * baseline advance — this run's window (failures included; near-names
+   * baseline advance - this run's window (failures included; near-names
    * excluded by the exact-match constant). */
   askUserCallsDelta(): number {
     return this.#askUserCalls - this.#askUserBaseline;
@@ -611,7 +611,7 @@ class SessionObserver {
 }
 
 /**
- * Refusal raised when rebind is handed a FOREIGN handle — its sessionId
+ * Refusal raised when rebind is handed a FOREIGN handle - its sessionId
  * differs from this frame's identity. The message is constructed at the
  * throw site over the two session ids (claim first, frame second). Bare
  * identity capture reduces via captureError to {type, message}; NO cause.
@@ -632,13 +632,13 @@ export class SessionHandleRefusalError extends Error {
 export class PioSession {
   /** Identity of the settled session handle. */
   readonly id: string;
-  /** Constructed runtime by reference — reach path for runs and teardown. */
+  /** Constructed runtime by reference - reach path for runs and teardown. */
   readonly runtime: AgentSessionRuntime;
   #observer: SessionObserver;
-  /** Last-bound handle MARKER — rebind's same-handle comparison only. */
+  /** Last-bound handle MARKER - rebind's same-handle comparison only. */
   #lastBound: AgentSession;
   /** Execution state minted by create or discovered through the settled
-   * handle's symbol stamp (fromRuntime); ABSENT means no state — every
+   * handle's symbol stamp (fromRuntime); ABSENT means no state - every
    * gate operation on such an instance no-ops cleanly. */
   #executionState: SessionExecutionState | undefined;
 
@@ -673,7 +673,7 @@ export class PioSession {
       observer.handle(event);
     };
     // THE one per-session execution state: minted over the two owned anchor
-    // channels (storage ONLY — resolution defers to snapshot(), zero env/
+    // channels (storage ONLY - resolution defers to snapshot(), zero env/
     // fs at construction).
     const executionState = new SessionExecutionState({
       projectSlotRoot: () =>
@@ -685,7 +685,7 @@ export class PioSession {
       workspaceCwd: () => resolve(cwd),
     });
     // THE write tool-call handler closure: every tool-call verdict consults
-    // a FRESH snapshot through the stateless predicate — late binding
+    // a FRESH snapshot through the stateless predicate - late binding
     // survives rebind swaps and span churn; no containment anywhere.
     const writeToolCallHandler = (toolName: string, input: unknown) =>
       decideWrite(executionState.snapshot(), toolName, input);
@@ -718,13 +718,13 @@ export class PioSession {
   }
 
   /**
-   * Synchronous factory over an ALREADY-SETTLED runtime — the composed-
+   * Synchronous factory over an ALREADY-SETTLED runtime - the composed-
    * frame sibling of create (cf. dist SessionManager.create/open/inMemory).
    * Mints a fresh observer and listener routed to it, subscribes EXACTLY
    * ONCE on the runtime's CURRENT handle, DISCOVERS the execution state
    * from that handle's symbol stamp (cast-free narrowing; absent for a
    * foreign handle), and constructs through the same private constructor.
-   * Zero SDK-construction reach; no defensive input validation — the type
+   * Zero SDK-construction reach; no defensive input validation - the type
    * contract carries the guarantee.
    */
   static fromRuntime(runtime: AgentSessionRuntime): PioSession {
@@ -737,7 +737,7 @@ export class PioSession {
     // Reflect.get read lands in an unknown local, narrowed by instanceof.
     // A pio-constructed shared handle FINDS THE EXACT object minted at
     // create (composed frames share it by handle identity); an unstamped
-    // foreign handle resolves undefined — no execution state, every gate
+    // foreign handle resolves undefined - no execution state, every gate
     // operation below no-ops.
     const stamped: unknown = Reflect.get(
       runtime.session,
@@ -750,9 +750,9 @@ export class PioSession {
 
   /**
    * Re-arm the persistent observer on a freshly applied handle after a
-   * platform session replacement. Gates, fixed order: IDENTITY — a claimed
+   * platform session replacement. Gates, fixed order: IDENTITY - a claimed
    * handle whose sessionId differs from this frame's id refuses LOUDLY
-   * and mutates nothing; NO-OP — the already-bound handle (by reference)
+   * and mutates nothing; NO-OP - the already-bound handle (by reference)
    * never double-subscribes. Otherwise a FRESH listener closure routed to
    * the SAME persistent observer subscribes on the claimed handle and the
    * last-bound marker moves. Accepted edge: rearms assume the previously
@@ -761,7 +761,7 @@ export class PioSession {
    * (construction-seam doctrine). The execution state is left INTACT
    * across the swap on purpose: span layers belong to the balanced
    * enter/exit lifecycle and survive a handle replacement. Never reads
-   * this.runtime.session — the explicit argument is the seam.
+   * this.runtime.session - the explicit argument is the seam.
    */
   rebind(session: AgentSession): void {
     if (session.sessionId !== this.id) {
@@ -820,7 +820,7 @@ export class PioSession {
    * the dual-face settlement gate: every normal break point passes the
    * fresh existsSync consult over the retained resolved declarations plus
    * the FRESH emptiness consult over the retained binding list (flag
-   * authority over the bound cells) before settling — a denial burns one
+   * authority over the bound cells) before settling - a denial burns one
    * corrective re-run per denying face (mirrored ceilings) and exhaustion
    * throws the error home's ContractViolationError collecting ALL
    * still-missing violations (file lines first, then variable lines).
@@ -857,7 +857,7 @@ export class PioSession {
     // (strictly between the retained-listing computation and the attach,
     // pre-disclosure, outside the try): the projection runs the shared
     // first-check FIRST and refuses any same-name duplicate LOUDLY (the
-    // substrate's developer voice) — nothing arms, no window opens, zero
+    // substrate's developer voice) - nothing arms, no window opens, zero
     // prompts issue, and the throw ESCAPES VERBATIM through the standard
     // containment channels. The returned map IS the read set the view
     // consumes (every entry, default-read grant).
@@ -921,7 +921,7 @@ export class PioSession {
     let expectationRetries = 0;
     // The variable face's twin counter (mirrored ceiling; same isolation).
     let varExpectationRetries = 0;
-    // Next run's corrective block: set only at a gate denial, consumed once —
+    // Next run's corrective block: set only at a gate denial, consumed once -
     // floor/hook continuations re-send the untouched baseline.
     let pendingNote: string | undefined;
     try {
@@ -956,7 +956,7 @@ export class PioSession {
           proceed = proceed || !verdict;
         }
         if (!proceed || iterations >= max) {
-          // Dual-face settlement gate — this break path only: fresh
+          // Dual-face settlement gate - this break path only: fresh
           // existsSync over the retained resolved declarations plus FRESH
           // EMPTINESS over the retained binding list (flag authority over
           // the bound cells - origin-blind: an inherited value or a

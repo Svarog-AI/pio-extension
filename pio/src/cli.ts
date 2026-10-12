@@ -6,23 +6,23 @@
 // - Strict flag surface: the only recognized top-level forms are `--help`,
 //   `help`, `--version`, and `run`; `--input k=v` is recognized in run
 //   position ONLY (after a capability name was consumed). Every other dash
-//   token (anywhere) is an unknown option — there are no short forms and no
+//   token (anywhere) is an unknown option - there are no short forms and no
 //   stub flags.
 // - Builtins load only through the single dynamic import issued after a
 //   successful parse+dispatch, so the cheap forms (help, version, errors)
-//   never pay for evaluating a builtin graph — the run path's graph pulls in
+//   never pay for evaluating a builtin graph - the run path's graph pulls in
 //   the SDK. The sole static import is the version constant and the sole
 //   dynamic literal is `./sandbox/run.ts`.
 // - EVERY name delegates onward to the run path: its loader-based gate owns
 //   admission, and its refusal line reaches the user through the same IO
-//   sink this module threads — this file carries no refusal bytes of its own.
+//   sink this module threads - this file carries no refusal bytes of its own.
 import { PIO_VERSION } from "./version.ts";
 
 /** Descriptors of a parsed argv (program name excluded). `error.message` is unprefixed. */
 export type ParsedCommand =
   | { kind: "help" }
   | { kind: "version" }
-  // `inputs`: insertion-ordered key→value map — ALWAYS present on run
+  // `inputs`: insertion-ordered key→value map - ALWAYS present on run
   // descriptors (EMPTY `{}` by default); a plain object, so JS string-key
   // insertion order IS the declared order.
   | { kind: "run"; capability: string; inputs: Record<string, string> }
@@ -34,9 +34,9 @@ export interface CliIO {
   stderr(line: string): void;
 }
 
-/** Canonical run-grammar usage string — ONE constant feeds ALL THREE host
+/** Canonical run-grammar usage string - ONE constant feeds ALL THREE host
  * occurrences: the help usage line and both error-template tails. NOTE the
- * trailing ellipsis is the U+2026 HORIZONTAL ELLIPSIS character — pinned
+ * trailing ellipsis is the U+2026 HORIZONTAL ELLIPSIS character - pinned
  * codepoint, never normalized to three dots. */
 const RUN_USAGE = "pio run <capability> [--input k=v …]";
 
@@ -66,7 +66,7 @@ const HELP_LINES: readonly string[] = [
   "  pio --version",
   "",
   "Built-in capabilities:",
-  // NOTE the em dash is the U+2014 EM DASH character — pinned codepoint,
+  // NOTE the em dash is the U+2014 EM DASH character - pinned codepoint,
   // matching line-0 house style; the quoted <topic> documents the
   // shell-quoted multi-word-as-ONE-value grammar.
   "  research — bounded web-research loop producing a markdown file report",
@@ -76,14 +76,14 @@ const HELP_LINES: readonly string[] = [
   "  compose-same-session-demo — greets the operator, runs research in the same session, then reports the top 3 findings",
   "  pio run compose-same-session-demo",
   // NOTE the em dash is the U+2014 EM DASH character (pinned codepoint),
-  // matching the pair style above; the canonical line is the BARE form —
+  // matching the pair style above; the canonical line is the BARE form -
   // the demo takes nothing.
   "  guards-demo — PERMANENT guard demonstration: first pass skips the declared write, the expectation guard denies settlement with a corrective note naming the exact path, the compliant re-run settles, then a summary states the outcome",
   "  pio run guards-demo",
   // NOTE the em dash is the U+2014 EM DASH character (pinned codepoint),
-  // matching the pair style above; the canonical line is the BARE form —
+  // matching the pair style above; the canonical line is the BARE form -
   // the demo takes nothing.
-  "  vars-demo — PERMANENT variable-store demonstration: model and TS code read and write the same live session variables — visible expectation-guard retry, following-turn read-back",
+  "  vars-demo — PERMANENT no-store variable demonstration: model and TS code read and write the same live cells by reference — visible expectation-guard retry, following-turn read-back, and the refused out-of-permission write",
   "  pio run vars-demo",
 ];
 
@@ -123,12 +123,12 @@ export function parse(argv: readonly string[]): ParsedCommand {
   if (startsWithDash(second)) {
     return { kind: "error", message: UNKNOWN_OPTION(second) };
   }
-  // Post-capability tail: the `--input k=v` pair scan — the ONE grammar three
+  // Post-capability tail: the `--input k=v` pair scan - the ONE grammar three
   // consumers share (host parse here, renderer emission, in-namespace entry
   // parse). ZERO transform: split on the FIRST `=`, no trimming anywhere, the
   // value is the ENTIRE remainder (may be EMPTY, may hold further `=`). The
   // flag token consumes the NEXT token AS-IS as the pair candidate BEFORE any
-  // dash classification — so a glued `--input=k=v` never matches the flag
+  // dash classification - so a glued `--input=k=v` never matches the flag
   // token and degrades to the unknown-option arm below, deterministically in
   // every consumer. First violation wins (fail-fast).
   const inputs: Record<string, string> = {};
@@ -161,7 +161,7 @@ export function parse(argv: readonly string[]): ParsedCommand {
 
 /** Entry point. `argv` = user args (process.argv.slice(2) in the real bin).
  *  `io` defaults to process.stdout/process.stderr writers. Resolves to the process exit code;
- *  the bin sinks it into process.exitCode. Never rejects — escaping failures degrade to
+ *  the bin sinks it into process.exitCode. Never rejects - escaping failures degrade to
  *  the `pio: unexpected error: <detail>` line on stderr + exit 1. */
 export async function main(
   argv: readonly string[],
@@ -189,7 +189,7 @@ export async function main(
       case "run": {
         const name = parsed.capability;
         // EVERY name delegates onward through ONE lazy import over the run
-        // path — see the header note on lazy loading. It must export
+        // path - see the header note on lazy loading. It must export
         // runCapability(name, io?, seams?, inputs?): Promise<number> (the
         // exit code).
         let runPath: {
@@ -210,7 +210,7 @@ export async function main(
         // Every name delegates onward: the run path's loader-based gate
         // owns admission, and its refusal line reaches the user through
         // the same IO sink. The parsed inputs record rides the additive
-        // fourth slot ALWAYS (four-arg uniformity — an empty map when no
+        // fourth slot ALWAYS (four-arg uniformity - an empty map when no
         // pairs were given; explicit `undefined` in the seams slot).
         return await runPath.runCapability(name, out, undefined, parsed.inputs);
       }
@@ -221,7 +221,7 @@ export async function main(
     try {
       out.stderr(`pio: unexpected error: ${detail}`);
     } catch {
-      // Sink faulted twice — the handler itself must never throw either.
+      // Sink faulted twice - the handler itself must never throw either.
     }
     return 1;
   }

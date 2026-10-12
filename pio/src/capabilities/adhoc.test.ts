@@ -397,20 +397,24 @@ function gatherBaselineReplica(): string {
   return [GATHER_INSTRUCTION_REPLICA, listingReplica()].join("\n\n");
 }
 
-/** Replica of the settled admission-failure trailer (SOLE OWNER:
- * REPORT_TRAILER in ./adhoc.ts - shared with the outcome report). */
+/** Replica of the settled report trailer (SOLE OWNER: REPORT_TRAILER in
+ * ./adhoc.ts - trailing the uniform report instruction verbatim). */
 const FAIL_REPORT_TRAILER_REPLICA =
   "State these facts plainly and briefly in your reply. Do not re-run or dispatch anything yourself, and do not ask the user anything. End your turn right after stating them.";
 
-/** Replica of the admission-failure composer (SOLE OWNER:
- * renderAdmissionFailureInstructions in ./adhoc.ts) - the owner-directed
- * full-removal narrative: the refusal rides THE report, never a prompt. */
-function failReportReplica(name: string, refusal: string): string {
+/** Replica of the uniform report instruction (SOLE OWNER:
+ * UNIFORM_REPORT_INSTRUCTION in ./adhoc.ts) - the bare fixed opener over
+ * the outcome facts (no carriage phrasing - the visible post carries the
+ * referent), joined to the trailer verbatim. */
+const UNIFORM_REPORT_INSTRUCTION_REPLICA = `Report the outcome facts.\n${FAIL_REPORT_TRAILER_REPLICA}`;
+
+/** Replica of the admission-refusal fact renderer (SOLE OWNER:
+ * renderAdmissionRefusalFacts in ./adhoc.ts) - the refusal line plus the
+ * runner line, posted to the context lane ahead of the uniform report. */
+function refusalFactReplica(name: string, refusal: string): string {
   return [
-    "Facts for the report:",
     `The gathered decision names '${name}' but the program side did not admit it: ${refusal}`,
     "No capability was run.",
-    FAIL_REPORT_TRAILER_REPLICA,
   ].join("\n");
 }
 
@@ -443,6 +447,10 @@ const ENV_UNSET_REPLICA =
   "capability: PI_CODING_AGENT_DIR is unset \u2014 cannot derive the state root";
 
 const CUSTOM_TYPE_REPLICA = "pio-capability";
+
+/** Replica of the module-private customType namespace (SOLE OWNER: the
+ * PIO_CONTEXT_CUSTOM_TYPE constant in ../capability/pio-session.ts). */
+const CONTEXT_CUSTOM_TYPE_REPLICA = "pio-context";
 
 const REQUEST_SPEC_LABEL_REPLICA = "dispatch decision";
 
@@ -870,7 +878,7 @@ describe("lane arming (freshly minted request lane)", () => {
 });
 
 describe("happy chain (R1 - binding leg, physics world)", () => {
-  it("the full sitting: gather burst (listing + REAL object setVar + ask delta, settling the burst in its own run) -> admission passes in the main loop -> UNIFORM ROW-2 hop -> report with BASE-SETTLED absolute outputs -> deliberate lane window -> outer re-arm; exactly ONE span stamp across the whole sitting", async () => {
+  it("the full sitting: gather burst (listing + REAL object setVar + ask delta, settling the burst in its own run) -> admission passes in the main loop -> UNIFORM ROW-2 hop -> the BASE-SETTLED absolute outputs post to the context lane ahead of the UNIFORM report -> deliberate lane window -> outer re-arm; exactly ONE span stamp across the whole sitting", async () => {
     const root = newTempRoot();
     const world = await setupWorld({ root, env: "set", physics: true });
     const tools = await recoverTools();
@@ -904,10 +912,8 @@ describe("happy chain (R1 - binding leg, physics world)", () => {
     const baseline = promptOf("gather", gatherBaselineReplica());
     expect(sentText(prompts, 0)).toBe(baseline);
     const abs = expectedAbsolutePath(stubKit.STUB_TOKEN);
-    expect(sentText(prompts, 1)).toContain(renderPhaseMarker("report"));
-    expect(sentText(prompts, 1)).toContain(REPORT_SETTLED_LINE("research"));
-    expect(sentText(prompts, 1)).toContain(
-      `Outputs: ${JSON.stringify({ report: abs })}`,
+    expect(sentText(prompts, 1)).toBe(
+      promptOf("report", UNIFORM_REPORT_INSTRUCTION_REPLICA),
     );
     expect(sentText(prompts, 2)).toBe(baseline);
     expect(results[0]?.content[0]?.text).toBe(
@@ -953,10 +959,21 @@ describe("happy chain (R1 - binding leg, physics world)", () => {
         "top/parent-transcript.jsonl",
       ].sort(),
     );
-    expect(sdkKit.state.customMessages).toHaveLength(1);
+    expect(sdkKit.state.customMessages).toHaveLength(2);
     expect(sdkKit.state.customMessages[0]).toStrictEqual({
       customType: CUSTOM_TYPE_REPLICA,
       content: renderCapabilityMarker(ADHOC_NAME),
+      display: true,
+      details: undefined,
+    });
+    // THE context-lane post: the span stamp stays index 0, the settled fact
+    // block rides index 1 (the flowed-through visible default face).
+    expect(sdkKit.state.customMessages[1]).toStrictEqual({
+      customType: CONTEXT_CUSTOM_TYPE_REPLICA,
+      content: [
+        REPORT_SETTLED_LINE("research"),
+        `Outputs: ${JSON.stringify({ report: abs })}`,
+      ].join("\n"),
       display: true,
       details: undefined,
     });
@@ -1009,10 +1026,8 @@ describe("wire doctrine (model text arrives quoted - product regression)", () =>
     const baseline = promptOf("gather", gatherBaselineReplica());
     expect(sentText(prompts, 0)).toBe(baseline);
     const abs = expectedAbsolutePath(stubKit.STUB_TOKEN);
-    expect(sentText(prompts, 1)).toContain(renderPhaseMarker("report"));
-    expect(sentText(prompts, 1)).toContain(REPORT_SETTLED_LINE("research"));
-    expect(sentText(prompts, 1)).toContain(
-      `Outputs: ${JSON.stringify({ report: abs })}`,
+    expect(sentText(prompts, 1)).toBe(
+      promptOf("report", UNIFORM_REPORT_INSTRUCTION_REPLICA),
     );
     expect(sentText(prompts, 2)).toBe(baseline);
     // The lane reads back ABSENT: the re-arm's round-top clear disarmed the
@@ -1026,6 +1041,22 @@ describe("wire doctrine (model text arrives quoted - product regression)", () =>
     expect(stubKit.state.bag).toEqual({});
     expect(stubKit.state.inputs).toStrictEqual({ topic: TOPIC });
     expect(world.runtime.switchSession).toHaveBeenCalledTimes(2);
+    expect(sdkKit.state.customMessages).toHaveLength(2);
+    expect(sdkKit.state.customMessages[0]).toStrictEqual({
+      customType: CUSTOM_TYPE_REPLICA,
+      content: renderCapabilityMarker(ADHOC_NAME),
+      display: true,
+      details: undefined,
+    });
+    expect(sdkKit.state.customMessages[1]).toStrictEqual({
+      customType: CONTEXT_CUSTOM_TYPE_REPLICA,
+      content: [
+        REPORT_SETTLED_LINE("research"),
+        `Outputs: ${JSON.stringify({ report: abs })}`,
+      ].join("\n"),
+      display: true,
+      details: undefined,
+    });
     expect(stderrText()).toBe("");
     expect(stdoutText()).toBe("");
   });
@@ -1103,13 +1134,28 @@ describe("flow independence (R3 - physics world)", () => {
     expect(stubKit.state.bag).toEqual({});
     expect(stubKit.state.inputs).toStrictEqual({ topic: TOPIC });
     const abs = expectedAbsolutePath(stubKit.STUB_TOKEN);
-    expect(sentText(prompts, 1)).toContain(REPORT_SETTLED_LINE("research"));
-    expect(sentText(prompts, 1)).toContain(
-      `Outputs: ${JSON.stringify({ report: abs })}`,
+    expect(sentText(prompts, 1)).toBe(
+      promptOf("report", UNIFORM_REPORT_INSTRUCTION_REPLICA),
     );
     expect(sentText(prompts, 2)).toBe(
       promptOf("gather", gatherBaselineReplica()),
     );
+    expect(sdkKit.state.customMessages).toHaveLength(2);
+    expect(sdkKit.state.customMessages[0]).toStrictEqual({
+      customType: CUSTOM_TYPE_REPLICA,
+      content: renderCapabilityMarker(ADHOC_NAME),
+      display: true,
+      details: undefined,
+    });
+    expect(sdkKit.state.customMessages[1]).toStrictEqual({
+      customType: CONTEXT_CUSTOM_TYPE_REPLICA,
+      content: [
+        REPORT_SETTLED_LINE("research"),
+        `Outputs: ${JSON.stringify({ report: abs })}`,
+      ].join("\n"),
+      display: true,
+      details: undefined,
+    });
     expect(stderrText()).toBe("");
     expect(stdoutText()).toBe("");
   });
@@ -1147,7 +1193,9 @@ describe("store-on-retry (emergent property, top world)", () => {
     expect(sentText(prompts, 1)).toBe(
       `${baseline}\n${varGuardNoteReplica(1, [DISPATCH_REQUEST_VAR])}`,
     );
-    expect(sentText(prompts, 2)).toContain(REPORT_SETTLED_LINE("research"));
+    expect(sentText(prompts, 2)).toBe(
+      promptOf("report", UNIFORM_REPORT_INSTRUCTION_REPLICA),
+    );
     expect(sentText(prompts, 3)).toBe(baseline);
     // NO teaching channel anywhere: the refusal narrative is gone with the
     // carried fact - the retry window is a reaction opportunity only.
@@ -1156,6 +1204,23 @@ describe("store-on-retry (emergent property, top world)", () => {
       expect(record.text).not.toContain(VIOLATION_TOPIC_REPLICA);
       expect(record.text).not.toContain(capabilityRefusalLine("doesnotexist"));
     }
+    const abs = expectedAbsolutePath(stubKit.STUB_TOKEN);
+    expect(sdkKit.state.customMessages).toHaveLength(2);
+    expect(sdkKit.state.customMessages[0]).toStrictEqual({
+      customType: CUSTOM_TYPE_REPLICA,
+      content: renderCapabilityMarker(ADHOC_NAME),
+      display: true,
+      details: undefined,
+    });
+    expect(sdkKit.state.customMessages[1]).toStrictEqual({
+      customType: CONTEXT_CUSTOM_TYPE_REPLICA,
+      content: [
+        REPORT_SETTLED_LINE("research"),
+        `Outputs: ${JSON.stringify({ report: abs })}`,
+      ].join("\n"),
+      display: true,
+      details: undefined,
+    });
     expect(results[0]?.content[0]?.text).toBe(
       setSuccessReplica(DISPATCH_REQUEST_VAR, DECISION_OBJECT),
     );
@@ -1192,7 +1257,7 @@ describe("ESC mid-gather (R4 - top world)", () => {
 });
 
 describe("ESC mid-hosted-run (R5 - physics world)", () => {
-  it("a stub callee that settles ABORTED yields a child record BYTE-PINNED ok:false with the PhaseInterruptionError capture; the switch-back + top-frame rebind complete; the report phase carries the interruption facts INCLUDING fixture-seeded survivor paths (a directory passing existsSync included); the lane disarmed by the round-top clear; the loop is alive", async () => {
+  it("a stub callee that settles ABORTED yields a child record BYTE-PINNED ok:false with the PhaseInterruptionError capture; the switch-back + top-frame rebind complete; the interruption facts post to the context lane INCLUDING fixture-seeded survivor paths (a directory passing existsSync included) ahead of the UNIFORM report; the lane disarmed by the round-top clear; the loop is alive", async () => {
     const root = newTempRoot();
     const world = await setupWorld({ root, env: "set", physics: true });
     const tools = await recoverTools();
@@ -1238,20 +1303,34 @@ describe("ESC mid-hosted-run (R5 - physics world)", () => {
     expect(prompts).toHaveLength(3);
     expect(world.runtime.session.sessionId).toBe(sdkKit.PARENT_ID);
     expect(activeFrames()).toHaveLength(1);
-    const reportText = sentText(prompts, 1);
-    expect(reportText).toContain(renderPhaseMarker("report"));
-    expect(reportText).toContain(INTERRUPT_CANCELLATION_LINE("research"));
-    expect(reportText).toContain(INTERRUPT_SURVIVORS_LABEL);
     const survivorReport = `  - report: ${partPath}`;
     const survivorArchive = `  - archive: ${archiveDir}`;
-    expect(reportText).toContain(survivorReport);
-    expect(reportText).toContain(survivorArchive);
-    expect(reportText.indexOf(survivorReport)).toBeLessThan(
-      reportText.indexOf(survivorArchive),
+    expect(sentText(prompts, 1)).toBe(
+      promptOf("report", UNIFORM_REPORT_INSTRUCTION_REPLICA),
     );
     expect(sentText(prompts, 2)).toBe(
       promptOf("gather", gatherBaselineReplica()),
     );
+    // THE survivor-ordering leg moves into the post content: the exact fact
+    // block names report BEFORE archive.
+    expect(sdkKit.state.customMessages).toHaveLength(2);
+    expect(sdkKit.state.customMessages[0]).toStrictEqual({
+      customType: CUSTOM_TYPE_REPLICA,
+      content: renderCapabilityMarker(ADHOC_NAME),
+      display: true,
+      details: undefined,
+    });
+    expect(sdkKit.state.customMessages[1]).toStrictEqual({
+      customType: CONTEXT_CUSTOM_TYPE_REPLICA,
+      content: [
+        INTERRUPT_CANCELLATION_LINE("research"),
+        INTERRUPT_SURVIVORS_LABEL,
+        survivorReport,
+        survivorArchive,
+      ].join("\n"),
+      display: true,
+      details: undefined,
+    });
     expect(world.stop).toHaveBeenCalledTimes(0);
     expect(world.stderrSink).not.toHaveBeenCalled();
     expect(stderrText()).toBe("");
@@ -1260,7 +1339,7 @@ describe("ESC mid-hosted-run (R5 - physics world)", () => {
   });
 });
 
-describe("admission failures settle as failure reports (owner-directed full removal)", () => {
+describe("admission failures ride the context lane ahead of the uniform report (owner-directed full removal)", () => {
   interface AdmissionCase {
     label: string;
     payload: unknown;
@@ -1290,7 +1369,8 @@ describe("admission failures settle as failure reports (owner-directed full remo
       // Schema tolerance branch: the `inputs` KEY IS ABSENT (not just
       // empty) - the schema tolerates an absent inputs key (no inputs issue
       // fires mid-turn) and the decision still reaches the validator, whose
-      // collect-all topic-violation rides THE report.
+      // collect-all topic-violation rides the context lane ahead of the
+      // uniform report.
       label:
         "contract violation with ABSENT inputs key (schema tolerates absence: no inputs issue fires and the decision still reaches the validator)",
       payload: { name: "research" },
@@ -1299,7 +1379,7 @@ describe("admission failures settle as failure reports (owner-directed full remo
     },
   ];
   for (const row of cases) {
-    it(`${row.label}: NO teaching channel - the refused pick settles ONE gather burst, the FAILURE REPORT carries the EXACT narrative bytes, then the sit re-arms on the PLAIN baseline (three prompts; no hop; lane cleared)`, async () => {
+    it(`${row.label}: NO teaching channel - the refused pick settles ONE gather burst, the refusal lands as a context-lane entry (new tag byte, display: true) immediately ahead of the UNIFORM report prompt, then the sit re-arms on the PLAIN baseline - three prompts; no hop; lane cleared`, async () => {
       const root = newTempRoot();
       const world = await setupWorld({ root, env: "set" });
       const tools = await recoverTools();
@@ -1320,11 +1400,25 @@ describe("admission failures settle as failure reports (owner-directed full remo
       expect(prompts).toHaveLength(3);
       const baseline = promptOf("gather", gatherBaselineReplica());
       expect(sentText(prompts, 0)).toBe(baseline);
-      // THE owner-directed pin: the refusal rides THE report, byte-exact.
-      expect(sentText(prompts, 1)).toContain(renderPhaseMarker("report"));
+      // THE owner-directed pin: the refusal rides the context lane (new tag
+      // byte, display: true) and the report prompt is the uniform
+      // instruction byte-exact - the narrative is GONE from the prompt.
       expect(sentText(prompts, 1)).toBe(
-        promptOf("report", failReportReplica(row.name, row.fact)),
+        promptOf("report", UNIFORM_REPORT_INSTRUCTION_REPLICA),
       );
+      expect(sdkKit.state.customMessages).toHaveLength(2);
+      expect(sdkKit.state.customMessages[0]).toStrictEqual({
+        customType: CUSTOM_TYPE_REPLICA,
+        content: renderCapabilityMarker(ADHOC_NAME),
+        display: true,
+        details: undefined,
+      });
+      expect(sdkKit.state.customMessages[1]).toStrictEqual({
+        customType: CONTEXT_CUSTOM_TYPE_REPLICA,
+        content: refusalFactReplica(row.name, row.fact),
+        display: true,
+        details: undefined,
+      });
       if (row.label.startsWith("unknown")) {
         expect(row.fact).toBe(capabilityRefusalLine("doesnotexist"));
       }
@@ -1468,7 +1562,7 @@ describe("env defect (R11 - physics world)", () => {
     }
   });
 
-  it("a SETTLED report over an ALREADY-ABSOLUTE token rides the hop and the base seam UNTRANSFORMED (the child record keeps the raw value; the report renders its compact JSON verbatim - no derivation consult on this path); ZERO process-stream writes", async () => {
+  it("a SETTLED dispatch over an ALREADY-ABSOLUTE token rides the hop and the base seam UNTRANSFORMED (the child record keeps the raw value; the context-lane post carries the compact JSON verbatim - no derivation consult on this path); ZERO process-stream writes", async () => {
     const root = newTempRoot();
     const world = await setupWorld({ root, env: "set", physics: true });
     const tools = await recoverTools();
@@ -1493,11 +1587,26 @@ describe("env defect (R11 - physics world)", () => {
     const adhoc = new AdhocCapability({ session: world.instance });
     const result = await adhoc.run();
     const prompts = topPrompts(world);
-    const reportText = sentText(prompts, 1);
-    expect(reportText).toContain(REPORT_SETTLED_LINE("research"));
-    expect(reportText).toContain(
-      `Outputs: ${JSON.stringify({ report: absoluteToken })}`,
+    expect(sentText(prompts, 1)).toBe(
+      promptOf("report", UNIFORM_REPORT_INSTRUCTION_REPLICA),
     );
+    expect(sdkKit.state.customMessages).toHaveLength(2);
+    expect(sdkKit.state.customMessages[0]).toStrictEqual({
+      customType: CUSTOM_TYPE_REPLICA,
+      content: renderCapabilityMarker(ADHOC_NAME),
+      display: true,
+      details: undefined,
+    });
+    // The absolute token verbatim - no derivation consult on this path.
+    expect(sdkKit.state.customMessages[1]).toStrictEqual({
+      customType: CONTEXT_CUSTOM_TYPE_REPLICA,
+      content: [
+        REPORT_SETTLED_LINE("research"),
+        `Outputs: ${JSON.stringify({ report: absoluteToken })}`,
+      ].join("\n"),
+      display: true,
+      details: undefined,
+    });
     const childFile = world.runtime.switchSession.mock.calls.map(
       (call: unknown[]) => call[0],
     )[0] as string;
@@ -1514,7 +1623,7 @@ describe("env defect (R11 - physics world)", () => {
     expect(stdoutText()).toBe("");
   });
 
-  it("an INTERRUPTED report DEGRADES to the generic sentence when the partial-survivor derivation FAULTS (swallow-only: the narration never hard-fails the loop; the sitting settles and cycles on); the interruption capture stands in the child record; ZERO process-stream writes", async () => {
+  it("an INTERRUPTED dispatch DEGRADES the context-lane post to the generic sentence when the partial-survivor derivation FAULTS (swallow-only: the narration never hard-fails the loop; the sitting settles and cycles on); the interruption capture stands in the child record; ZERO process-stream writes", async () => {
     const root = newTempRoot();
     const world = await setupWorld({ root, env: "set", physics: true });
     const tools = await recoverTools();
@@ -1544,10 +1653,27 @@ describe("env defect (R11 - physics world)", () => {
     const adhoc = new AdhocCapability({ session: world.instance });
     const result = await adhoc.run();
     const prompts = topPrompts(world);
-    const reportText = sentText(prompts, 1);
-    expect(reportText).toContain(INTERRUPT_CANCELLATION_LINE("research"));
-    expect(reportText).toContain(INTERRUPT_DEGRADED_REPLICA);
-    expect(reportText).not.toContain(INTERRUPT_SURVIVORS_LABEL);
+    expect(sentText(prompts, 1)).toBe(
+      promptOf("report", UNIFORM_REPORT_INSTRUCTION_REPLICA),
+    );
+    expect(sdkKit.state.customMessages).toHaveLength(2);
+    expect(sdkKit.state.customMessages[0]).toStrictEqual({
+      customType: CUSTOM_TYPE_REPLICA,
+      content: renderCapabilityMarker(ADHOC_NAME),
+      display: true,
+      details: undefined,
+    });
+    // Label absence pinned on the exact post content (swallow-only
+    // degradation: the narration never hard-fails the loop).
+    expect(sdkKit.state.customMessages[1]).toStrictEqual({
+      customType: CONTEXT_CUSTOM_TYPE_REPLICA,
+      content: [
+        INTERRUPT_CANCELLATION_LINE("research"),
+        INTERRUPT_DEGRADED_REPLICA,
+      ].join("\n"),
+      display: true,
+      details: undefined,
+    });
     const childFile = world.runtime.switchSession.mock.calls.map(
       (call: unknown[]) => call[0],
     )[0] as string;
@@ -1567,7 +1693,7 @@ describe("env defect (R11 - physics world)", () => {
 });
 
 describe("result-variant coverage (physics world)", () => {
-  it("a FAILED callee dispatch settles the sitting on the typed capture: the report carries the failed line WITH THE CAPTURE TYPE plus the message VERBATIM; the child record stands ok:false with the same capture; the lane disarmed; the loop stays alive; ZERO process-stream writes", async () => {
+  it("a FAILED callee dispatch settles the sitting on the typed capture: the context-lane post carries the failed line WITH THE CAPTURE TYPE plus the message VERBATIM ahead of the UNIFORM report; the child record stands ok:false with the same capture; the lane disarmed; the loop stays alive; ZERO process-stream writes", async () => {
     const root = newTempRoot();
     const world = await setupWorld({ root, env: "set", physics: true });
     const tools = await recoverTools();
@@ -1590,12 +1716,25 @@ describe("result-variant coverage (physics world)", () => {
     const adhoc = new AdhocCapability({ session: world.instance });
     const result = await adhoc.run();
     const prompts = topPrompts(world);
-    const reportText = sentText(prompts, 1);
-    expect(reportText).toContain(renderPhaseMarker("report"));
-    expect(reportText).toContain(
-      REPORT_FAILED_LINE("research", "WebToolsMissingError"),
+    expect(sentText(prompts, 1)).toBe(
+      promptOf("report", UNIFORM_REPORT_INSTRUCTION_REPLICA),
     );
-    expect(reportText).toContain(stubKit.BARE_ERROR_MESSAGE);
+    expect(sdkKit.state.customMessages).toHaveLength(2);
+    expect(sdkKit.state.customMessages[0]).toStrictEqual({
+      customType: CUSTOM_TYPE_REPLICA,
+      content: renderCapabilityMarker(ADHOC_NAME),
+      display: true,
+      details: undefined,
+    });
+    expect(sdkKit.state.customMessages[1]).toStrictEqual({
+      customType: CONTEXT_CUSTOM_TYPE_REPLICA,
+      content: [
+        REPORT_FAILED_LINE("research", "WebToolsMissingError"),
+        stubKit.BARE_ERROR_MESSAGE,
+      ].join("\n"),
+      display: true,
+      details: undefined,
+    });
     const childFile = world.runtime.switchSession.mock.calls.map(
       (call: unknown[]) => call[0],
     )[0] as string;
@@ -1617,7 +1756,7 @@ describe("result-variant coverage (physics world)", () => {
     expect(stdoutText()).toBe("");
   });
 
-  it("an INTERRUPTED dispatch over a static-file-slot contract with NO surviving files names the absence explicitly (the survivor label does NOT appear; the explicit none-line does); the loop stays alive; ZERO process-stream writes", async () => {
+  it("an INTERRUPTED dispatch over a static-file-slot contract with NO surviving files names the absence explicitly in the context-lane post (the survivor label does NOT appear; the explicit none-line does) ahead of the UNIFORM report; the loop stays alive; ZERO process-stream writes", async () => {
     const root = newTempRoot();
     const world = await setupWorld({ root, env: "set", physics: true });
     const tools = await recoverTools();
@@ -1644,11 +1783,27 @@ describe("result-variant coverage (physics world)", () => {
     const adhoc = new AdhocCapability({ session: world.instance });
     const result = await adhoc.run();
     const prompts = topPrompts(world);
-    const reportText = sentText(prompts, 1);
-    expect(reportText).toContain(INTERRUPT_CANCELLATION_LINE("research"));
-    expect(reportText).toContain(INTERRUPT_NONE_LINE);
-    expect(reportText).not.toContain(INTERRUPT_SURVIVORS_LABEL);
-    expect(reportText).not.toContain(INTERRUPT_DEGRADED_REPLICA);
+    expect(sentText(prompts, 1)).toBe(
+      promptOf("report", UNIFORM_REPORT_INSTRUCTION_REPLICA),
+    );
+    expect(sdkKit.state.customMessages).toHaveLength(2);
+    expect(sdkKit.state.customMessages[0]).toStrictEqual({
+      customType: CUSTOM_TYPE_REPLICA,
+      content: renderCapabilityMarker(ADHOC_NAME),
+      display: true,
+      details: undefined,
+    });
+    // Absence faces pinned on the exact post content: neither the survivors
+    // label nor the degraded sentence may appear.
+    expect(sdkKit.state.customMessages[1]).toStrictEqual({
+      customType: CONTEXT_CUSTOM_TYPE_REPLICA,
+      content: [
+        INTERRUPT_CANCELLATION_LINE("research"),
+        INTERRUPT_NONE_LINE,
+      ].join("\n"),
+      display: true,
+      details: undefined,
+    });
     expect(result).toStrictEqual(VALVE_RESULT);
     expect(stderrText()).toBe("");
     expect(stdoutText()).toBe("");
@@ -1779,7 +1934,7 @@ describe("module surface and mechanical source guards (R13)", () => {
     await recoverTools(); // the name-sequence assertion lives in the helper
   });
 
-  it("RETIREMENT GREP over the module source: ZERO occurrences of the retired symbols/phrases (the sentinel, the decoder, the defect union, the legacy line table, the invalid-JSON phrase - S04 - AND the confirm era: the answer-lane variable, its grammar, its composer - full removal)", () => {
+  it("RETIREMENT GREP over the module source: ZERO occurrences of the retired symbols/phrases (the sentinel, the decoder, the defect union, the legacy line table, the invalid-JSON phrase - S04 - AND the confirm era: the answer-lane variable, its grammar, its composer - full removal + the two divergent report composers - report unification)", () => {
     const needles = [
       "NO_DISPATCH_VALUE",
       "decodeDispatchRequest",
@@ -1790,6 +1945,8 @@ describe("module surface and mechanical source guards (R13)", () => {
       "dispatch_confirm",
       "CONFIRM_GRAMMAR",
       "renderConfirmInstructions",
+      "renderReportInstructions",
+      "renderAdmissionFailureInstructions",
     ];
     for (const needle of needles) {
       expect(src.includes(needle)).toBe(false);

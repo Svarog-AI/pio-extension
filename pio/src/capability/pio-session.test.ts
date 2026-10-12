@@ -541,6 +541,11 @@ const REFUSAL_REPLICA =
  * PIO_CAPABILITY_CUSTOM_TYPE constant in ./pio-session.ts). */
 const CAPABILITY_CUSTOM_TYPE_REPLICA = "pio-capability";
 
+/** Replica of the module-private customType namespace (SOLE OWNER: the
+ * PIO_CONTEXT_CUSTOM_TYPE constant in ./pio-session.ts) - assert the
+ * recorded transport bytes against this. */
+const CONTEXT_CUSTOM_TYPE_REPLICA = "pio-context";
+
 describe("renderCapabilityMarker (pure)", () => {
   it("renders the EXACT pinned capability-line bytes with no trailing newline", () => {
     // Codepoints: U+2014 U+2014 SPACE `capability:` SPACE label SPACE
@@ -591,6 +596,212 @@ describe("PioSession — markCapability (no-turn custom-message seam)", () => {
     const result = await instance.execute_phase("post-mark");
     expect(result.messages).toEqual([]);
     expect(round.session.sendCustomMessage).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("PioSession \u2014 send_context_message (non-turn context-post seam)", () => {
+  it("issues EXACTLY ONE sendCustomMessage with the pinned context payload and NO options object (single positional argument)", async () => {
+    const { instance, round } = await host();
+    await instance.send_context_message("Facts, with punctuation; multi-word.");
+    expect(round.session.sendCustomMessage).toHaveBeenCalledTimes(1);
+    expect(round.session.sendCustomMessage).toHaveBeenCalledWith({
+      customType: CONTEXT_CUSTOM_TYPE_REPLICA,
+      content: "Facts, with punctuation; multi-word.",
+      display: true,
+      details: undefined,
+    });
+    // Single positional argument - no second argument can carry the
+    // triggerTurn / deliverAs switches off their SDK defaults.
+    expect(round.session.sendCustomMessage.mock.calls[0]).toHaveLength(1);
+    // Distinctness: the context tag differs from the capability-span tag,
+    // and within this post-only window NO entry carries the old tag.
+    expect(CONTEXT_CUSTOM_TYPE_REPLICA).not.toBe(
+      CAPABILITY_CUSTOM_TYPE_REPLICA,
+    );
+    expect(
+      round.session.sendCustomMessage.mock.calls.every(
+        (call) => call[0].customType !== CAPABILITY_CUSTOM_TYPE_REPLICA,
+      ),
+    ).toBe(true);
+  });
+
+  it("maps the display flag verbatim onto the carrier (absent defaults VISIBLE, explicit false hides, explicit true shows), leaving every other field untouched", async () => {
+    const { instance, round } = await host();
+    await instance.send_context_message("visible by default");
+    await instance.send_context_message("hidden when flagged off", {
+      display: false,
+    });
+    await instance.send_context_message("shown when flagged", {
+      display: true,
+    });
+    expect(round.session.sendCustomMessage).toHaveBeenCalledTimes(3);
+    // Absent option maps to VISIBLE (the 1:1 mapping options?.display ??
+    // true - the owner-ruling default after the visibility override).
+    expect(round.session.sendCustomMessage).toHaveBeenNthCalledWith(1, {
+      customType: CONTEXT_CUSTOM_TYPE_REPLICA,
+      content: "visible by default",
+      display: true,
+      details: undefined,
+    });
+    // Explicit false is the ONLY hiding face...
+    expect(round.session.sendCustomMessage).toHaveBeenNthCalledWith(2, {
+      customType: CONTEXT_CUSTOM_TYPE_REPLICA,
+      content: "hidden when flagged off",
+      display: false,
+      details: undefined,
+    });
+    // ...and explicit true maps to VISIBLE with everything else unchanged.
+    expect(round.session.sendCustomMessage).toHaveBeenNthCalledWith(3, {
+      customType: CONTEXT_CUSTOM_TYPE_REPLICA,
+      content: "shown when flagged",
+      display: true,
+      details: undefined,
+    });
+    // No second argument on any post.
+    expect(round.session.sendCustomMessage.mock.calls[0]).toHaveLength(1);
+    expect(round.session.sendCustomMessage.mock.calls[1]).toHaveLength(1);
+    expect(round.session.sendCustomMessage.mock.calls[2]).toHaveLength(1);
+  });
+
+  it("is counter-neutral across back-to-back posts (fresh snapshots deep-equal)", async () => {
+    const { instance } = await host();
+    const before = instance.counters();
+    await instance.send_context_message("first fact");
+    await instance.send_context_message("second fact", { display: true });
+    // No assistant usage, tool starts, or ask-user events fed between:
+    // the lane touches neither the observer nor the budget bookkeeping.
+    const after = instance.counters();
+    expect(after).toStrictEqual(before);
+  });
+
+  it("issues NO prompt from the lane alone (zero prompts around any number of posts)", async () => {
+    const { instance, round } = await host();
+    await instance.send_context_message("one");
+    await instance.send_context_message("two");
+    await instance.send_context_message("three", { display: true });
+    // The lane never starts a run on this plane.
+    expect(round.session.prompt).toHaveBeenCalledTimes(0);
+  });
+
+  it("settles a concurrent post while a gated in-flight prompt stays unsettled (non-interruption witness)", async () => {
+    const { instance, round } = await host();
+    const before = instance.counters();
+    // Gated once-implemented pass: the prompt promise stays open until
+    // the test-controlled release fires. The scripted effects are
+    // observation-NEUTRAL (quietRun: agent_start plus empty agent_end -
+    // no counters, usage, or payloads), fired at scheduling. The run is
+    // driven THROUGH THE PHASE LANE (the widened mock field erases
+    // callability, so the raw mock is never called directly): the phase
+    // body is synchronous up to its ONE awaited prompt, so starting the
+    // phase without awaiting leaves exactly that prompt in flight.
+    let promptResolved = false;
+    let release = (): void => {};
+    round.session.prompt.mockImplementationOnce(() => {
+      emit(round, ...quietRun());
+      return new Promise<void>((resolvePrompt) => {
+        release = () => {
+          promptResolved = true;
+          resolvePrompt();
+        };
+      });
+    });
+    const inFlight = instance.execute_phase("gated-phase");
+    // While the prompt is still gated, the post MUST settle: its await
+    // completes while the gated prompt remains unsettled - the flag is
+    // set solely by the release callback, so it must still be unset here.
+    await instance.send_context_message("concurrent facts");
+    expect(promptResolved).toBe(false);
+    // Release the gate; the in-flight prompt settles undisturbed (the
+    // phase settles its single run with no throw, no partial state).
+    release();
+    const result = await inFlight;
+    expect(promptResolved).toBe(true);
+    // EXACTLY one prompt total: the post issued nothing extra.
+    expect(round.session.prompt).toHaveBeenCalledTimes(1);
+    // The undisturbed settlement: the phase resolves its bounded single
+    // run over the scripted neutral effects alone.
+    expect(result.iterations).toBe(1);
+    expect(result.done).toBe(true);
+    // The post entry is recorded exactly once with the pinned payload.
+    expect(round.session.sendCustomMessage).toHaveBeenCalledTimes(1);
+    expect(round.session.sendCustomMessage).toHaveBeenCalledWith({
+      customType: CONTEXT_CUSTOM_TYPE_REPLICA,
+      content: "concurrent facts",
+      display: true,
+      details: undefined,
+    });
+    expect(round.session.sendCustomMessage.mock.calls[0]).toHaveLength(1);
+    // Counters deep-equal across the whole leg (gated start vs settlement).
+    const after = instance.counters();
+    expect(after).toStrictEqual(before);
+  });
+
+  it("interleaves with markCapability without polluting stamps: each entry keeps its own pinned bytes and the phase prompt strictly postdates the last post", async () => {
+    const { instance, round } = await host();
+    const before = instance.counters();
+    // Shared transport-order log over BOTH mocks (chronological evidence
+    // the cross-mock sequence below asserts): every custom message labels
+    // by its carried tag, the prompt logs its own token.
+    const sequence: string[] = [];
+    round.session.sendCustomMessage.mockImplementation(async (payload) => {
+      sequence.push(
+        payload.customType === CONTEXT_CUSTOM_TYPE_REPLICA
+          ? "context-post"
+          : "capability-stamp",
+      );
+    });
+    round.session.prompt.mockImplementation(async () => {
+      sequence.push("prompt");
+      emit(round, ...quietRun());
+    });
+    // Stamp first, then two posts on the same host.
+    await instance.markCapability("res");
+    await instance.send_context_message("context fact one");
+    await instance.send_context_message("context fact two", {
+      display: true,
+    });
+    // Quiet phase tail behind the interleave.
+    const result = await instance.execute_phase("tail-phase");
+    expect(result.iterations).toBe(1);
+    // UNPOLLUTED: each entry keeps its OWN pinned bytes - the stamp entry
+    // deep-equals the EXACT pre-change markCapability payload...
+    expect(round.session.sendCustomMessage).toHaveBeenCalledTimes(3);
+    expect(round.session.sendCustomMessage).toHaveBeenNthCalledWith(1, {
+      customType: CAPABILITY_CUSTOM_TYPE_REPLICA,
+      content: renderCapabilityMarker("res"),
+      display: true,
+      details: undefined,
+    });
+    // ...and both posts carry the NEW tag - the capability tag is never
+    // emitted by the post path.
+    expect(round.session.sendCustomMessage).toHaveBeenNthCalledWith(2, {
+      customType: CONTEXT_CUSTOM_TYPE_REPLICA,
+      content: "context fact one",
+      display: true,
+      details: undefined,
+    });
+    expect(round.session.sendCustomMessage).toHaveBeenNthCalledWith(3, {
+      customType: CONTEXT_CUSTOM_TYPE_REPLICA,
+      content: "context fact two",
+      display: true,
+      details: undefined,
+    });
+    // Deterministic-follow: the phase prompt strictly POSTDATES the last
+    // post in the shared transport log.
+    expect(round.session.prompt).toHaveBeenCalledTimes(1);
+    expect(sequence).toEqual([
+      "capability-stamp",
+      "context-post",
+      "context-post",
+      "prompt",
+    ]);
+    // Marker-led phase composition intact on the outgoing text.
+    expect(String(round.session.prompt.mock.calls[0][0])).toContain(
+      renderPhaseMarker("tail-phase"),
+    );
+    // Counters neutral across the whole interleave.
+    const after = instance.counters();
+    expect(after).toStrictEqual(before);
   });
 });
 

@@ -168,6 +168,31 @@ export abstract class PioCapability {
   }
 
   /**
+   * Non-turn informational post over the session's context lane — the
+   * author-facing sibling beside the budgeted phase execution. Same
+   * single-handle reach as execute_phase: wherever the session instance
+   * reaches, the post lands — the standalone top frame; row-1 same-session
+   * composition (a callee constructed WITH the caller's PioSession
+   * instance by reference posts into the SHARED conversation); and the
+   * row-2 terminal-takeover hop body (the slot RETAINS the adopted child
+   * host after a completed hop, so posts land in the CHILD engagement's
+   * session). Throws a plain Error while no session is present;
+   * otherwise delegates the option bag verbatim to the session's own
+   * lane.
+   */
+  async send_context_message(
+    content: string,
+    options?: { readonly display?: boolean },
+  ): Promise<void> {
+    if (this.s === undefined) {
+      throw new Error(
+        "no session available: send_context_message requires in-process placement",
+      );
+    }
+    return this.s.send_context_message(content, options);
+  }
+
+  /**
    * In-process phase execution over the session's budgeted engine.
    * Throws a plain Error while no session is present; delegates the option
    * bag verbatim to the session's own composition.

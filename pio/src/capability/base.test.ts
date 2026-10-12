@@ -49,13 +49,22 @@ import type { Contract } from "./contract.ts";
 import { ContractViolationError } from "./errors.ts";
 import type { WriteGateVerdict } from "./guards/write-gate.ts";
 import { decideWrite } from "./guards/write-gate.ts";
-import { PioSession, renderCapabilityMarker } from "./pio-session.ts";
+import {
+  PioSession,
+  renderCapabilityMarker,
+  renderPhaseMarker,
+} from "./pio-session.ts";
 import type { CapabilityResult } from "./status.ts";
 
 // Single documented cast seam for synthetic event payloads.
 const asEvent = (v: unknown): AgentSessionEvent => v as AgentSessionEvent;
 
 const CWD = "/work/dir";
+
+/** Replica of the module-private customType namespace (SOLE OWNER: the
+ * PIO_CONTEXT_CUSTOM_TYPE constant in ./pio-session.ts) - assert the
+ * recorded transport bytes against this. */
+const CONTEXT_CUSTOM_TYPE_REPLICA = "pio-context";
 
 type Listener = (event: AgentSessionEvent) => void;
 
@@ -1384,6 +1393,178 @@ describe("PioCapability — engine integration through the base", () => {
     expect(result.outputs).toEqual({
       settled: { done: true, iterations: 1 },
     });
+  });
+});
+
+describe("PioCapability — send_context_message (author-facing sibling seam)", () => {
+  class LeafCap extends PioCapability {
+    readonly contract: Contract = FIXTURE_CONTRACT;
+    constructor(params: CapabilityParams = {}) {
+      super(params);
+    }
+    async call(): Promise<Record<string, unknown>> {
+      return {};
+    }
+  }
+
+  // Local re-typing of the disclosure empty-form trailer (suite doctrine):
+  // bare-host fixture phases render marker + instructions + exactly this.
+  const EMPTY_FORM = "Phase Permissions:\nNone";
+
+  it("offers send_context_message on the base prototype (own property; inherited by identity over the leaf fixture)", () => {
+    expect(Object.hasOwn(PioCapability.prototype, "send_context_message")).toBe(
+      true,
+    );
+    expect(typeof PioCapability.prototype.send_context_message).toBe(
+      "function",
+    );
+    // THE wrapper lives on the BASE: nothing subclasses around it.
+    expect(LeafCap.prototype.send_context_message).toBe(
+      PioCapability.prototype.send_context_message,
+    );
+  });
+
+  it("delegates content AND the option bag BY REFERENCE to the session handle, resolving void (absent bag rides as the explicit undefined slot)", async () => {
+    const { instance } = await host();
+    const cap = new LeafCap({ session: instance });
+    // Spied handle via OWN-PROPERTY shadowing: plain function assignment
+    // (no spyOn ceremony, no cast — the arrow takes the declared signature
+    // contextually); fresh per-row instance makes cleanup a non-issue.
+    const calls: Array<[string, { readonly display?: boolean } | undefined]> =
+      [];
+    instance.send_context_message = (content, options) => {
+      calls.push([content, options]);
+      return Promise.resolve(undefined);
+    };
+    // Bag-carrying face: the object itself must arrive, not a copy.
+    const bag = { display: true };
+    const result: unknown = await cap.send_context_message(
+      "Forwarded facts, verbatim; with punctuation.",
+      bag,
+    );
+    expect(result).toBeUndefined();
+    expect(calls).toHaveLength(1);
+    expect(calls[0][0]).toBe("Forwarded facts, verbatim; with punctuation.");
+    expect(calls[0][1]).toBe(bag);
+    // Option-less face: the absent bag rides as an explicit undefined
+    // second argument (the trailing slot is preserved in recorded args).
+    await cap.send_context_message("second post");
+    expect(calls).toHaveLength(2);
+    expect(calls[1]).toHaveLength(2);
+    expect(calls[1][1]).toBeUndefined();
+  });
+
+  it("refuses with the pinned plain Error while no session is present (thrown before any session touch — B7 family)", async () => {
+    const variants: CapabilityParams[] = [{}, { tty: false, timeoutMs: 5 }];
+    for (const params of variants) {
+      const rejection: unknown = await new LeafCap(params)
+        .send_context_message("x")
+        .catch((reason: unknown) => reason);
+      expect(rejection).toBeInstanceOf(Error);
+      expect(rejection).not.toBeInstanceOf(ContractViolationError);
+      if (rejection instanceof Error) {
+        expect(rejection.name).toBe("Error");
+        expect(rejection.message).toBe(
+          "no session available: send_context_message requires in-process placement",
+        );
+      } else {
+        throw new Error("expected an Error rejection");
+      }
+    }
+    // Mechanically unconsulted: no session round was ever minted or read.
+    expect(harness.state.rounds).toHaveLength(0);
+  });
+
+  it("posts strictly BEFORE the immediately following phase prompt (optionless post witnesses the flowed-through visible default end-to-end)", async () => {
+    const { instance, round } = await host();
+    const cap = new LeafCap({ session: instance });
+    // Shared chronological log over BOTH mocks; DIRECT driving — span
+    // stamps belong to run() only, keeping the log exactly two entries.
+    const sequence: string[] = [];
+    round.session.sendCustomMessage.mockImplementation(async (payload) => {
+      sequence.push(
+        payload.customType === CONTEXT_CUSTOM_TYPE_REPLICA
+          ? "context-post"
+          : "capability-stamp",
+      );
+    });
+    round.session.prompt.mockImplementationOnce(async () => {
+      sequence.push("prompt");
+      emit(round, ...quietRun());
+    });
+    await cap.send_context_message("ordering facts");
+    await cap.execute_phase("ordered-phase", { instructions: "do it" });
+    expect(round.session.sendCustomMessage).toHaveBeenCalledTimes(1);
+    expect(round.session.sendCustomMessage).toHaveBeenCalledWith({
+      customType: CONTEXT_CUSTOM_TYPE_REPLICA,
+      content: "ordering facts",
+      display: true,
+      details: undefined,
+    });
+    // Single positional carrier argument — no options object travels.
+    expect(round.session.sendCustomMessage.mock.calls[0]).toHaveLength(1);
+    expect(round.session.prompt).toHaveBeenCalledTimes(1);
+    expect(round.session.prompt).toHaveBeenCalledWith(
+      `${renderPhaseMarker("ordered-phase")}\ndo it\n\n${EMPTY_FORM}`,
+    );
+    expect(sequence).toEqual(["context-post", "prompt"]);
+  });
+
+  it("is counter-neutral across back-to-back posts and issues no prompt at this plane", async () => {
+    const { instance, round } = await host();
+    const cap = new LeafCap({ session: instance });
+    const before = instance.counters();
+    await cap.send_context_message("first post");
+    await cap.send_context_message("second post", { display: true });
+    const after = instance.counters();
+    // Neither observer nor budget bookkeeping moved (fresh snapshots
+    // deep-equal; no events fed between).
+    expect(after).toStrictEqual(before);
+    // Zero-prompt physics: the lane issues no prompt at this plane either.
+    expect(round.session.prompt).toHaveBeenCalledTimes(0);
+  });
+
+  it("lands STRICTLY BETWEEN two marker-led phase prompts (explicit display-flag carriage; counters neutral across the whole leg)", async () => {
+    const { instance, round } = await host();
+    const cap = new LeafCap({ session: instance });
+    const before = instance.counters();
+    const sequence: string[] = [];
+    round.session.sendCustomMessage.mockImplementation(async (payload) => {
+      sequence.push(
+        payload.customType === CONTEXT_CUSTOM_TYPE_REPLICA
+          ? "context-post"
+          : "capability-stamp",
+      );
+    });
+    round.session.prompt.mockImplementationOnce(async () => {
+      sequence.push("prompt");
+      emit(round, ...quietRun());
+    });
+    round.session.prompt.mockImplementationOnce(async () => {
+      sequence.push("prompt");
+      emit(round, ...quietRun());
+    });
+    await cap.execute_phase("phase-pre", { instructions: "first" });
+    await cap.send_context_message("interleaved facts", { display: true });
+    await cap.execute_phase("phase-post", { instructions: "second" });
+    expect(sequence).toEqual(["prompt", "context-post", "prompt"]);
+    expect(round.session.prompt).toHaveBeenCalledTimes(2);
+    // Both marker-led compositions intact, in order.
+    expect(round.session.prompt.mock.calls[0][0]).toBe(
+      `${renderPhaseMarker("phase-pre")}\nfirst\n\n${EMPTY_FORM}`,
+    );
+    expect(round.session.prompt.mock.calls[1][0]).toBe(
+      `${renderPhaseMarker("phase-post")}\nsecond\n\n${EMPTY_FORM}`,
+    );
+    expect(round.session.sendCustomMessage).toHaveBeenCalledTimes(1);
+    expect(round.session.sendCustomMessage).toHaveBeenCalledWith({
+      customType: CONTEXT_CUSTOM_TYPE_REPLICA,
+      content: "interleaved facts",
+      display: true,
+      details: undefined,
+    });
+    expect(round.session.sendCustomMessage.mock.calls[0]).toHaveLength(1);
+    expect(instance.counters()).toStrictEqual(before);
   });
 });
 

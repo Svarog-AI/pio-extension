@@ -217,6 +217,11 @@ export function renderCapabilityMarker(label: string): string {
  * tag, not consumer API. */
 const PIO_CAPABILITY_CUSTOM_TYPE = "pio-capability";
 
+/** The customType namespace identifying pio information posts among
+ * foreign custom messages. Module-private on purpose: an entry-filtering
+ * tag, not consumer API. */
+const PIO_CONTEXT_CUSTOM_TYPE = "pio-context";
+
 /** Ceiling for corrective expectation re-runs (shrink-only, no per-phase
  * override; module-private - the export surface stays at the pinned five
  * keys and the suite pins the ceiling behaviorally). */
@@ -808,6 +813,31 @@ export class PioSession {
       customType: PIO_CAPABILITY_CUSTOM_TYPE,
       content: renderCapabilityMarker(label),
       display: true,
+      details: undefined,
+    });
+  }
+
+  /**
+   * Post informational content as a durable custom message WITHOUT
+   * triggering an LLM turn (non-turn by construction): the awaited
+   * promise settles at queue/append time and never at model reaction -
+   * idle appends land immediately, streaming posts ride the SDK's own
+   * routing into the in-flight run's next LLM call with current work
+   * undisturbed - and the call passes no options, so a turn can never
+   * start. Zero cost: no prompt issues; neither the observer's counters
+   * nor the budget bookkeeping move. Same single-handle reach as
+   * execute_phase (the runtime's CURRENT handle). Awaited placement - a
+   * subsequently issued phase prompt deterministically follows the post
+   * in transcript order.
+   */
+  async send_context_message(
+    content: string,
+    options?: { readonly display?: boolean },
+  ): Promise<void> {
+    await this.runtime.session.sendCustomMessage({
+      customType: PIO_CONTEXT_CUSTOM_TYPE,
+      content,
+      display: options?.display ?? false,
       details: undefined,
     });
   }
